@@ -58,6 +58,9 @@ func New(frontendFS embed.FS) *gin.Engine {
 		api.GET("/developer/:username/games", handlers.GetDeveloperGames)
 	}
 
+	// Seed demo data
+	r.POST("/api/seed", handlers.SeedData)
+
 	// Game file serving (for iframe player)
 	r.GET("/play/:id", handlers.ServeGameFiles)
 	r.GET("/play/:id/*filepath", handlers.ServeGameFiles)
