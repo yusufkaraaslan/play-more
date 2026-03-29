@@ -521,14 +521,14 @@
                 html += statCard(s.games_owned, 'Games') + statCard(s.hours_played.toFixed(1), 'Hours');
                 html += statCard(s.review_count, 'Reviews') + statCard(s.games_uploaded, 'Uploads') + '</div>';
 
-                // Developer page link (if they have games)
-                if (s.games_uploaded > 0) {
-                    html += '<div style="background:rgba(0,0,0,0.2);border-radius:8px;padding:20px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;">';
-                    html += '<div><h3 style="font-size:16px;margin-bottom:4px;">Developer Page</h3>';
-                    html += '<p style="color:var(--text-secondary);font-size:13px;">Your public game storefront</p></div>';
-                    html += '<button class="btn-primary" style="width:auto;padding:10px 25px;" onclick="showDeveloper(\'' + u.username + '\')">View Developer Page</button>';
-                    html += '</div>';
-                }
+                // Developer page link - always visible
+                html += '<div style="background:rgba(0,0,0,0.2);border-radius:8px;padding:20px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;">';
+                html += '<div><h3 style="font-size:16px;margin-bottom:4px;">Developer Page</h3>';
+                html += '<p style="color:var(--text-secondary);font-size:13px;">Your public storefront — showcase your games, bio, and links</p></div>';
+                html += '<div style="display:flex;gap:10px;">';
+                html += '<button class="btn-secondary" onclick="showDeveloper(\'' + u.username + '\')">View Page</button>';
+                html += '<button class="btn-primary" style="width:auto;padding:10px 25px;" onclick="navigate(\'deveditor\')">Edit Page</button>';
+                html += '</div></div>';
 
                 // Activity
                 html += '<h2 class="section-title">Recent Activity</h2>';
