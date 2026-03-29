@@ -422,7 +422,14 @@
         </section>
 
         <section id="feed-section" class="section">
-            <h2 class="section-title">Your Feed</h2>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
+                <h2 class="section-title" style="margin-bottom:0;">Your Feed</h2>
+                <button class="btn-secondary" style="font-size:12px;padding:6px 14px;" onclick="toggleFeedSettings()">Filter</button>
+            </div>
+            <div id="feed-settings" style="display:none;margin-bottom:20px;padding:15px;background:rgba(0,0,0,0.2);border-radius:8px;">
+                <div style="font-size:13px;color:var(--text-secondary);margin-bottom:10px;">Show in feed:</div>
+                <div style="display:flex;flex-wrap:wrap;gap:10px;" id="feed-filter-toggles"></div>
+            </div>
             <div id="feed-page-content"></div>
         </section>
 
@@ -1686,13 +1693,56 @@
         }
 
         /* ============ Feed Page ============ */
+        const feedTypes = [
+            { key: 'devlog', label: 'Devlogs', icon: '📝' },
+            { key: 'new_game', label: 'New Games', icon: '🎮' },
+            { key: 'review', label: 'Reviews', icon: '⭐' },
+            { key: 'played', label: 'Play Activity', icon: '🕹️' },
+            { key: 'upload', label: 'Uploads', icon: '📤' },
+            { key: 'library_add', label: 'Library Adds', icon: '📚' },
+        ];
+
+        function getFeedFilters() {
+            try { return JSON.parse(localStorage.getItem('playmore_feed_filters') || '{}'); } catch { return {}; }
+        }
+
+        function setFeedFilter(key, enabled) {
+            const filters = getFeedFilters();
+            filters[key] = enabled;
+            localStorage.setItem('playmore_feed_filters', JSON.stringify(filters));
+        }
+
+        function isFeedTypeEnabled(key) {
+            const filters = getFeedFilters();
+            return filters[key] !== false; // default enabled
+        }
+
+        function toggleFeedSettings() {
+            const el = document.getElementById('feed-settings');
+            el.style.display = el.style.display === 'none' ? 'block' : 'none';
+            renderFeedFilters();
+        }
+
+        function renderFeedFilters() {
+            const container = document.getElementById('feed-filter-toggles');
+            container.innerHTML = feedTypes.map(t => {
+                const checked = isFeedTypeEnabled(t.key);
+                return '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:6px 12px;background:' + (checked ? 'rgba(102,192,244,0.15)' : 'rgba(255,255,255,0.05)') + ';border-radius:4px;border:1px solid ' + (checked ? 'var(--accent)' : 'var(--border-color)') + ';font-size:13px;color:' + (checked ? 'var(--accent)' : 'var(--text-secondary)') + ';transition:all 0.2s;">' +
+                    '<input type="checkbox" ' + (checked ? 'checked' : '') + ' onchange="setFeedFilter(\'' + t.key + '\',this.checked);renderFeedFilters();loadFeedPage();" style="accent-color:var(--accent);width:14px;height:14px;">' +
+                    t.icon + ' ' + t.label + '</label>';
+            }).join('');
+        }
+
         async function loadFeedPage() {
             if (!currentUser) { document.getElementById('feed-page-content').innerHTML = '<div class="empty-state">Please <a onclick="showAuth(\'login\')">login</a> to see your feed.</div>'; return; }
             const container = document.getElementById('feed-page-content');
             container.innerHTML = '<div class="empty-state">Loading feed...</div>';
+            renderFeedFilters();
             try {
                 const data = await api('/feed');
-                const items = data.feed || [];
+                let items = data.feed || [];
+                // Apply client-side filters
+                items = items.filter(item => isFeedTypeEnabled(item.type));
                 if (items.length === 0) {
                     container.innerHTML = '<div class="empty-state">Your feed is empty. <a style="color:var(--accent);cursor:pointer;" onclick="navigate(\'store\')">Browse the store</a> and follow some developers to see updates here!</div>';
                     return;
