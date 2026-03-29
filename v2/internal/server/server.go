@@ -51,6 +51,11 @@ func New(frontendFS embed.FS) *gin.Engine {
 		api.PUT("/profile", middleware.AuthRequired(), handlers.UpdateProfile)
 		api.GET("/activity", middleware.AuthRequired(), handlers.GetActivity)
 		api.POST("/playtime", middleware.AuthRequired(), handlers.RecordPlaytime)
+
+		// Developer pages
+		api.GET("/developer/:username", handlers.GetDeveloperPage)
+		api.PUT("/developer", middleware.AuthRequired(), handlers.UpdateDeveloperPage)
+		api.GET("/developer/:username/games", handlers.GetDeveloperGames)
 	}
 
 	// Game file serving (for iframe player)

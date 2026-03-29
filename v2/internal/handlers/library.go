@@ -19,7 +19,7 @@ func GetLibrary(c *gin.Context) {
 	rows, err := storage.DB.Query(
 		`SELECT g.id, g.title, g.slug, g.genre, g.price, g.discount, g.description,
 		        g.cover_path, g.developer_id, g.tags, g.is_webgpu, g.file_path, g.entry_file,
-		        g.screenshots, g.video_url, g.published, g.created_at, g.updated_at,
+		        g.screenshots, g.video_url, g.published, g.theme_color, g.header_image, g.custom_about, g.features, g.sys_req_min, g.sys_req_rec, g.created_at, g.updated_at,
 		        u.username,
 		        COALESCE((SELECT AVG(rating) FROM reviews WHERE game_id = g.id), 0),
 		        COALESCE((SELECT COUNT(*) FROM reviews WHERE game_id = g.id), 0),
@@ -38,13 +38,16 @@ func GetLibrary(c *gin.Context) {
 	games := []models.Game{}
 	for rows.Next() {
 		g := models.Game{}
-		var tagsJSON, screenshotsJSON string
+		var tagsJSON, screenshotsJSON, featuresJSON string
 		rows.Scan(
 			&g.ID, &g.Title, &g.Slug, &g.Genre, &g.Price, &g.Discount, &g.Description,
 			&g.CoverPath, &g.DeveloperID, &tagsJSON, &g.IsWebGPU, &g.FilePath, &g.EntryFile,
-			&screenshotsJSON, &g.VideoURL, &g.Published, &g.CreatedAt, &g.UpdatedAt,
+			&screenshotsJSON, &g.VideoURL, &g.Published,
+			&g.ThemeColor, &g.HeaderImage, &g.CustomAbout, &featuresJSON, &g.SysReqMin, &g.SysReqRec,
+			&g.CreatedAt, &g.UpdatedAt,
 			&g.DeveloperName, &g.AvgRating, &g.ReviewCount, &g.PlayCount,
 		)
+		_ = tagsJSON; _ = screenshotsJSON; _ = featuresJSON
 		games = append(games, g)
 	}
 	c.JSON(http.StatusOK, gin.H{"games": games})
@@ -90,7 +93,7 @@ func GetWishlist(c *gin.Context) {
 	rows, err := storage.DB.Query(
 		`SELECT g.id, g.title, g.slug, g.genre, g.price, g.discount, g.description,
 		        g.cover_path, g.developer_id, g.tags, g.is_webgpu, g.file_path, g.entry_file,
-		        g.screenshots, g.video_url, g.published, g.created_at, g.updated_at,
+		        g.screenshots, g.video_url, g.published, g.theme_color, g.header_image, g.custom_about, g.features, g.sys_req_min, g.sys_req_rec, g.created_at, g.updated_at,
 		        u.username,
 		        COALESCE((SELECT AVG(rating) FROM reviews WHERE game_id = g.id), 0),
 		        COALESCE((SELECT COUNT(*) FROM reviews WHERE game_id = g.id), 0),
@@ -109,13 +112,16 @@ func GetWishlist(c *gin.Context) {
 	games := []models.Game{}
 	for rows.Next() {
 		g := models.Game{}
-		var tagsJSON, screenshotsJSON string
+		var tagsJSON, screenshotsJSON, featuresJSON string
 		rows.Scan(
 			&g.ID, &g.Title, &g.Slug, &g.Genre, &g.Price, &g.Discount, &g.Description,
 			&g.CoverPath, &g.DeveloperID, &tagsJSON, &g.IsWebGPU, &g.FilePath, &g.EntryFile,
-			&screenshotsJSON, &g.VideoURL, &g.Published, &g.CreatedAt, &g.UpdatedAt,
+			&screenshotsJSON, &g.VideoURL, &g.Published,
+			&g.ThemeColor, &g.HeaderImage, &g.CustomAbout, &featuresJSON, &g.SysReqMin, &g.SysReqRec,
+			&g.CreatedAt, &g.UpdatedAt,
 			&g.DeveloperName, &g.AvgRating, &g.ReviewCount, &g.PlayCount,
 		)
+		_ = tagsJSON; _ = screenshotsJSON; _ = featuresJSON
 		games = append(games, g)
 	}
 	c.JSON(http.StatusOK, gin.H{"games": games})

@@ -28,6 +28,12 @@ type Game struct {
 	Screenshots []string `json:"screenshots"`
 	VideoURL    string   `json:"video_url"`
 	Published   bool     `json:"published"`
+	ThemeColor  string   `json:"theme_color"`
+	HeaderImage string   `json:"header_image"`
+	CustomAbout string   `json:"custom_about"`
+	Features    []string `json:"features"`
+	SysReqMin   string   `json:"sys_req_min"`
+	SysReqRec   string   `json:"sys_req_rec"`
 	CreatedAt   string   `json:"created_at"`
 	UpdatedAt   string   `json:"updated_at"`
 	// Joined fields
@@ -82,7 +88,7 @@ func GetGameByID(id string) (*Game, error) {
 	return scanGame(storage.DB.QueryRow(
 		`SELECT g.id, g.title, g.slug, g.genre, g.price, g.discount, g.description,
 		        g.cover_path, g.developer_id, g.tags, g.is_webgpu, g.file_path, g.entry_file,
-		        g.screenshots, g.video_url, g.published, g.created_at, g.updated_at,
+		        g.screenshots, g.video_url, g.published, g.theme_color, g.header_image, g.custom_about, g.features, g.sys_req_min, g.sys_req_rec, g.created_at, g.updated_at,
 		        u.username,
 		        COALESCE((SELECT AVG(rating) FROM reviews WHERE game_id = g.id), 0),
 		        COALESCE((SELECT COUNT(*) FROM reviews WHERE game_id = g.id), 0),
@@ -95,7 +101,7 @@ func GetGameBySlug(slug string) (*Game, error) {
 	return scanGame(storage.DB.QueryRow(
 		`SELECT g.id, g.title, g.slug, g.genre, g.price, g.discount, g.description,
 		        g.cover_path, g.developer_id, g.tags, g.is_webgpu, g.file_path, g.entry_file,
-		        g.screenshots, g.video_url, g.published, g.created_at, g.updated_at,
+		        g.screenshots, g.video_url, g.published, g.theme_color, g.header_image, g.custom_about, g.features, g.sys_req_min, g.sys_req_rec, g.created_at, g.updated_at,
 		        u.username,
 		        COALESCE((SELECT AVG(rating) FROM reviews WHERE game_id = g.id), 0),
 		        COALESCE((SELECT COUNT(*) FROM reviews WHERE game_id = g.id), 0),
@@ -163,7 +169,7 @@ func ListGames(p GameListParams) ([]Game, int, error) {
 	rows, err := storage.DB.Query(
 		`SELECT g.id, g.title, g.slug, g.genre, g.price, g.discount, g.description,
 		        g.cover_path, g.developer_id, g.tags, g.is_webgpu, g.file_path, g.entry_file,
-		        g.screenshots, g.video_url, g.published, g.created_at, g.updated_at,
+		        g.screenshots, g.video_url, g.published, g.theme_color, g.header_image, g.custom_about, g.features, g.sys_req_min, g.sys_req_rec, g.created_at, g.updated_at,
 		        u.username,
 		        COALESCE((SELECT AVG(rating) FROM reviews WHERE game_id = g.id), 0),
 		        COALESCE((SELECT COUNT(*) FROM reviews WHERE game_id = g.id), 0),
@@ -217,48 +223,43 @@ type scannable interface {
 	Scan(dest ...any) error
 }
 
+func parseGameJSON(g *Game, tagsJSON, screenshotsJSON, featuresJSON string) {
+	json.Unmarshal([]byte(tagsJSON), &g.Tags)
+	json.Unmarshal([]byte(screenshotsJSON), &g.Screenshots)
+	json.Unmarshal([]byte(featuresJSON), &g.Features)
+	if g.Tags == nil { g.Tags = []string{} }
+	if g.Screenshots == nil { g.Screenshots = []string{} }
+	if g.Features == nil { g.Features = []string{} }
+}
+
 func scanGame(row *sql.Row) (*Game, error) {
 	g := &Game{}
-	var tagsJSON, screenshotsJSON string
+	var tagsJSON, screenshotsJSON, featuresJSON string
 	err := row.Scan(
 		&g.ID, &g.Title, &g.Slug, &g.Genre, &g.Price, &g.Discount, &g.Description,
 		&g.CoverPath, &g.DeveloperID, &tagsJSON, &g.IsWebGPU, &g.FilePath, &g.EntryFile,
-		&screenshotsJSON, &g.VideoURL, &g.Published, &g.CreatedAt, &g.UpdatedAt,
+		&screenshotsJSON, &g.VideoURL, &g.Published,
+		&g.ThemeColor, &g.HeaderImage, &g.CustomAbout, &featuresJSON, &g.SysReqMin, &g.SysReqRec,
+		&g.CreatedAt, &g.UpdatedAt,
 		&g.DeveloperName, &g.AvgRating, &g.ReviewCount, &g.PlayCount,
 	)
-	if err != nil {
-		return nil, err
-	}
-	json.Unmarshal([]byte(tagsJSON), &g.Tags)
-	json.Unmarshal([]byte(screenshotsJSON), &g.Screenshots)
-	if g.Tags == nil {
-		g.Tags = []string{}
-	}
-	if g.Screenshots == nil {
-		g.Screenshots = []string{}
-	}
+	if err != nil { return nil, err }
+	parseGameJSON(g, tagsJSON, screenshotsJSON, featuresJSON)
 	return g, nil
 }
 
 func scanGameRow(rows *sql.Rows) (*Game, error) {
 	g := &Game{}
-	var tagsJSON, screenshotsJSON string
+	var tagsJSON, screenshotsJSON, featuresJSON string
 	err := rows.Scan(
 		&g.ID, &g.Title, &g.Slug, &g.Genre, &g.Price, &g.Discount, &g.Description,
 		&g.CoverPath, &g.DeveloperID, &tagsJSON, &g.IsWebGPU, &g.FilePath, &g.EntryFile,
-		&screenshotsJSON, &g.VideoURL, &g.Published, &g.CreatedAt, &g.UpdatedAt,
+		&screenshotsJSON, &g.VideoURL, &g.Published,
+		&g.ThemeColor, &g.HeaderImage, &g.CustomAbout, &featuresJSON, &g.SysReqMin, &g.SysReqRec,
+		&g.CreatedAt, &g.UpdatedAt,
 		&g.DeveloperName, &g.AvgRating, &g.ReviewCount, &g.PlayCount,
 	)
-	if err != nil {
-		return nil, err
-	}
-	json.Unmarshal([]byte(tagsJSON), &g.Tags)
-	json.Unmarshal([]byte(screenshotsJSON), &g.Screenshots)
-	if g.Tags == nil {
-		g.Tags = []string{}
-	}
-	if g.Screenshots == nil {
-		g.Screenshots = []string{}
-	}
+	if err != nil { return nil, err }
+	parseGameJSON(g, tagsJSON, screenshotsJSON, featuresJSON)
 	return g, nil
 }

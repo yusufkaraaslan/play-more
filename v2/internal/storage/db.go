@@ -72,6 +72,12 @@ CREATE TABLE IF NOT EXISTS games (
     screenshots TEXT DEFAULT '[]',
     video_url   TEXT DEFAULT '',
     published   BOOLEAN DEFAULT 1,
+    theme_color TEXT DEFAULT '',
+    header_image TEXT DEFAULT '',
+    custom_about TEXT DEFAULT '',
+    features    TEXT DEFAULT '[]',
+    sys_req_min TEXT DEFAULT '',
+    sys_req_rec TEXT DEFAULT '',
     created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
 );
