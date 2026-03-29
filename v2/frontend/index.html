@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PlayMore</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --bg-primary: #1b2838;
+            --bg-secondary: #171a21;
+            --accent: #66c0f4;
+            --text-primary: #c7d5e0;
+            --text-secondary: #8f98a0;
+            --success: #a1cd44;
+            --danger: #c15757;
+            --card-bg: rgba(0,0,0,0.3);
+            --border-color: rgba(255,255,255,0.1);
+        }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg-primary); color: var(--text-primary); min-height: 100vh; }
+        .header { background: var(--bg-secondary); padding: 0 20px; height: 60px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border-color); position: sticky; top: 0; z-index: 1000; }
+        .logo { font-size: 24px; font-weight: bold; color: var(--accent); cursor: pointer; }
+        .nav-tabs { display: flex; gap: 5px; }
+        .nav-tab { padding: 10px 20px; background: transparent; border: none; color: var(--text-secondary); cursor: pointer; font-size: 14px; text-transform: uppercase; letter-spacing: 1px; border-radius: 3px; transition: all 0.3s; }
+        .nav-tab:hover { color: var(--text-primary); background: rgba(255,255,255,0.05); }
+        .nav-tab.active { color: var(--accent); background: rgba(102,192,244,0.1); }
+        .header-actions { display: flex; align-items: center; gap: 15px; }
+        .main-content { max-width: 1200px; margin: 0 auto; padding: 20px; }
+        .section { display: none; animation: fadeIn 0.3s ease; }
+        .section.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        /* Auth forms */
+        .auth-form { max-width: 400px; margin: 60px auto; background: var(--bg-secondary); padding: 30px; border-radius: 8px; }
+        .auth-form h2 { margin-bottom: 20px; color: var(--accent); }
+        .form-group { margin-bottom: 15px; }
+        .form-label { display: block; font-size: 13px; color: var(--text-secondary); margin-bottom: 5px; text-transform: uppercase; }
+        .form-input { width: 100%; padding: 12px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: 3px; color: var(--text-primary); font-size: 14px; }
+        .btn-primary { padding: 12px; background: linear-gradient(135deg, var(--success), #7ba828); border: none; color: white; font-size: 14px; font-weight: bold; border-radius: 3px; cursor: pointer; width: 100%; transition: filter 0.3s; }
+        .btn-primary:hover { filter: brightness(1.1); }
+        .btn-secondary { padding: 10px 20px; background: rgba(255,255,255,0.1); border: 1px solid var(--border-color); color: var(--text-primary); font-size: 14px; border-radius: 3px; cursor: pointer; }
+        .auth-toggle { margin-top: 15px; text-align: center; color: var(--text-secondary); font-size: 13px; }
+        .auth-toggle a { color: var(--accent); cursor: pointer; text-decoration: none; }
+        .error-msg { color: var(--danger); font-size: 13px; margin-top: 10px; }
+        .user-info { color: var(--text-secondary); font-size: 14px; }
+        .user-info strong { color: var(--accent); }
+
+        /* Game grid */
+        .game-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; }
+        .game-card { background: var(--card-bg); border-radius: 8px; overflow: hidden; cursor: pointer; transition: all 0.3s; border: 1px solid var(--border-color); }
+        .game-card:hover { transform: translateY(-5px); border-color: var(--accent); }
+        .game-card img { width: 100%; height: 150px; object-fit: cover; background: var(--bg-secondary); }
+        .game-card-info { padding: 15px; }
+        .game-card-title { font-size: 16px; margin-bottom: 5px; }
+        .game-card-meta { font-size: 12px; color: var(--text-secondary); }
+        .game-card-genre { display: inline-block; padding: 2px 8px; background: rgba(255,255,255,0.1); border-radius: 2px; font-size: 11px; margin-top: 8px; }
+
+        /* Game player */
+        .game-player { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--bg-secondary); z-index: 2000; display: flex; flex-direction: column; pointer-events: none; opacity: 0; transform: scale(0.95); transition: opacity 0.4s, transform 0.4s; }
+        .game-player.active { pointer-events: all; opacity: 1; transform: scale(1); }
+        .game-player-header { height: 50px; background: var(--bg-secondary); display: flex; align-items: center; justify-content: space-between; padding: 0 20px; border-bottom: 1px solid var(--border-color); }
+        .game-player iframe { flex: 1; border: none; width: 100%; }
+
+        /* Upload */
+        .upload-area { border: 2px dashed var(--border-color); border-radius: 8px; padding: 60px; text-align: center; background: rgba(0,0,0,0.2); cursor: pointer; transition: all 0.3s; margin-bottom: 20px; }
+        .upload-area.dragover { border-color: var(--accent); background: rgba(102,192,244,0.1); }
+        .upload-form { background: rgba(0,0,0,0.2); border-radius: 8px; padding: 30px; }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .form-select { width: 100%; padding: 12px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: 3px; color: var(--text-primary); font-size: 14px; }
+        .form-textarea { width: 100%; min-height: 100px; padding: 12px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: 3px; color: var(--text-primary); font-size: 14px; resize: vertical; }
+
+        /* Status messages */
+        .status-msg { padding: 10px 15px; border-radius: 4px; margin-bottom: 15px; font-size: 13px; }
+        .status-success { background: rgba(161,205,68,0.15); color: var(--success); }
+        .status-error { background: rgba(193,87,87,0.15); color: var(--danger); }
+
+        .section-title { font-size: 18px; color: var(--text-primary); margin-bottom: 20px; text-transform: uppercase; letter-spacing: 1px; }
+        .empty-state { text-align: center; padding: 40px; color: var(--text-secondary); }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="logo" onclick="navigate('store')">PlayMore</div>
+        <nav class="nav-tabs" id="nav-tabs">
+            <button class="nav-tab active" data-tab="store" onclick="navigate('store')">Store</button>
+            <button class="nav-tab" data-tab="library" onclick="navigate('library')">Library</button>
+            <button class="nav-tab" data-tab="upload" onclick="navigate('upload')">Upload</button>
+            <button class="nav-tab" data-tab="profile" onclick="navigate('profile')">Profile</button>
+        </nav>
+        <div class="header-actions" id="header-actions"></div>
+    </header>
+
+    <main class="main-content">
+        <!-- Auth Section -->
+        <section id="auth-section" class="section">
+            <div class="auth-form" id="auth-form"></div>
+        </section>
+
+        <!-- Store Section -->
+        <section id="store-section" class="section active">
+            <h2 class="section-title">Store</h2>
+            <div class="game-grid" id="store-grid"></div>
+        </section>
+
+        <!-- Library Section -->
+        <section id="library-section" class="section">
+            <h2 class="section-title">My Library</h2>
+            <div class="game-grid" id="library-grid"></div>
+        </section>
+
+        <!-- Upload Section -->
+        <section id="upload-section" class="section">
+            <h2 class="section-title">Upload a Game</h2>
+            <div class="upload-area" id="upload-area">
+                <p style="font-size:48px; margin-bottom:15px;">📁</p>
+                <p style="font-size:18px;">Drag & drop your game files here</p>
+                <p style="font-size:13px; color:var(--text-secondary); margin-top:8px;">HTML, JS, or ZIP files supported</p>
+            </div>
+            <div id="upload-status"></div>
+            <div class="upload-form" id="upload-form">
+                <div class="form-group">
+                    <label class="form-label">Game Title</label>
+                    <input type="text" class="form-input" id="upload-title" placeholder="Enter game title">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Genre</label>
+                        <select class="form-select" id="upload-genre">
+                            <option value="action">Action</option>
+                            <option value="adventure">Adventure</option>
+                            <option value="rpg">RPG</option>
+                            <option value="strategy">Strategy</option>
+                            <option value="puzzle">Puzzle</option>
+                            <option value="racing">Racing</option>
+                            <option value="horror">Horror</option>
+                            <option value="experimental">Experimental</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Tags (comma separated)</label>
+                        <input type="text" class="form-input" id="upload-tags" placeholder="Multiplayer, 2D, Pixel Art">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Description</label>
+                    <textarea class="form-textarea" id="upload-description" placeholder="Describe your game..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Cover Image (optional)</label>
+                    <input type="file" class="form-input" id="upload-cover" accept="image/*" style="padding:8px;">
+                </div>
+                <div class="form-group">
+                    <input type="checkbox" id="upload-webgpu" style="accent-color:var(--accent);">
+                    <label for="upload-webgpu" style="font-size:13px; color:var(--text-secondary);">This game uses WebGPU</label>
+                </div>
+                <button class="btn-primary" onclick="submitUpload()">Upload Game</button>
+            </div>
+        </section>
+
+        <!-- Profile Section -->
+        <section id="profile-section" class="section">
+            <div id="profile-content"></div>
+        </section>
+    </main>
+
+    <!-- Game Player Overlay -->
+    <div class="game-player" id="game-player">
+        <div class="game-player-header">
+            <span id="player-title">Playing Game</span>
+            <span id="session-timer" style="color:var(--text-secondary); font-family:monospace;">00:00:00</span>
+            <button class="btn-secondary" onclick="closePlayer()">Close</button>
+        </div>
+        <iframe id="player-frame"></iframe>
+    </div>
+
+    <script>
+        /* ============ State ============ */
+        let currentUser = null;
+        let currentTab = 'store';
+        let pendingFile = null;
+        let gameSessionStart = null;
+        let sessionTimerInterval = null;
+
+        /* ============ API Helper ============ */
+        async function api(path, opts = {}) {
+            const res = await fetch('/api' + path, {
+                headers: { 'Content-Type': 'application/json', ...opts.headers },
+                credentials: 'same-origin',
+                ...opts,
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Request failed');
+            return data;
+        }
+
+        /* ============ Auth ============ */
+        async function checkAuth() {
+            try {
+                const data = await api('/auth/me');
+                currentUser = data.user;
+                renderHeader();
+            } catch {
+                currentUser = null;
+                renderHeader();
+            }
+        }
+
+        function renderHeader() {
+            const el = document.getElementById('header-actions');
+            if (currentUser) {
+                el.innerHTML = '<span class="user-info">Welcome, <strong>' + currentUser.username + '</strong></span> <button class="btn-secondary" onclick="logout()">Logout</button>';
+            } else {
+                el.innerHTML = '<button class="btn-secondary" onclick="showAuth(\'login\')">Login</button> <button class="btn-primary" style="width:auto;padding:8px 20px;" onclick="showAuth(\'register\')">Register</button>';
+            }
+        }
+
+        function showAuth(mode) {
+            const form = document.getElementById('auth-form');
+            if (mode === 'login') {
+                form.innerHTML = '<h2>Login</h2><div class="form-group"><label class="form-label">Email</label><input type="email" class="form-input" id="auth-email"></div><div class="form-group"><label class="form-label">Password</label><input type="password" class="form-input" id="auth-password"></div><button class="btn-primary" onclick="doLogin()">Login</button><div id="auth-error" class="error-msg"></div><div class="auth-toggle">No account? <a onclick="showAuth(\'register\')">Register</a></div>';
+            } else {
+                form.innerHTML = '<h2>Register</h2><div class="form-group"><label class="form-label">Username</label><input type="text" class="form-input" id="auth-username"></div><div class="form-group"><label class="form-label">Email</label><input type="email" class="form-input" id="auth-email"></div><div class="form-group"><label class="form-label">Password</label><input type="password" class="form-input" id="auth-password"></div><button class="btn-primary" onclick="doRegister()">Register</button><div id="auth-error" class="error-msg"></div><div class="auth-toggle">Have an account? <a onclick="showAuth(\'login\')">Login</a></div>';
+            }
+            navigate('auth');
+        }
+
+        async function doLogin() {
+            try {
+                const data = await api('/auth/login', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        email: document.getElementById('auth-email').value,
+                        password: document.getElementById('auth-password').value
+                    })
+                });
+                currentUser = data.user;
+                renderHeader();
+                navigate('store');
+            } catch (e) {
+                document.getElementById('auth-error').textContent = e.message;
+            }
+        }
+
+        async function doRegister() {
+            try {
+                const data = await api('/auth/register', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        username: document.getElementById('auth-username').value,
+                        email: document.getElementById('auth-email').value,
+                        password: document.getElementById('auth-password').value
+                    })
+                });
+                currentUser = data.user;
+                renderHeader();
+                navigate('store');
+            } catch (e) {
+                document.getElementById('auth-error').textContent = e.message;
+            }
+        }
+
+        async function logout() {
+            await api('/auth/logout', { method: 'POST' });
+            currentUser = null;
+            renderHeader();
+            navigate('store');
+        }
+
+        /* ============ Navigation ============ */
+        function navigate(tab) {
+            currentTab = tab;
+            document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+            document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+            const section = document.getElementById(tab + '-section');
+            if (section) section.classList.add('active');
+            const navTab = document.querySelector('[data-tab="' + tab + '"]');
+            if (navTab) navTab.classList.add('active');
+
+            if (tab === 'store') loadStore();
+            if (tab === 'library') loadLibrary();
+            if (tab === 'profile') loadProfile();
+        }
+
+        /* ============ Store ============ */
+        async function loadStore() {
+            try {
+                const data = await api('/games?limit=50');
+                const grid = document.getElementById('store-grid');
+                if (!data.games || data.games.length === 0) {
+                    grid.innerHTML = '<div class="empty-state">No games yet. Be the first to <a style="color:var(--accent);cursor:pointer" onclick="navigate(\'upload\')">upload one</a>!</div>';
+                    return;
+                }
+                grid.innerHTML = data.games.map(g => gameCardHTML(g)).join('');
+            } catch (e) {
+                console.error('Failed to load store:', e);
+            }
+        }
+
+        function gameCardHTML(g) {
+            const coverSrc = g.cover_path || 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="225"><rect fill="%231e1e2e" width="400" height="225"/><text x="200" y="120" text-anchor="middle" fill="%2366c0f4" font-size="20">' + g.title + '</text></svg>');
+            const rating = g.avg_rating > 0 ? '★ ' + g.avg_rating.toFixed(1) : '';
+            return '<div class="game-card" onclick="playGame(\'' + g.id + '\', \'' + g.entry_file + '\')">' +
+                '<img src="' + coverSrc + '" alt="' + g.title + '">' +
+                '<div class="game-card-info">' +
+                '<div class="game-card-title">' + g.title + '</div>' +
+                '<div class="game-card-meta">by ' + (g.developer_name || 'Unknown') + (rating ? ' · ' + rating : '') + '</div>' +
+                '<span class="game-card-genre">' + g.genre + '</span>' +
+                (g.is_webgpu ? ' <span class="game-card-genre" style="background:rgba(161,205,68,0.2);color:var(--success);">WebGPU</span>' : '') +
+                '</div></div>';
+        }
+
+        /* ============ Library ============ */
+        async function loadLibrary() {
+            if (!currentUser) {
+                document.getElementById('library-grid').innerHTML = '<div class="empty-state">Please <a style="color:var(--accent);cursor:pointer" onclick="showAuth(\'login\')">login</a> to see your library.</div>';
+                return;
+            }
+            try {
+                const data = await api('/library');
+                const grid = document.getElementById('library-grid');
+                if (!data.games || data.games.length === 0) {
+                    grid.innerHTML = '<div class="empty-state">Your library is empty. Browse the <a style="color:var(--accent);cursor:pointer" onclick="navigate(\'store\')">Store</a>!</div>';
+                    return;
+                }
+                grid.innerHTML = data.games.map(g => gameCardHTML(g)).join('');
+            } catch (e) {
+                console.error('Failed to load library:', e);
+            }
+        }
+
+        /* ============ Upload ============ */
+        function initUpload() {
+            const area = document.getElementById('upload-area');
+            area.addEventListener('dragover', e => { e.preventDefault(); area.classList.add('dragover'); });
+            area.addEventListener('dragleave', () => area.classList.remove('dragover'));
+            area.addEventListener('drop', e => {
+                e.preventDefault();
+                area.classList.remove('dragover');
+                handleUploadFile(e.dataTransfer.files);
+            });
+            area.addEventListener('click', () => {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = '.html,.js,.zip';
+                input.onchange = e => handleUploadFile(e.target.files);
+                input.click();
+            });
+        }
+
+        function handleUploadFile(files) {
+            const file = Array.from(files).find(f =>
+                f.name.endsWith('.html') || f.name.endsWith('.htm') || f.name.endsWith('.js') || f.name.endsWith('.zip')
+            );
+            if (!file) {
+                showStatus('Please select an HTML, JS, or ZIP file.', 'error');
+                return;
+            }
+            pendingFile = file;
+            showStatus('Ready: ' + file.name + ' (' + (file.size / 1024).toFixed(1) + ' KB)', 'success');
+        }
+
+        async function submitUpload() {
+            if (!currentUser) { showAuth('login'); return; }
+            if (!pendingFile) { showStatus('Please select a game file first.', 'error'); return; }
+
+            const title = document.getElementById('upload-title').value.trim();
+            if (!title) { showStatus('Please enter a game title.', 'error'); return; }
+
+            const formData = new FormData();
+            formData.append('game_file', pendingFile);
+            formData.append('title', title);
+            formData.append('genre', document.getElementById('upload-genre').value);
+            formData.append('description', document.getElementById('upload-description').value);
+            formData.append('tags', document.getElementById('upload-tags').value);
+            formData.append('is_webgpu', document.getElementById('upload-webgpu').checked ? 'true' : 'false');
+
+            const coverFile = document.getElementById('upload-cover').files[0];
+            if (coverFile) formData.append('cover', coverFile);
+
+            try {
+                showStatus('Uploading...', 'success');
+                const res = await fetch('/api/games', { method: 'POST', body: formData, credentials: 'same-origin' });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error);
+                showStatus('"' + title + '" uploaded successfully!', 'success');
+                pendingFile = null;
+                document.getElementById('upload-title').value = '';
+                document.getElementById('upload-description').value = '';
+                document.getElementById('upload-tags').value = '';
+            } catch (e) {
+                showStatus('Upload failed: ' + e.message, 'error');
+            }
+        }
+
+        function showStatus(msg, type) {
+            document.getElementById('upload-status').innerHTML = '<div class="status-msg status-' + type + '">' + msg + '</div>';
+        }
+
+        /* ============ Profile ============ */
+        async function loadProfile() {
+            if (!currentUser) {
+                document.getElementById('profile-content').innerHTML = '<div class="empty-state">Please <a style="color:var(--accent);cursor:pointer" onclick="showAuth(\'login\')">login</a> to see your profile.</div>';
+                return;
+            }
+            try {
+                const data = await api('/profile/' + currentUser.username);
+                const s = data.stats;
+                document.getElementById('profile-content').innerHTML =
+                    '<div style="background:rgba(0,0,0,0.2);border-radius:8px;padding:30px;margin-bottom:20px;">' +
+                    '<h1 style="font-size:28px;margin-bottom:10px;">' + data.user.username + '</h1>' +
+                    '<p style="color:var(--text-secondary);">' + (data.user.bio || 'No bio yet.') + '</p></div>' +
+                    '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:15px;margin-bottom:20px;">' +
+                    statCard(s.games_owned, 'Games') + statCard(s.hours_played.toFixed(1), 'Hours') +
+                    statCard(s.review_count, 'Reviews') + statCard(s.games_uploaded, 'Uploads') + '</div>' +
+                    '<h2 class="section-title">Recent Activity</h2>' +
+                    (data.activity.length > 0 ? data.activity.map(a =>
+                        '<div style="padding:10px 0;border-bottom:1px solid var(--border-color);color:var(--text-secondary);font-size:13px;">' +
+                        actIcon(a.type) + ' ' + actVerb(a.type) + ' <strong style="color:var(--text-primary);">' + a.game_title + '</strong> · ' + a.created_at +
+                        '</div>'
+                    ).join('') : '<div class="empty-state">No activity yet.</div>');
+            } catch (e) {
+                console.error('Failed to load profile:', e);
+            }
+        }
+
+        function statCard(val, label) {
+            return '<div style="background:rgba(0,0,0,0.2);border-radius:8px;padding:20px;text-align:center;"><div style="font-size:32px;font-weight:bold;color:var(--accent);">' + val + '</div><div style="font-size:12px;color:var(--text-secondary);margin-top:5px;">' + label + '</div></div>';
+        }
+        function actIcon(t) { return { played:'🎮', library_add:'📚', review:'✍️', upload:'📤' }[t] || '🎯'; }
+        function actVerb(t) { return { played:'Played', library_add:'Added', review:'Reviewed', upload:'Uploaded' }[t] || t; }
+
+        /* ============ Game Player ============ */
+        function playGame(gameId, entryFile) {
+            const player = document.getElementById('game-player');
+            document.getElementById('player-title').textContent = 'Loading...';
+            document.getElementById('player-frame').src = '/play/' + gameId + '/' + (entryFile || 'index.html');
+            player.classList.add('active');
+            gameSessionStart = Date.now();
+            if (sessionTimerInterval) clearInterval(sessionTimerInterval);
+            document.getElementById('session-timer').textContent = '00:00:00';
+            sessionTimerInterval = setInterval(() => {
+                const s = Math.floor((Date.now() - gameSessionStart) / 1000);
+                document.getElementById('session-timer').textContent =
+                    String(Math.floor(s/3600)).padStart(2,'0') + ':' +
+                    String(Math.floor((s%3600)/60)).padStart(2,'0') + ':' +
+                    String(s%60).padStart(2,'0');
+            }, 1000);
+        }
+
+        async function closePlayer() {
+            if (sessionTimerInterval) { clearInterval(sessionTimerInterval); sessionTimerInterval = null; }
+            if (gameSessionStart && currentUser) {
+                const seconds = (Date.now() - gameSessionStart) / 1000;
+                const src = document.getElementById('player-frame').src;
+                const match = src.match(/\/play\/([^/]+)\//);
+                if (match) {
+                    try { await api('/playtime', { method: 'POST', body: JSON.stringify({ game_id: match[1], seconds }) }); } catch {}
+                }
+                gameSessionStart = null;
+            }
+            const player = document.getElementById('game-player');
+            player.classList.remove('active');
+            setTimeout(() => { document.getElementById('player-frame').src = ''; }, 400);
+        }
+
+        /* ============ Keyboard ============ */
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape') closePlayer();
+        });
+
+        /* ============ Init ============ */
+        document.addEventListener('DOMContentLoaded', async () => {
+            console.log('PlayMore v2 initialized');
+            await checkAuth();
+            loadStore();
+            initUpload();
+        });
+    </script>
+</body>
+</html>
