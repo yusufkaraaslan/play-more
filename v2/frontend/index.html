@@ -45,6 +45,24 @@
         .user-info { color: var(--text-secondary); font-size: 14px; }
         .user-info strong { color: var(--accent); }
 
+        /* Feed Dropdown */
+        .feed-btn { position: relative; background: none; border: 1px solid var(--border-color); color: var(--text-secondary); padding: 6px 12px; border-radius: 3px; cursor: pointer; font-size: 14px; transition: all 0.2s; }
+        .feed-btn:hover { border-color: var(--accent); color: var(--accent); }
+        .feed-btn .feed-badge { position: absolute; top: -5px; right: -5px; background: var(--danger); color: white; font-size: 10px; width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+        .feed-dropdown { display: none; position: absolute; top: 55px; right: 0; width: 380px; max-height: 500px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; z-index: 1001; box-shadow: 0 10px 40px rgba(0,0,0,0.5); }
+        .feed-dropdown.open { display: block; }
+        .feed-tabs { display: flex; border-bottom: 1px solid var(--border-color); }
+        .feed-tab { flex: 1; padding: 10px; background: none; border: none; color: var(--text-secondary); cursor: pointer; font-size: 12px; text-transform: uppercase; transition: all 0.2s; border-bottom: 2px solid transparent; }
+        .feed-tab:hover { color: var(--text-primary); }
+        .feed-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+        .feed-list { max-height: 400px; overflow-y: auto; padding: 5px; }
+        .feed-item { display: flex; gap: 10px; padding: 10px; border-radius: 4px; cursor: pointer; transition: background 0.2s; font-size: 13px; }
+        .feed-item:hover { background: rgba(255,255,255,0.05); }
+        .feed-item img { width: 50px; height: 35px; object-fit: cover; border-radius: 3px; flex-shrink: 0; }
+        .feed-item-info { flex: 1; }
+        .feed-item-title { font-size: 13px; margin-bottom: 2px; }
+        .feed-item-meta { font-size: 11px; color: var(--text-secondary); }
+
         /* Main */
         .main-content { max-width: 1200px; margin: 0 auto; padding: 20px; }
         .section { display: none; animation: fadeIn 0.3s ease; }
@@ -569,7 +587,17 @@
         function renderHeader() {
             const el = document.getElementById('header-actions');
             if (currentUser) {
-                el.innerHTML = '<span class="user-info">Welcome, <strong>' + currentUser.username + '</strong></span> <button class="btn-secondary" onclick="logout()">Logout</button>';
+                el.innerHTML = '<div style="position:relative;">' +
+                    '<button class="feed-btn" onclick="toggleFeed()">Feed</button>' +
+                    '<div class="feed-dropdown" id="feed-dropdown">' +
+                    '<div class="feed-tabs">' +
+                    '<button class="feed-tab active" onclick="switchFeedTab(\'activity\',this)">Activity</button>' +
+                    '<button class="feed-tab" onclick="switchFeedTab(\'library\',this)">Library</button>' +
+                    '<button class="feed-tab" onclick="switchFeedTab(\'wishlist\',this)">Wishlist</button>' +
+                    '<button class="feed-tab" onclick="switchFeedTab(\'following\',this)">Following</button>' +
+                    '</div><div class="feed-list" id="feed-list"></div></div></div> ' +
+                    '<span class="user-info">Welcome, <strong>' + currentUser.username + '</strong></span> ' +
+                    '<button class="btn-secondary" onclick="logout()">Logout</button>';
             } else {
                 el.innerHTML = '<button class="btn-secondary" onclick="showAuth(\'login\')">Login</button> <button class="btn-accent" onclick="showAuth(\'register\')">Register</button>';
             }
@@ -1563,6 +1591,90 @@
         }
         async function adminTogglePublish(id) {
             try { await api('/admin/games/' + id + '/publish', { method: 'PUT' }); toast('Publish status toggled.', 'info'); loadAdmin(); } catch (e) { toast(e.message, 'error'); }
+        }
+
+        /* ============ Feed ============ */
+        let feedOpen = false;
+
+        function toggleFeed() {
+            const dd = document.getElementById('feed-dropdown');
+            feedOpen = !feedOpen;
+            dd.classList.toggle('open', feedOpen);
+            if (feedOpen) switchFeedTab('activity', document.querySelector('.feed-tab'));
+        }
+
+        // Close feed when clicking outside
+        document.addEventListener('click', (e) => {
+            if (feedOpen && !e.target.closest('.feed-btn') && !e.target.closest('.feed-dropdown')) {
+                document.getElementById('feed-dropdown')?.classList.remove('open');
+                feedOpen = false;
+            }
+        });
+
+        function switchFeedTab(tab, el) {
+            document.querySelectorAll('.feed-tab').forEach(t => t.classList.remove('active'));
+            if (el) el.classList.add('active');
+            if (tab === 'activity') loadFeedActivity();
+            if (tab === 'library') loadFeedLibrary();
+            if (tab === 'wishlist') loadFeedWishlist();
+            if (tab === 'following') loadFeedFollowing();
+        }
+
+        async function loadFeedActivity() {
+            const list = document.getElementById('feed-list');
+            try {
+                const data = await api('/activity');
+                if (!data.activity || data.activity.length === 0) { list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary);">No activity yet.</div>'; return; }
+                list.innerHTML = data.activity.slice(0, 15).map(a =>
+                    '<div class="feed-item" onclick="' + (a.game_id ? "showGameDetail('" + a.game_id + "')" : '') + '">' +
+                    '<div style="font-size:20px;width:50px;text-align:center;">' + actIcon(a.type) + '</div>' +
+                    '<div class="feed-item-info"><div class="feed-item-title">' + actVerb(a.type) + ' <strong>' + a.game_title + '</strong></div>' +
+                    '<div class="feed-item-meta">' + a.created_at + '</div></div></div>'
+                ).join('');
+            } catch { list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary);">Failed to load.</div>'; }
+        }
+
+        async function loadFeedLibrary() {
+            const list = document.getElementById('feed-list');
+            try {
+                const data = await api('/library');
+                if (!data.games || data.games.length === 0) { list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary);">No games in library.</div>'; return; }
+                list.innerHTML = data.games.slice(0, 15).map(g =>
+                    '<div class="feed-item" onclick="showGameDetail(\'' + g.id + '\')">' +
+                    (g.cover_path ? '<img src="' + g.cover_path + '">' : '<div style="width:50px;height:35px;background:var(--bg-tertiary);border-radius:3px;"></div>') +
+                    '<div class="feed-item-info"><div class="feed-item-title">' + g.title + '</div>' +
+                    '<div class="feed-item-meta">' + g.genre + ' · ' + (g.play_count || 0) + ' plays</div></div></div>'
+                ).join('');
+            } catch { list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary);">Failed to load.</div>'; }
+        }
+
+        async function loadFeedWishlist() {
+            const list = document.getElementById('feed-list');
+            try {
+                const data = await api('/wishlist');
+                if (!data.games || data.games.length === 0) { list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary);">Wishlist is empty.</div>'; return; }
+                list.innerHTML = data.games.map(g => {
+                    const price = g.price === 0 ? 'Free' : '$' + g.price.toFixed(2);
+                    return '<div class="feed-item" onclick="showGameDetail(\'' + g.id + '\')">' +
+                    (g.cover_path ? '<img src="' + g.cover_path + '">' : '<div style="width:50px;height:35px;background:var(--bg-tertiary);border-radius:3px;"></div>') +
+                    '<div class="feed-item-info"><div class="feed-item-title">' + g.title + '</div>' +
+                    '<div class="feed-item-meta">' + price + '</div></div></div>';
+                }).join('');
+            } catch { list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary);">Failed to load.</div>'; }
+        }
+
+        async function loadFeedFollowing() {
+            const list = document.getElementById('feed-list');
+            try {
+                const data = await api('/following');
+                if (!data.following || data.following.length === 0) { list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary);">Not following anyone yet.</div>'; return; }
+                list.innerHTML = data.following.map(u =>
+                    '<div class="feed-item" onclick="showDeveloper(\'' + u.username + '\')">' +
+                    '<img src="' + (u.avatar_url || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + u.username) + '" style="width:35px;height:35px;border-radius:50%;object-fit:cover;">' +
+                    '<div class="feed-item-info"><div class="feed-item-title">' + u.username + '</div>' +
+                    '<div class="feed-item-meta">' + (u.bio || 'Developer') + '</div></div></div>'
+                ).join('');
+            } catch { list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary);">Failed to load.</div>'; }
         }
 
         /* ============ Keyboard ============ */
