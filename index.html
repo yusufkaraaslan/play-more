@@ -1969,6 +1969,7 @@
         let db = null;
         let pendingUploadFile = null;
         let pendingFileName = null;
+        let pendingIsZip = false;
         let editingGameId = null;
         let gameSessionStart = null;
         let sessionTimerInterval = null;
@@ -2005,6 +2006,271 @@
                 reader.onerror = () => resolve(null);
                 reader.readAsDataURL(file);
             });
+        }
+
+        /* ============ ZIP Support ============ */
+        function getMimeType(name) {
+            const ext = name.split('.').pop().toLowerCase();
+            const map = { html:'text/html', htm:'text/html', js:'application/javascript', css:'text/css', json:'application/json',
+                wasm:'application/wasm', png:'image/png', jpg:'image/jpeg', jpeg:'image/jpeg', gif:'image/gif', svg:'image/svg+xml',
+                webp:'image/webp', ico:'image/x-icon', ogg:'audio/ogg', mp3:'audio/mpeg', wav:'audio/wav', mp4:'video/mp4',
+                webm:'video/webm', pck:'application/octet-stream', data:'application/octet-stream', bin:'application/octet-stream' };
+            return map[ext] || 'application/octet-stream';
+        }
+
+        async function extractZip(buffer) {
+            const view = new DataView(buffer);
+            const bytes = new Uint8Array(buffer);
+            // Find End of Central Directory (scan from end)
+            let eocdOffset = -1;
+            for (let i = bytes.length - 22; i >= 0; i--) {
+                if (view.getUint32(i, true) === 0x06054b50) { eocdOffset = i; break; }
+            }
+            if (eocdOffset < 0) throw new Error('Not a valid ZIP file');
+
+            const entryCount = view.getUint16(eocdOffset + 10, true);
+            let cdOffset = view.getUint32(eocdOffset + 16, true);
+            const entries = [];
+
+            for (let i = 0; i < entryCount; i++) {
+                if (view.getUint32(cdOffset, true) !== 0x02014b50) break;
+                const compression = view.getUint16(cdOffset + 10, true);
+                const compSize = view.getUint32(cdOffset + 20, true);
+                const uncompSize = view.getUint32(cdOffset + 24, true);
+                const nameLen = view.getUint16(cdOffset + 28, true);
+                const extraLen = view.getUint16(cdOffset + 30, true);
+                const commentLen = view.getUint16(cdOffset + 32, true);
+                const localOffset = view.getUint32(cdOffset + 42, true);
+                const name = new TextDecoder().decode(bytes.slice(cdOffset + 46, cdOffset + 46 + nameLen));
+                cdOffset += 46 + nameLen + extraLen + commentLen;
+
+                // Skip directories
+                if (name.endsWith('/')) continue;
+
+                // Read local file header to find data start
+                const localNameLen = view.getUint16(localOffset + 26, true);
+                const localExtraLen = view.getUint16(localOffset + 28, true);
+                const dataStart = localOffset + 30 + localNameLen + localExtraLen;
+                const rawData = bytes.slice(dataStart, dataStart + compSize);
+
+                let data;
+                if (compression === 0) {
+                    // STORED — no compression
+                    data = rawData;
+                } else if (compression === 8) {
+                    // DEFLATE — use DecompressionStream
+                    const ds = new DecompressionStream('deflate-raw');
+                    const writer = ds.writable.getWriter();
+                    const reader = ds.readable.getReader();
+                    writer.write(rawData);
+                    writer.close();
+                    const chunks = [];
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+                        chunks.push(value);
+                    }
+                    const totalLen = chunks.reduce((s, c) => s + c.length, 0);
+                    data = new Uint8Array(totalLen);
+                    let offset = 0;
+                    for (const chunk of chunks) { data.set(chunk, offset); offset += chunk.length; }
+                } else {
+                    console.warn('Unsupported compression method', compression, 'for', name);
+                    continue;
+                }
+                entries.push({ name, data });
+            }
+            console.log('ZIP extracted:', entries.length, 'files');
+            return entries;
+        }
+
+        function arrayBufferToBase64(buffer) {
+            const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+            let binary = '';
+            const chunkSize = 8192;
+            for (let i = 0; i < bytes.length; i += chunkSize) {
+                binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+            }
+            return btoa(binary);
+        }
+
+        function rewriteGameHtml(indexEntry, allFiles) {
+            let html = new TextDecoder().decode(indexEntry.data);
+
+            // Build a lookup map: normalized filename → entry
+            const fileMap = {};
+            // Strip common root directory prefix if all files share one
+            let prefix = '';
+            const names = allFiles.map(f => f.name);
+            if (names.length > 1) {
+                const parts = names[0].split('/');
+                if (parts.length > 1) {
+                    const candidate = parts[0] + '/';
+                    if (names.every(n => n.startsWith(candidate))) prefix = candidate;
+                }
+            }
+            allFiles.forEach(f => {
+                const key = f.name.startsWith(prefix) ? f.name.slice(prefix.length) : f.name;
+                fileMap[key] = f;
+                // Also map just the basename for simple references
+                const base = key.split('/').pop();
+                if (!fileMap[base]) fileMap[base] = f;
+            });
+
+            // Inline <script src="..."> tags
+            html = html.replace(/<script\s+([^>]*?)src\s*=\s*["']([^"']+)["']([^>]*)>\s*<\/script>/gi, (match, pre, src, post) => {
+                const key = src.replace(/^\.\//, '');
+                const entry = fileMap[key] || fileMap[key.split('/').pop()];
+                if (entry) {
+                    const content = new TextDecoder().decode(entry.data);
+                    return '<script>' + content + '<\/script>';
+                }
+                return match;
+            });
+
+            // Inline <link rel="stylesheet" href="...">
+            html = html.replace(/<link\s+([^>]*?)href\s*=\s*["']([^"']+\.css)["']([^>]*?)\/?\s*>/gi, (match, pre, href, post) => {
+                if (!match.includes('stylesheet') && !pre.includes('stylesheet') && !post.includes('stylesheet')) return match;
+                const key = href.replace(/^\.\//, '');
+                const entry = fileMap[key] || fileMap[key.split('/').pop()];
+                if (entry) {
+                    const content = new TextDecoder().decode(entry.data);
+                    return '<style>' + content + '</style>';
+                }
+                return match;
+            });
+
+            // Collect all remaining non-inlined files (images, wasm, pck, etc.)
+            const inlinedNames = new Set();
+            inlinedNames.add(indexEntry.name);
+            // Track which files were already inlined via script/link
+            allFiles.forEach(f => {
+                const key = f.name.startsWith(prefix) ? f.name.slice(prefix.length) : f.name;
+                const ext = key.split('.').pop().toLowerCase();
+                if (ext === 'html' || ext === 'htm') return;
+                // Check if this file content appears inlined in the HTML now
+                // (rough check — if the file was a .js or .css that we replaced, mark it)
+                if (ext === 'js' || ext === 'css') {
+                    // Already handled by regex above
+                }
+            });
+
+            // Find remaining asset files and embed them
+            const assetFiles = allFiles.filter(f => {
+                if (f === indexEntry) return false;
+                const ext = f.name.split('.').pop().toLowerCase();
+                return !['html', 'htm'].includes(ext);
+            });
+
+            // Embed assets as base64 with fetch shim
+            if (assetFiles.length > 0) {
+                const assetMapEntries = [];
+                const embeddedAssets = [];
+
+                for (const file of assetFiles) {
+                    const key = file.name.startsWith(prefix) ? file.name.slice(prefix.length) : file.name;
+                    const basename = key.split('/').pop();
+                    const mime = getMimeType(basename);
+                    const b64 = arrayBufferToBase64(file.data);
+
+                    // For small assets, we can use data URLs directly in the map
+                    assetMapEntries.push({ key, basename, mime, b64 });
+                }
+
+                // Build the shim script
+                let shimScript = `<script>
+// PlayMore ZIP Asset Loader
+(function() {
+    var _assets = {};
+    var _blobs = {};
+    function _decodeB64(b64) {
+        var bin = atob(b64);
+        var arr = new Uint8Array(bin.length);
+        for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+        return arr;
+    }
+`;
+                for (const a of assetMapEntries) {
+                    // Escape the key for use in JS
+                    const safeKey = a.key.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+                    const safeBase = a.basename.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+                    shimScript += `    _assets['${safeKey}'] = { mime: '${a.mime}', b64: document.getElementById('_pm_asset_${a.basename.replace(/[^a-zA-Z0-9]/g, '_')}')?.textContent || '' };\n`;
+                    shimScript += `    _assets['${safeBase}'] = _assets['${safeKey}'];\n`;
+                }
+
+                shimScript += `
+    function _getBlob(key) {
+        if (_blobs[key]) return _blobs[key];
+        var a = _assets[key];
+        if (!a || !a.b64) return null;
+        var decoded = _decodeB64(a.b64);
+        _blobs[key] = new Blob([decoded], { type: a.mime });
+        return _blobs[key];
+    }
+    function _getBlobUrl(key) {
+        var blob = _getBlob(key);
+        return blob ? URL.createObjectURL(blob) : null;
+    }
+    // Patch fetch
+    var _origFetch = window.fetch;
+    window.fetch = function(input, init) {
+        var url = typeof input === 'string' ? input : (input && input.url ? input.url : '');
+        var name = url.split('/').pop().split('?')[0];
+        var blob = _getBlob(name) || _getBlob(url.replace(/^\\.\\//,''));
+        if (blob) return Promise.resolve(new Response(blob, { status: 200 }));
+        return _origFetch.apply(this, arguments);
+    };
+    // Patch XMLHttpRequest
+    var _origXHROpen = XMLHttpRequest.prototype.open;
+    XMLHttpRequest.prototype.open = function(method, url) {
+        this._pmUrl = url;
+        return _origXHROpen.apply(this, arguments);
+    };
+    var _origXHRSend = XMLHttpRequest.prototype.send;
+    XMLHttpRequest.prototype.send = function() {
+        if (this._pmUrl) {
+            var name = this._pmUrl.split('/').pop().split('?')[0];
+            var blob = _getBlob(name) || _getBlob(this._pmUrl.replace(/^\\.\\//,''));
+            if (blob) {
+                var xhr = this;
+                var reader = new FileReader();
+                reader.onload = function() {
+                    Object.defineProperty(xhr, 'status', { value: 200 });
+                    Object.defineProperty(xhr, 'readyState', { value: 4 });
+                    Object.defineProperty(xhr, 'response', { value: reader.result });
+                    Object.defineProperty(xhr, 'responseType', { value: '' });
+                    if (xhr.onload) xhr.onload();
+                    if (xhr.onreadystatechange) xhr.onreadystatechange();
+                };
+                reader.readAsArrayBuffer(blob);
+                return;
+            }
+        }
+        return _origXHRSend.apply(this, arguments);
+    };
+})();
+<\/script>
+`;
+
+                // Embed asset data as hidden script tags
+                let assetTags = '';
+                for (const a of assetMapEntries) {
+                    const safeId = '_pm_asset_' + a.basename.replace(/[^a-zA-Z0-9]/g, '_');
+                    assetTags += `<script type="text/plain" id="${safeId}">${a.b64}<\/script>\n`;
+                }
+
+                // Inject shim + assets into <head> (after <head> tag)
+                const headIdx = html.indexOf('<head');
+                if (headIdx !== -1) {
+                    const headClose = html.indexOf('>', headIdx);
+                    html = html.slice(0, headClose + 1) + '\n' + shimScript + assetTags + html.slice(headClose + 1);
+                } else {
+                    // No head tag — prepend
+                    html = shimScript + assetTags + html;
+                }
+            }
+
+            return html;
         }
 
         function generateCover(title, genre) {
@@ -3007,16 +3273,24 @@
         }
         
         function handleFiles(files) {
-            const file = Array.from(files).find(f => f.name.endsWith('.html') || f.name.endsWith('.htm') || f.name.endsWith('.js'));
+            const filesArr = Array.from(files);
+            const file = filesArr.find(f => f.name.endsWith('.zip')) || filesArr.find(f => f.name.endsWith('.html') || f.name.endsWith('.htm') || f.name.endsWith('.js'));
             if (!file) {
-                showModal('Error', 'Please select an HTML or JS file.', () => closeModal());
+                showModal('Error', 'Please select an HTML, JS, or ZIP file.', () => closeModal());
                 return;
             }
+            // Size check for ZIP
+            if (file.name.endsWith('.zip') && file.size > 100 * 1024 * 1024) {
+                showModal('Error', 'ZIP file exceeds 100MB limit (' + (file.size / 1024 / 1024).toFixed(1) + ' MB).', () => closeModal());
+                return;
+            }
+            pendingIsZip = file.name.endsWith('.zip');
             const statusEl = document.getElementById('upload-file-status');
             const progressEl = document.getElementById('upload-progress');
             const progressBar = document.getElementById('upload-progress-bar');
             statusEl.style.display = 'block';
-            statusEl.textContent = 'Reading: ' + file.name + ' (' + (file.size / 1024).toFixed(1) + ' KB)';
+            const sizeStr = file.size > 1024 * 1024 ? (file.size / 1024 / 1024).toFixed(1) + ' MB' : (file.size / 1024).toFixed(1) + ' KB';
+            statusEl.textContent = 'Reading: ' + file.name + ' (' + sizeStr + ')' + (pendingIsZip ? ' [ZIP]' : '');
             progressEl.style.display = 'block';
             progressBar.style.width = '0%';
 
@@ -3030,8 +3304,8 @@
                 pendingUploadFile = reader.result;
                 pendingFileName = file.name;
                 progressBar.style.width = '100%';
-                statusEl.textContent = 'Ready: ' + file.name + ' (' + (file.size / 1024).toFixed(1) + ' KB)';
-                console.log('File loaded:', file.name);
+                statusEl.textContent = 'Ready: ' + file.name + ' (' + sizeStr + ')' + (pendingIsZip ? ' [ZIP - will extract on upload]' : '');
+                console.log('File loaded:', file.name, pendingIsZip ? '(ZIP)' : '');
             };
             reader.onerror = () => {
                 statusEl.textContent = 'Error reading file';
@@ -3102,6 +3376,44 @@
                 return;
             }
 
+            // ZIP extraction
+            if (pendingIsZip) {
+                try {
+                    const statusEl = document.getElementById('upload-file-status');
+                    statusEl.textContent = 'Extracting ZIP...';
+                    const extractedFiles = await extractZip(pendingUploadFile);
+                    const totalSize = extractedFiles.reduce((s, f) => s + f.data.length, 0);
+                    if (totalSize > 100 * 1024 * 1024) {
+                        showModal('Error', 'Extracted content exceeds 100MB limit (' + (totalSize / 1024 / 1024).toFixed(1) + ' MB).', () => closeModal());
+                        return;
+                    }
+                    if (totalSize > 50 * 1024 * 1024) {
+                        console.warn('Large game:', (totalSize / 1024 / 1024).toFixed(1), 'MB');
+                    }
+                    // Find index.html
+                    let indexEntry = extractedFiles.find(f => f.name === 'index.html' || f.name.endsWith('/index.html'));
+                    if (!indexEntry) {
+                        const htmlFiles = extractedFiles.filter(f => f.name.endsWith('.html'));
+                        indexEntry = htmlFiles[0];
+                    }
+                    if (!indexEntry) {
+                        showModal('Error', 'No HTML file found in ZIP. Files: ' + extractedFiles.map(f => f.name).join(', '), () => closeModal());
+                        return;
+                    }
+                    statusEl.textContent = 'Rewriting HTML (' + extractedFiles.length + ' files, ' + (totalSize / 1024).toFixed(0) + ' KB)...';
+                    const rewrittenHtml = rewriteGameHtml(indexEntry, extractedFiles);
+                    pendingUploadFile = new TextEncoder().encode(rewrittenHtml).buffer;
+                    pendingFileName = 'index.html';
+                    pendingIsZip = false;
+                    statusEl.textContent = 'ZIP processed: ' + extractedFiles.length + ' files bundled into single HTML';
+                    console.log('ZIP processed:', extractedFiles.length, 'files,', (totalSize / 1024).toFixed(0), 'KB →', (pendingUploadFile.byteLength / 1024).toFixed(0), 'KB rewritten');
+                } catch (e) {
+                    showModal('Error', 'Failed to extract ZIP: ' + e.message, () => closeModal());
+                    console.error('ZIP extraction error:', e);
+                    return;
+                }
+            }
+
             const id = 'upload-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5);
             const cover = customCover || generateCover(title, genre);
             const screenshots = customScreenshots.length > 0 ? customScreenshots : [cover];
@@ -3160,6 +3472,7 @@
             document.getElementById('upload-progress').style.display = 'none';
             pendingUploadFile = null;
             pendingFileName = null;
+            pendingIsZip = false;
         }
         
         // Modal
