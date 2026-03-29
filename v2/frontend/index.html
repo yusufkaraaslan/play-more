@@ -365,6 +365,7 @@
         <nav class="nav-tabs">
             <button class="nav-tab active" data-tab="store" onclick="navigate('store')">Store</button>
             <button class="nav-tab" data-tab="library" onclick="navigate('library')">Library</button>
+            <button class="nav-tab" data-tab="feed" onclick="navigate('feed')" id="nav-feed" style="display:none;">Feed</button>
             <button class="nav-tab" data-tab="upload" onclick="navigate('upload')">Upload</button>
             <button class="nav-tab" data-tab="profile" onclick="navigate('profile')">Profile</button>
         </nav>
@@ -418,6 +419,11 @@
             </div>
             <div class="game-grid" id="store-grid"></div>
             <div class="load-more" id="store-load-more"></div>
+        </section>
+
+        <section id="feed-section" class="section">
+            <h2 class="section-title">Your Feed</h2>
+            <div id="feed-page-content"></div>
         </section>
 
         <section id="library-section" class="section">
@@ -586,9 +592,10 @@
 
         function renderHeader() {
             const el = document.getElementById('header-actions');
+            document.getElementById('nav-feed').style.display = currentUser ? '' : 'none';
             if (currentUser) {
                 el.innerHTML = '<div style="position:relative;">' +
-                    '<button class="feed-btn" onclick="toggleFeed()">Feed</button>' +
+                    '<button class="feed-btn" onclick="toggleFeed()" title="Notifications">🔔</button>' +
                     '<div class="feed-dropdown" id="feed-dropdown">' +
                     '<div class="feed-tabs">' +
                     '<button class="feed-tab active" onclick="switchFeedTab(\'activity\',this)">Activity</button>' +
@@ -641,6 +648,7 @@
             const navTab = document.querySelector('[data-tab="' + tab + '"]');
             if (navTab) navTab.classList.add('active');
             window.scrollTo(0, 0);
+            if (tab === 'feed') loadFeedPage();
             if (tab === 'store') { loadStore(); loadRecentlyPlayed(); loadOffers(); }
             if (tab === 'library') { loadLibrary(); loadWishlist(); }
             if (tab === 'profile') loadProfile();
@@ -1675,6 +1683,59 @@
                     '<div class="feed-item-meta">' + (u.bio || 'Developer') + '</div></div></div>'
                 ).join('');
             } catch { list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary);">Failed to load.</div>'; }
+        }
+
+        /* ============ Feed Page ============ */
+        async function loadFeedPage() {
+            if (!currentUser) { document.getElementById('feed-page-content').innerHTML = '<div class="empty-state">Please <a onclick="showAuth(\'login\')">login</a> to see your feed.</div>'; return; }
+            const container = document.getElementById('feed-page-content');
+            container.innerHTML = '<div class="empty-state">Loading feed...</div>';
+            try {
+                const data = await api('/feed');
+                const items = data.feed || [];
+                if (items.length === 0) {
+                    container.innerHTML = '<div class="empty-state">Your feed is empty. <a style="color:var(--accent);cursor:pointer;" onclick="navigate(\'store\')">Browse the store</a> and follow some developers to see updates here!</div>';
+                    return;
+                }
+
+                const feedIcons = { devlog: '📝', new_game: '🎮', review: '⭐', played: '🎮', upload: '📤', library_add: '📚' };
+                const feedLabels = { devlog: 'New Devlog', new_game: 'New Game', review: 'New Review', played: 'Played', upload: 'Published', library_add: 'Added to library' };
+
+                let html = '';
+                items.forEach(item => {
+                    html += '<div class="card-box" style="display:flex;gap:15px;align-items:flex-start;cursor:pointer;margin-bottom:10px;" onclick="' + (item.game_id ? "showGameDetail('" + item.game_id + "')" : '') + '">';
+                    // Cover or avatar
+                    if (item.cover_path) {
+                        html += '<img src="' + item.cover_path + '" style="width:80px;height:50px;object-fit:cover;border-radius:4px;flex-shrink:0;">';
+                    } else {
+                        html += '<div style="width:50px;height:50px;background:var(--bg-tertiary);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;">' + (feedIcons[item.type] || '🎯') + '</div>';
+                    }
+                    html += '<div style="flex:1;">';
+                    // Type badge + title
+                    html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">';
+                    html += '<span style="font-size:11px;padding:2px 8px;background:rgba(102,192,244,0.15);color:var(--accent);border-radius:2px;">' + (feedLabels[item.type] || item.type) + '</span>';
+                    if (item.username) html += '<span style="font-size:12px;color:var(--text-secondary);">by <a style="color:var(--accent);cursor:pointer;" onclick="event.stopPropagation();showDeveloper(\'' + item.username + '\')">' + item.username + '</a></span>';
+                    html += '</div>';
+                    // Content
+                    if (item.type === 'devlog') {
+                        html += '<div style="font-size:15px;font-weight:bold;margin-bottom:4px;">' + item.title + '</div>';
+                        html += '<div style="font-size:13px;color:var(--text-secondary);line-height:1.4;">' + (item.detail || '').substring(0, 200) + (item.detail && item.detail.length > 200 ? '...' : '') + '</div>';
+                    } else if (item.type === 'new_game') {
+                        html += '<div style="font-size:15px;font-weight:bold;margin-bottom:4px;">' + item.game_title + '</div>';
+                        html += '<div style="font-size:13px;color:var(--text-secondary);">' + (item.detail || '').substring(0, 150) + '</div>';
+                    } else if (item.type === 'review') {
+                        html += '<div style="font-size:14px;margin-bottom:4px;">' + item.game_title + '</div>';
+                        html += '<div style="font-size:13px;color:var(--text-secondary);font-style:italic;">"' + (item.title || '').substring(0, 150) + '"</div>';
+                    } else {
+                        html += '<div style="font-size:14px;">' + (item.game_title || item.title || '') + '</div>';
+                    }
+                    html += '<div style="font-size:11px;color:var(--text-secondary);margin-top:6px;">' + item.created_at + '</div>';
+                    html += '</div></div>';
+                });
+                container.innerHTML = html;
+            } catch (e) {
+                container.innerHTML = '<div class="empty-state">Failed to load feed. Try following some developers first!</div>';
+            }
         }
 
         /* ============ Keyboard ============ */
