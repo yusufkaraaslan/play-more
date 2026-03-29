@@ -140,7 +140,7 @@
             <button class="nav-tab" data-tab="library" onclick="navigate('library')">Library</button>
             <button class="nav-tab" data-tab="upload" onclick="navigate('upload')">Upload</button>
             <button class="nav-tab" data-tab="profile" onclick="navigate('profile')">Profile</button>
-            <button class="nav-tab" data-tab="deveditor" onclick="navigate('deveditor')" id="nav-deveditor" style="display:none;">Dev Page</button>
+            <button class="nav-tab" data-tab="deveditor" onclick="navigate('deveditor')" id="nav-deveditor" style="display:none;">Publisher</button>
         </nav>
         <div class="header-actions" id="header-actions"></div>
     </header>
@@ -457,11 +457,18 @@
                 const res = await fetch('/api/games', { method: 'POST', body: formData, credentials: 'same-origin' });
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error);
-                showStatus('"' + title + '" uploaded successfully!', 'success');
                 pendingFile = null;
                 document.getElementById('upload-title').value = '';
                 document.getElementById('upload-description').value = '';
                 document.getElementById('upload-tags').value = '';
+                // Check if user has a publisher page
+                let hasDevPage = false;
+                try { const d = await api('/developer/' + currentUser.username); hasDevPage = !!d.page; } catch {}
+                if (!hasDevPage) {
+                    showStatus('"' + title + '" uploaded! <a style="color:var(--accent);cursor:pointer;text-decoration:underline;" onclick="navigate(\'deveditor\')">Create your Publisher Page</a> to showcase your games.', 'success');
+                } else {
+                    showStatus('"' + title + '" uploaded successfully!', 'success');
+                }
             } catch (e) {
                 showStatus('Upload failed: ' + e.message, 'error');
             }
@@ -480,19 +487,49 @@
             try {
                 const data = await api('/profile/' + currentUser.username);
                 const s = data.stats;
-                document.getElementById('profile-content').innerHTML =
-                    '<div style="background:rgba(0,0,0,0.2);border-radius:8px;padding:30px;margin-bottom:20px;">' +
-                    '<h1 style="font-size:28px;margin-bottom:10px;">' + data.user.username + '</h1>' +
-                    '<p style="color:var(--text-secondary);">' + (data.user.bio || 'No bio yet.') + '</p></div>' +
-                    '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:15px;margin-bottom:20px;">' +
-                    statCard(s.games_owned, 'Games') + statCard(s.hours_played.toFixed(1), 'Hours') +
-                    statCard(s.review_count, 'Reviews') + statCard(s.games_uploaded, 'Uploads') + '</div>' +
-                    '<h2 class="section-title">Recent Activity</h2>' +
-                    (data.activity.length > 0 ? data.activity.map(a =>
-                        '<div style="padding:10px 0;border-bottom:1px solid var(--border-color);color:var(--text-secondary);font-size:13px;">' +
-                        actIcon(a.type) + ' ' + actVerb(a.type) + ' <strong style="color:var(--text-primary);">' + a.game_title + '</strong> · ' + a.created_at +
-                        '</div>'
-                    ).join('') : '<div class="empty-state">No activity yet.</div>');
+
+                // Check if developer page exists
+                let hasDevPage = false;
+                try { const d = await api('/developer/' + currentUser.username); hasDevPage = !!d.page; } catch {}
+
+                let html = '';
+                // Profile header
+                html += '<div style="background:rgba(0,0,0,0.2);border-radius:8px;padding:30px;margin-bottom:20px;">';
+                html += '<h1 style="font-size:28px;margin-bottom:10px;">' + data.user.username + '</h1>';
+                html += '<p style="color:var(--text-secondary);">' + (data.user.bio || 'No bio yet.') + '</p></div>';
+
+                // Stats
+                html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:15px;margin-bottom:20px;">';
+                html += statCard(s.games_owned, 'Games') + statCard(s.hours_played.toFixed(1), 'Hours');
+                html += statCard(s.review_count, 'Reviews') + statCard(s.games_uploaded, 'Uploads') + '</div>';
+
+                // Publisher Page section
+                html += '<div style="background:rgba(0,0,0,0.2);border-radius:8px;padding:25px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;">';
+                html += '<div>';
+                html += '<h3 style="font-size:16px;margin-bottom:6px;">Publisher Page</h3>';
+                if (hasDevPage) {
+                    html += '<p style="color:var(--text-secondary);font-size:13px;">Your public storefront is live. Players can find your games and learn about you.</p>';
+                } else {
+                    html += '<p style="color:var(--text-secondary);font-size:13px;">Create your public storefront — showcase your games with a custom banner, bio, and links.</p>';
+                }
+                html += '</div><div style="display:flex;gap:10px;">';
+                if (hasDevPage) {
+                    html += '<button class="btn-secondary" onclick="showDeveloper(\'' + currentUser.username + '\')">View Page</button>';
+                    html += '<button class="btn-primary" style="width:auto;padding:10px 25px;" onclick="navigate(\'deveditor\')">Edit Page</button>';
+                } else {
+                    html += '<button class="btn-primary" style="width:auto;padding:10px 25px;" onclick="navigate(\'deveditor\')">Create Publisher Page</button>';
+                }
+                html += '</div></div>';
+
+                // Activity
+                html += '<h2 class="section-title">Recent Activity</h2>';
+                html += (data.activity.length > 0 ? data.activity.map(a =>
+                    '<div style="padding:10px 0;border-bottom:1px solid var(--border-color);color:var(--text-secondary);font-size:13px;">' +
+                    actIcon(a.type) + ' ' + actVerb(a.type) + ' <strong style="color:var(--text-primary);">' + a.game_title + '</strong> · ' + a.created_at +
+                    '</div>'
+                ).join('') : '<div class="empty-state">No activity yet.</div>');
+
+                document.getElementById('profile-content').innerHTML = html;
             } catch (e) {
                 console.error('Failed to load profile:', e);
             }
