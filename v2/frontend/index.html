@@ -357,6 +357,8 @@
                     <option value="popular">Most Popular</option>
                     <option value="rating">Highest Rated</option>
                     <option value="title">A-Z</option>
+                    <option value="price-low">Price: Low to High</option>
+                    <option value="price-high">Price: High to Low</option>
                 </select>
             </div>
             <div class="game-grid" id="store-grid"></div>
@@ -370,6 +372,7 @@
                 <select class="filter-select" id="lib-sort" onchange="loadLibrary()">
                     <option value="recent">Recent</option>
                     <option value="title">A-Z</option>
+                    <option value="playtime">Most Played</option>
                 </select>
             </div>
             <div class="game-grid" id="library-grid"></div>
@@ -627,7 +630,7 @@
                 '<div class="game-card-title">' + g.title + '</div>' +
                 '<div class="game-card-meta">by ' + (g.developer_name || 'Unknown') + (rating ? ' · ' + rating : '') + '</div>' +
                 '<div class="game-card-footer">' +
-                '<span class="game-card-genre">' + g.genre + '</span>' +
+                '<span class="game-card-genre" onclick="event.stopPropagation();searchByTag(\'' + g.genre + '\')">' + g.genre + '</span>' +
                 (g.is_webgpu ? '<span class="webgpu-badge">WebGPU</span>' : '') +
                 '<span class="game-card-price">' + price + '</span>' +
                 '</div></div></div>';
@@ -645,8 +648,31 @@
                 if (search) games = games.filter(g => g.title.toLowerCase().includes(search));
                 const sort = document.getElementById('lib-sort')?.value || 'recent';
                 if (sort === 'title') games.sort((a, b) => a.title.localeCompare(b.title));
-                grid.innerHTML = games.map(g => gameCardHTML(g)).join('');
+                if (sort === 'playtime') games.sort((a, b) => (b.play_count||0) - (a.play_count||0));
+                grid.innerHTML = games.map(g => libraryCardHTML(g)).join('');
             } catch (e) { console.error('Failed to load library:', e); }
+        }
+
+        function libraryCardHTML(g) {
+            const coverSrc = g.cover_path || 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="225"><rect fill="%231e1e2e" width="400" height="225"/><text x="200" y="120" text-anchor="middle" fill="%2366c0f4" font-size="20">' + g.title + '</text></svg>');
+            return '<div class="game-card" onclick="showGameDetail(\'' + g.id + '\')">' +
+                '<img src="' + coverSrc + '" alt="' + g.title + '">' +
+                '<div class="game-card-overlay"><span class="game-card-play">VIEW</span></div>' +
+                '<div class="game-card-info">' +
+                '<div class="game-card-title">' + g.title + '</div>' +
+                '<div class="game-card-meta">' + g.genre + ' · ' + (g.play_count||0) + ' plays</div>' +
+                '<div class="game-card-footer">' +
+                '<span class="game-card-genre">' + g.genre + '</span>' +
+                '<button class="btn-accent" style="padding:5px 15px;font-size:12px;width:auto;" onclick="event.stopPropagation();playGame(\'' + g.id + '\',\'' + g.entry_file + '\')">Play</button>' +
+                '</div></div></div>';
+        }
+
+        function searchByTag(tag) {
+            navigate('store');
+            setTimeout(() => {
+                document.getElementById('store-search').value = tag;
+                loadStore();
+            }, 50);
         }
 
         /* ============ Upload ============ */
@@ -1132,6 +1158,7 @@
                         '<div><div class="game-card-title" style="cursor:pointer" onclick="showGameDetail(\'' + g.id + '\')">' + g.title + '</div>' +
                         '<div class="dashboard-stats"><span>' + g.genre + '</span><span>★ ' + (g.avg_rating||0).toFixed(1) + '</span><span>' + (g.review_count||0) + ' reviews</span><span>' + (g.play_count||0) + ' plays</span></div></div>' +
                         '<div class="dashboard-actions"><button class="dash-btn dash-btn-edit" onclick="showGameDetail(\'' + g.id + '\')">View</button>' +
+                        '<button class="dash-btn dash-btn-edit" onclick="editGame(\'' + g.id + '\')">Edit</button>' +
                         '<button class="dash-btn dash-btn-delete" onclick="deleteGame(\'' + g.id + '\',\'' + g.title.replace(/'/g,"\\'") + '\')">Delete</button></div></div>';
                 }).join('');
             } catch (e) { console.error('Dashboard error:', e); }
@@ -1143,6 +1170,48 @@
             });
         }
 
+        async function editGame(id) {
+            try {
+                const data = await api('/games/' + id);
+                const g = data.game;
+                let html = '<div class="dev-editor">';
+                html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;"><h2 class="section-title" style="margin-bottom:0;">Edit: ' + g.title + '</h2>';
+                html += '<button class="btn-secondary" onclick="loadDashboard()">Back to Dashboard</button></div>';
+                html += '<div class="form-group"><label class="form-label">Title</label><input type="text" class="form-input" id="edit-game-title" value="' + g.title + '"></div>';
+                html += '<div class="form-row"><div class="form-group"><label class="form-label">Genre</label><select class="form-select" id="edit-game-genre">';
+                ['action','adventure','rpg','strategy','puzzle','racing','horror','experimental'].forEach(gen => {
+                    html += '<option value="' + gen + '"' + (gen === g.genre ? ' selected' : '') + '>' + gen.charAt(0).toUpperCase() + gen.slice(1) + '</option>';
+                });
+                html += '</select></div><div class="form-group"><label class="form-label">Price ($)</label><input type="number" class="form-input" id="edit-game-price" value="' + g.price + '" step="0.01"></div></div>';
+                html += '<div class="form-group"><label class="form-label">Tags (comma separated)</label><input type="text" class="form-input" id="edit-game-tags" value="' + (g.tags||[]).join(', ') + '"></div>';
+                html += '<div class="form-group"><label class="form-label">Description</label><textarea class="form-textarea" id="edit-game-desc">' + (g.description || '') + '</textarea></div>';
+                html += '<div class="form-group"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--text-secondary);"><input type="checkbox" id="edit-game-webgpu"' + (g.is_webgpu ? ' checked' : '') + ' style="accent-color:var(--accent);width:16px;height:16px;"> Uses WebGPU</label></div>';
+                html += '<button class="btn-primary" style="width:auto;padding:12px 30px;" onclick="saveGameEdit(\'' + id + '\')">Save Changes</button>';
+                html += '</div>';
+                document.getElementById('dashboard-content').innerHTML = html;
+            } catch (e) { toast('Failed to load game: ' + e.message, 'error'); }
+        }
+
+        async function saveGameEdit(id) {
+            const tagsStr = document.getElementById('edit-game-tags').value;
+            const tags = tagsStr.split(',').map(t => t.trim()).filter(t => t);
+            try {
+                await api('/games/' + id, {
+                    method: 'PUT',
+                    body: JSON.stringify({
+                        title: document.getElementById('edit-game-title').value,
+                        genre: document.getElementById('edit-game-genre').value,
+                        price: parseFloat(document.getElementById('edit-game-price').value) || 0,
+                        description: document.getElementById('edit-game-desc').value,
+                        tags: tags,
+                        is_webgpu: document.getElementById('edit-game-webgpu').checked
+                    })
+                });
+                toast('Game updated!', 'success');
+                loadDashboard();
+            } catch (e) { toast('Failed to save: ' + e.message, 'error'); }
+        }
+
         /* ============ Settings ============ */
         function loadSettings() {
             document.getElementById('settings-content').innerHTML =
@@ -1150,6 +1219,11 @@
                 '<h3 style="font-size:16px;margin-bottom:10px;">Export Backup</h3>' +
                 '<p style="color:var(--text-secondary);font-size:13px;margin-bottom:15px;">Download your profile and activity data as JSON.</p>' +
                 '<button class="btn-accent" onclick="exportBackup()">Export Backup</button></div>' +
+                '<div class="card-box" style="max-width:600px;">' +
+                '<h3 style="font-size:16px;margin-bottom:10px;">Import Backup</h3>' +
+                '<p style="color:var(--text-secondary);font-size:13px;margin-bottom:15px;">Restore from a previously exported backup file.</p>' +
+                '<input type="file" class="form-input" id="import-file" accept=".json" style="padding:8px;margin-bottom:10px;">' +
+                '<button class="btn-secondary" onclick="importBackup()">Import Backup</button></div>' +
                 '<div class="card-box" style="max-width:600px;">' +
                 '<h3 style="font-size:16px;margin-bottom:10px;color:var(--danger);">Delete Account</h3>' +
                 '<p style="color:var(--text-secondary);font-size:13px;margin-bottom:15px;">Permanently delete your account and all associated data.</p>' +
@@ -1166,6 +1240,38 @@
                 const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'playmore-backup.json'; a.click();
                 toast('Backup downloaded!', 'success');
             } catch (e) { toast('Export failed: ' + e.message, 'error'); }
+        }
+
+        async function importBackup() {
+            const fileInput = document.getElementById('import-file');
+            if (!fileInput.files.length) { toast('Please select a backup file.', 'error'); return; }
+            const reader = new FileReader();
+            reader.onload = async () => {
+                try {
+                    const backup = JSON.parse(reader.result);
+                    // Re-add library games
+                    if (backup.library?.games) {
+                        for (const g of backup.library.games) {
+                            try { await api('/library/' + g.id, { method: 'POST' }); } catch {}
+                        }
+                    }
+                    // Re-add wishlist games
+                    if (backup.wishlist?.games) {
+                        for (const g of backup.wishlist.games) {
+                            try { await api('/wishlist/' + g.id, { method: 'POST' }); } catch {}
+                        }
+                    }
+                    // Update profile
+                    if (backup.profile?.user) {
+                        const u = backup.profile.user;
+                        try { await api('/profile', { method: 'PUT', body: JSON.stringify({ username: u.username, bio: u.bio, avatar_url: u.avatar_url, banner_url: u.banner_url, theme_color: u.theme_color, links: u.links || [] }) }); } catch {}
+                    }
+                    toast('Backup restored!', 'success');
+                    await checkAuth();
+                    loadLibrary();
+                } catch (e) { toast('Invalid backup file: ' + e.message, 'error'); }
+            };
+            reader.readAsText(fileInput.files[0]);
         }
 
         function deleteAccount() {
