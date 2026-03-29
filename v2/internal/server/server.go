@@ -60,6 +60,36 @@ func New(frontendFS embed.FS) *gin.Engine {
 		api.GET("/developer/:username", handlers.GetDeveloperPage)
 		api.PUT("/developer", middleware.AuthRequired(), handlers.UpdateDeveloperPage)
 		api.GET("/developer/:username/games", handlers.GetDeveloperGames)
+
+		// Devlogs
+		api.GET("/games/:id/devlogs", handlers.ListDevlogs)
+		api.POST("/games/:id/devlogs", middleware.AuthRequired(), handlers.CreateDevlog)
+		api.DELETE("/devlogs/:id", middleware.AuthRequired(), handlers.DeleteDevlog)
+
+		// Follows
+		api.POST("/follow/:username", middleware.AuthRequired(), handlers.FollowDeveloper)
+		api.DELETE("/follow/:username", middleware.AuthRequired(), handlers.UnfollowDeveloper)
+		api.GET("/following", middleware.AuthRequired(), handlers.GetFollowing)
+		api.GET("/followers/:username", handlers.GetFollowerCount)
+
+		// Collections
+		api.GET("/collections", middleware.AuthRequired(), handlers.ListCollections)
+		api.POST("/collections", middleware.AuthRequired(), handlers.CreateCollection)
+		api.DELETE("/collections/:id", middleware.AuthRequired(), handlers.DeleteCollection)
+		api.POST("/collections/:id/games", middleware.AuthRequired(), handlers.AddToCollection)
+		api.DELETE("/collections/:id/games/:game_id", middleware.AuthRequired(), handlers.RemoveFromCollection)
+	}
+
+	// Admin routes
+	admin := r.Group("/api/admin")
+	admin.Use(middleware.AuthOptional(), handlers.AdminRequired())
+	{
+		admin.GET("/stats", handlers.AdminStats)
+		admin.GET("/users", handlers.AdminListUsers)
+		admin.DELETE("/users/:id", handlers.AdminDeleteUser)
+		admin.GET("/games", handlers.AdminListGames)
+		admin.DELETE("/games/:id", handlers.AdminDeleteGame)
+		admin.PUT("/games/:id/publish", handlers.AdminTogglePublish)
 	}
 
 	// Seed demo data

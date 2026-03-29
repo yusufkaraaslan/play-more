@@ -139,6 +139,32 @@ CREATE TABLE IF NOT EXISTS developer_pages (
     updated_at   DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS devlogs (
+    id          TEXT PRIMARY KEY,
+    game_id     TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+    user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title       TEXT NOT NULL,
+    content     TEXT NOT NULL,
+    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS follows (
+    follower_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    followed_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (follower_id, followed_id)
+);
+
+CREATE TABLE IF NOT EXISTS collections (
+    id          TEXT PRIMARY KEY,
+    user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name        TEXT NOT NULL,
+    game_ids    TEXT DEFAULT '[]',
+    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_devlogs_game ON devlogs(game_id);
+CREATE INDEX IF NOT EXISTS idx_follows_followed ON follows(followed_id);
 CREATE INDEX IF NOT EXISTS idx_games_genre ON games(genre);
 CREATE INDEX IF NOT EXISTS idx_games_developer ON games(developer_id);
 CREATE INDEX IF NOT EXISTS idx_reviews_game ON reviews(game_id);

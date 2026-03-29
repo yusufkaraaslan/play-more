@@ -502,6 +502,10 @@
             <h2 class="section-title">Settings</h2>
             <div id="settings-content"></div>
         </section>
+        <section id="admin-section" class="section">
+            <h2 class="section-title">Admin Panel</h2>
+            <div id="admin-content"></div>
+        </section>
         <section id="profile-section" class="section"><div id="profile-content"></div></section>
     </main>
 
@@ -598,7 +602,9 @@
         async function logout() { await api('/auth/logout', { method: 'POST' }); currentUser = null; renderHeader(); navigate('store'); toast('Logged out.', 'info'); }
 
         /* ============ Navigation ============ */
-        function navigate(tab) {
+        let suppressHashChange = false;
+
+        function navigate(tab, updateHash = true) {
             currentTab = tab;
             document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
             document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
@@ -613,7 +619,29 @@
             if (tab === 'deveditor') loadDevEditor();
             if (tab === 'dashboard') loadDashboard();
             if (tab === 'settings') loadSettings();
+            if (tab === 'admin') loadAdmin();
+            // Update URL hash
+            if (updateHash) {
+                suppressHashChange = true;
+                location.hash = tab;
+                suppressHashChange = false;
+            }
         }
+
+        function handleHashRoute() {
+            if (suppressHashChange) return;
+            const hash = location.hash.slice(1);
+            if (!hash) return;
+            if (hash.startsWith('game/')) {
+                showGameDetail(hash.slice(5));
+            } else if (hash.startsWith('developer/')) {
+                showDeveloper(hash.slice(10));
+            } else {
+                navigate(hash, false);
+            }
+        }
+
+        window.addEventListener('hashchange', handleHashRoute);
 
         /* ============ Store ============ */
         async function loadStore() {
@@ -699,8 +727,8 @@
                 '<div class="game-card-title">' + g.title + '</div>' +
                 '<div class="game-card-meta">' + g.genre + ' · ' + (g.play_count||0) + ' plays</div>' +
                 '<div class="game-card-footer">' +
-                '<span class="game-card-genre">' + g.genre + '</span>' +
                 '<button class="btn-accent" style="padding:5px 15px;font-size:12px;width:auto;" onclick="event.stopPropagation();playGame(\'' + g.id + '\',\'' + g.entry_file + '\')">Play</button>' +
+                '<button class="btn-secondary" style="padding:5px 10px;font-size:11px;" onclick="event.stopPropagation();removeFromLib(\'' + g.id + '\')">Remove</button>' +
                 '</div></div></div>';
         }
 
@@ -818,9 +846,15 @@
                 html += '<div><h3 style="font-size:16px;margin-bottom:4px;">Game Dashboard</h3>';
                 html += '<p style="color:var(--text-secondary);font-size:13px;">Manage your uploaded games</p></div>';
                 html += '<button class="btn-accent" onclick="navigate(\'dashboard\')">Open</button></div></div>';
-                html += '<div style="display:flex;gap:10px;">';
-                html += '<button class="btn-secondary" onclick="showDeveloper(\'' + u.username + '\')">View Page</button>';
-                html += '<button class="btn-accent" onclick="navigate(\'deveditor\')">Edit Page</button></div></div>';
+
+                // Admin link (check via API)
+                try {
+                    await api('/admin/stats');
+                    html += '<div class="card-box" style="display:flex;align-items:center;justify-content:space-between;">';
+                    html += '<div><h3 style="font-size:16px;margin-bottom:4px;">Admin Panel</h3>';
+                    html += '<p style="color:var(--text-secondary);font-size:13px;">Moderate users and games</p></div>';
+                    html += '<button class="btn-accent" onclick="navigate(\'admin\')">Open</button></div>';
+                } catch {}
 
                 html += '<h2 class="section-title">Recent Activity</h2>';
                 if (data.activity.length > 0) {
@@ -957,6 +991,27 @@
                 html += '<div class="community-stat"><div class="community-stat-value">' + (game.is_webgpu ? 'Yes' : 'No') + '</div><div class="community-stat-label">WebGPU</div></div>';
                 html += '</div></div>';
 
+                // Devlogs
+                try {
+                    const dlData = await api('/games/' + gameId + '/devlogs');
+                    if (dlData.devlogs && dlData.devlogs.length > 0) {
+                        html += '<div class="game-section"><h3>Devlogs</h3>';
+                        dlData.devlogs.forEach(d => {
+                            html += '<div class="card-box" style="margin-bottom:10px;"><h4 style="font-size:15px;margin-bottom:8px;">' + d.title + '</h4>';
+                            html += '<p style="color:var(--text-secondary);font-size:13px;line-height:1.5;">' + d.content + '</p>';
+                            html += '<p style="font-size:11px;color:var(--text-secondary);margin-top:8px;">' + d.username + ' · ' + d.created_at + '</p></div>';
+                        });
+                        html += '</div>';
+                    }
+                } catch {}
+                // Devlog write form (for game owner)
+                if (currentUser && currentUser.id === game.developer_id) {
+                    html += '<div class="game-section"><h3>Post Devlog</h3>';
+                    html += '<div class="form-group"><input type="text" class="form-input" id="devlog-title" placeholder="Devlog title"></div>';
+                    html += '<div class="form-group"><textarea class="form-textarea" id="devlog-content" placeholder="Write your update..."></textarea></div>';
+                    html += '<button class="btn-accent" onclick="postDevlog(\'' + game.id + '\')">Post Devlog</button></div>';
+                }
+
                 html += '</div><div class="game-sidebar">';
 
                 // Purchase box
@@ -967,8 +1022,8 @@
                 html += '<div class="purchase-buttons">';
                 html += '<button class="btn-primary" onclick="playGame(\'' + game.id + '\',\'' + game.entry_file + '\')">Play Now</button>';
                 if (currentUser) {
-                    html += '<button class="btn-secondary" onclick="addToLib(\'' + game.id + '\')">Add to Library</button>';
-                    html += '<button class="btn-wishlist" onclick="addToWish(\'' + game.id + '\')">Add to Wishlist</button>';
+                    html += '<button class="btn-secondary" id="lib-btn-' + game.id + '" onclick="toggleLib(\'' + game.id + '\')">Add to Library</button>';
+                    html += '<button class="btn-wishlist" id="wish-btn-' + game.id + '" onclick="toggleWish(\'' + game.id + '\')">Add to Wishlist</button>';
                 }
                 html += '</div></div>';
 
@@ -984,7 +1039,21 @@
                 html += '</div></div></div>';
                 document.getElementById('game-detail-content').innerHTML = html;
                 selectedRating = 0;
-                navigate('gamedetail');
+                navigate('gamedetail', false);
+                suppressHashChange = true; location.hash = 'game/' + gameId; suppressHashChange = false;
+                // Check library/wishlist status
+                if (currentUser) {
+                    try {
+                        const libData = await api('/library');
+                        const libBtn = document.getElementById('lib-btn-' + game.id);
+                        if (libBtn && libData.games?.some(g => g.id === game.id)) { libBtn.textContent = 'Remove from Library'; }
+                    } catch {}
+                    try {
+                        const wishData = await api('/wishlist');
+                        const wishBtn = document.getElementById('wish-btn-' + game.id);
+                        if (wishBtn && wishData.games?.some(g => g.id === game.id)) { wishBtn.textContent = 'On Wishlist ✓'; wishBtn.classList.add('active'); }
+                    } catch {}
+                }
             } catch (e) { console.error('Failed to load game:', e); }
         }
 
@@ -1008,8 +1077,28 @@
             try { await api('/games/' + currentGameData.id + '/reviews', { method:'POST', body:JSON.stringify({rating:selectedRating,text}) }); toast('Review submitted!', 'success'); showGameDetail(currentGameData.id); } catch (e) { toast(e.message, 'error'); }
         }
 
-        async function addToLib(id) { try { await api('/library/'+id, {method:'POST'}); toast('Added to library!', 'success'); } catch (e) { toast(e.message, 'error'); } }
-        async function addToWish(id) { try { await api('/wishlist/'+id, {method:'POST'}); toast('Added to wishlist!', 'success'); } catch (e) { toast(e.message, 'error'); } }
+        async function toggleLib(id) {
+            const btn = document.getElementById('lib-btn-' + id);
+            if (btn && btn.textContent.includes('Remove')) {
+                try { await api('/library/'+id, {method:'DELETE'}); btn.textContent='Add to Library'; toast('Removed from library.', 'info'); } catch (e) { toast(e.message, 'error'); }
+            } else {
+                try { await api('/library/'+id, {method:'POST'}); if(btn) btn.textContent='Remove from Library'; toast('Added to library!', 'success'); } catch (e) { toast(e.message, 'error'); }
+            }
+        }
+        async function toggleWish(id) {
+            const btn = document.getElementById('wish-btn-' + id);
+            if (btn && btn.classList.contains('active')) {
+                try { await api('/wishlist/'+id, {method:'DELETE'}); btn.textContent='Add to Wishlist'; btn.classList.remove('active'); toast('Removed from wishlist.', 'info'); } catch (e) { toast(e.message, 'error'); }
+            } else {
+                try { await api('/wishlist/'+id, {method:'POST'}); if(btn) { btn.textContent='On Wishlist ✓'; btn.classList.add('active'); } toast('Added to wishlist!', 'success'); } catch (e) { toast(e.message, 'error'); }
+            }
+        }
+        async function removeFromLib(id) {
+            try { await api('/library/'+id, {method:'DELETE'}); toast('Removed from library.', 'info'); loadLibrary(); } catch (e) { toast(e.message, 'error'); }
+        }
+        async function removeFromWish(id) {
+            try { await api('/wishlist/'+id, {method:'DELETE'}); toast('Removed from wishlist.', 'info'); loadWishlist(); } catch (e) { toast(e.message, 'error'); }
+        }
 
         /* ============ Developer Page ============ */
         async function showDeveloper(username) {
@@ -1030,7 +1119,16 @@
                 html += '<div class="dev-meta">@' + u.username + ' · ' + stats.games_uploaded + ' games · ' + stats.hours_played.toFixed(0) + ' hours played</div>';
                 if (page?.links && page.links.length > 0) { html += '<div class="dev-links">'; page.links.forEach(l => html += '<a href="' + l.url + '" target="_blank" class="dev-link">' + l.label + '</a>'); html += '</div>'; }
                 html += '</div></div>';
-                if (isOwnPage) html += '<button class="btn-secondary" onclick="navigate(\'deveditor\')">Edit Developer Page</button>';
+                if (isOwnPage) {
+                    html += '<button class="btn-secondary" onclick="navigate(\'deveditor\')">Edit Developer Page</button>';
+                } else if (currentUser) {
+                    // Follow button
+                    try {
+                        const fData = await api('/followers/' + u.username);
+                        html += '<button class="btn-accent" onclick="toggleFollow(\'' + u.username + '\')">' + (fData.is_following ? 'Unfollow' : 'Follow') + '</button>';
+                        html += '<span style="color:var(--text-secondary);font-size:13px;margin-left:10px;">' + fData.followers + ' followers</span>';
+                    } catch {}
+                }
                 html += '</div>';
 
                 if (page?.about) html += '<div class="dev-about">' + page.about + '</div>';
@@ -1046,7 +1144,8 @@
                 }
                 html += '</div>';
                 document.getElementById('developer-content').innerHTML = html;
-                navigate('developer');
+                navigate('developer', false);
+                suppressHashChange = true; location.hash = 'developer/' + username; suppressHashChange = false;
             } catch (e) { console.error('Failed to load developer page:', e); }
         }
 
@@ -1174,7 +1273,16 @@
                 const data = await api('/wishlist');
                 if (!data.games || data.games.length === 0) { document.getElementById('wishlist-section').style.display='none'; return; }
                 document.getElementById('wishlist-section').style.display='block';
-                document.getElementById('wishlist-grid').innerHTML = data.games.map(g => gameCardHTML(g)).join('');
+                document.getElementById('wishlist-grid').innerHTML = data.games.map(g => {
+                    const coverSrc = g.cover_path || '';
+                    const price = g.price === 0 ? 'Free' : '$' + g.price.toFixed(2);
+                    return '<div class="game-card" onclick="showGameDetail(\'' + g.id + '\')">' +
+                        (coverSrc ? '<img src="' + coverSrc + '">' : '<div style="height:160px;background:var(--bg-secondary);"></div>') +
+                        '<div class="game-card-info"><div class="game-card-title">' + g.title + '</div>' +
+                        '<div class="game-card-footer"><span class="game-card-price">' + price + '</span>' +
+                        '<button class="btn-secondary" style="padding:5px 10px;font-size:11px;" onclick="event.stopPropagation();removeFromWish(\'' + g.id + '\')">Remove</button>' +
+                        '</div></div></div>';
+                }).join('');
             } catch { document.getElementById('wishlist-section').style.display='none'; }
         }
 
@@ -1337,6 +1445,126 @@
             });
         }
 
+        /* ============ Devlogs ============ */
+        async function loadDevlogs(gameId, container) {
+            try {
+                const data = await api('/games/' + gameId + '/devlogs');
+                if (!data.devlogs || data.devlogs.length === 0) return '';
+                let html = '<div class="game-section"><h3>Devlogs</h3>';
+                data.devlogs.forEach(d => {
+                    html += '<div class="card-box" style="margin-bottom:10px;"><h4 style="font-size:15px;margin-bottom:8px;">' + d.title + '</h4>';
+                    html += '<p style="color:var(--text-secondary);font-size:13px;line-height:1.5;">' + d.content + '</p>';
+                    html += '<p style="font-size:11px;color:var(--text-secondary);margin-top:8px;">by ' + d.username + ' · ' + d.created_at + '</p></div>';
+                });
+                html += '</div>';
+                return html;
+            } catch { return ''; }
+        }
+
+        async function postDevlog(gameId) {
+            const title = document.getElementById('devlog-title').value.trim();
+            const content = document.getElementById('devlog-content').value.trim();
+            if (!title || !content) { toast('Please fill in title and content.', 'error'); return; }
+            try {
+                await api('/games/' + gameId + '/devlogs', { method: 'POST', body: JSON.stringify({ title, content }) });
+                toast('Devlog posted!', 'success');
+                showGameDetail(gameId);
+            } catch (e) { toast(e.message, 'error'); }
+        }
+
+        /* ============ Follows ============ */
+        async function toggleFollow(username) {
+            try {
+                const data = await api('/followers/' + username);
+                if (data.is_following) {
+                    await api('/follow/' + username, { method: 'DELETE' });
+                    toast('Unfollowed ' + username, 'info');
+                } else {
+                    await api('/follow/' + username, { method: 'POST' });
+                    toast('Following ' + username + '!', 'success');
+                }
+                showDeveloper(username);
+            } catch (e) { toast(e.message, 'error'); }
+        }
+
+        /* ============ Collections ============ */
+        async function loadCollectionsUI() {
+            if (!currentUser) return;
+            try {
+                const data = await api('/collections');
+                return data.collections || [];
+            } catch { return []; }
+        }
+
+        async function createCollection() {
+            const name = prompt('Collection name:');
+            if (!name) return;
+            try { await api('/collections', { method: 'POST', body: JSON.stringify({ name }) }); toast('Collection "' + name + '" created!', 'success'); loadLibrary(); } catch (e) { toast(e.message, 'error'); }
+        }
+
+        async function addGameToCollection(colId, gameId) {
+            try { await api('/collections/' + colId + '/games', { method: 'POST', body: JSON.stringify({ game_id: gameId }) }); toast('Added to collection!', 'success'); } catch (e) { toast(e.message, 'error'); }
+        }
+
+        async function deleteCollection(colId) {
+            showModal('Delete Collection', 'Are you sure?', async () => {
+                try { await api('/collections/' + colId, { method: 'DELETE' }); closeModal(); toast('Collection deleted.', 'info'); loadLibrary(); } catch (e) { toast(e.message, 'error'); closeModal(); }
+            });
+        }
+
+        /* ============ Admin ============ */
+        async function loadAdmin() {
+            if (!currentUser) { showAuth('login'); return; }
+            try {
+                const stats = await api('/admin/stats');
+                const users = await api('/admin/users');
+                const games = await api('/admin/games');
+
+                let html = '<div class="stats-grid" style="margin-bottom:20px;">';
+                html += statCard(stats.users, 'Users') + statCard(stats.games, 'Games');
+                html += statCard(stats.reviews, 'Reviews') + statCard(stats.active_sessions, 'Sessions') + '</div>';
+
+                html += '<h3 class="section-title">Users</h3>';
+                html += '<div style="margin-bottom:30px;">';
+                (users.users || []).forEach(u => {
+                    html += '<div class="dashboard-card"><div></div><div>';
+                    html += '<div class="game-card-title">' + u.username + '</div>';
+                    html += '<div class="dashboard-stats"><span>' + u.email + '</span><span>' + u.game_count + ' games</span><span>' + u.review_count + ' reviews</span><span>' + u.created_at + '</span></div>';
+                    html += '</div><div class="dashboard-actions">';
+                    html += '<button class="dash-btn dash-btn-delete" onclick="adminDeleteUser(\'' + u.id + '\',\'' + u.username + '\')">Delete</button></div></div>';
+                });
+                html += '</div>';
+
+                html += '<h3 class="section-title">Games</h3>';
+                (games.games || []).forEach(g => {
+                    html += '<div class="dashboard-card"><div></div><div>';
+                    html += '<div class="game-card-title">' + g.title + '</div>';
+                    html += '<div class="dashboard-stats"><span>by ' + g.developer + '</span><span>' + g.genre + '</span><span>' + g.review_count + ' reviews</span><span>' + (g.published ? 'Published' : 'Hidden') + '</span></div>';
+                    html += '</div><div class="dashboard-actions">';
+                    html += '<button class="dash-btn dash-btn-edit" onclick="adminTogglePublish(\'' + g.id + '\')">' + (g.published ? 'Hide' : 'Publish') + '</button>';
+                    html += '<button class="dash-btn dash-btn-delete" onclick="adminDeleteGameA(\'' + g.id + '\',\'' + g.title.replace(/'/g, "\\'") + '\')">Delete</button></div></div>';
+                });
+
+                document.getElementById('admin-content').innerHTML = html;
+            } catch (e) {
+                document.getElementById('admin-content').innerHTML = '<div class="empty-state">Admin access required. Only the first registered user is admin.</div>';
+            }
+        }
+
+        async function adminDeleteUser(id, name) {
+            showModal('Delete User', 'Delete user "' + name + '" and all their data?', async () => {
+                try { await api('/admin/users/' + id, { method: 'DELETE' }); closeModal(); toast('User deleted.', 'info'); loadAdmin(); } catch (e) { toast(e.message, 'error'); closeModal(); }
+            });
+        }
+        async function adminDeleteGameA(id, title) {
+            showModal('Delete Game', 'Delete "' + title + '"?', async () => {
+                try { await api('/admin/games/' + id, { method: 'DELETE' }); closeModal(); toast('Game deleted.', 'info'); loadAdmin(); } catch (e) { toast(e.message, 'error'); closeModal(); }
+            });
+        }
+        async function adminTogglePublish(id) {
+            try { await api('/admin/games/' + id + '/publish', { method: 'PUT' }); toast('Publish status toggled.', 'info'); loadAdmin(); } catch (e) { toast(e.message, 'error'); }
+        }
+
         /* ============ Keyboard ============ */
         document.addEventListener('keydown', e => { if (e.key === 'Escape') { closePlayer(); closeModal(); } });
 
@@ -1372,10 +1600,13 @@
             initParticles();
             checkGPU();
             await checkAuth();
-            loadStore();
-            loadRecentlyPlayed();
-            loadOffers();
             initUpload();
+            // Handle initial hash route or default to store
+            if (location.hash && location.hash.length > 1) {
+                handleHashRoute();
+            } else {
+                loadStore(); loadRecentlyPlayed(); loadOffers();
+            }
         });
     </script>
 </body>
