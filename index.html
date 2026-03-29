@@ -1691,8 +1691,13 @@
                 </div>
             </div>
             <div class="library-grid" id="library-grid"></div>
+
+            <div id="wishlist-section" style="margin-top:30px; display:none;">
+                <h2 class="section-title">Wishlist</h2>
+                <div class="library-grid" id="wishlist-grid"></div>
+            </div>
         </section>
-        
+
         <!-- Profile Section -->
         <section id="profile-section" class="section">
             <div class="profile-header">
@@ -2133,6 +2138,7 @@
         function showLibrary() {
             switchTab('library');
             renderLibrary();
+            renderWishlist();
         }
         
         function showProfile() {
@@ -2644,6 +2650,39 @@
             }
         }
         
+        function renderWishlist() {
+            const wishlist = JSON.parse(localStorage.getItem('playmore_wishlist') || '[]');
+            const section = document.getElementById('wishlist-section');
+            const container = document.getElementById('wishlist-grid');
+            const games = wishlist.map(id => gamesData[id]).filter(g => g);
+            if (games.length === 0) {
+                section.style.display = 'none';
+                return;
+            }
+            section.style.display = 'block';
+            container.innerHTML = games.map(game => `
+                <div class="library-card" onclick="showGameDetail('${game.id}')">
+                    <img src="${game.cover}" class="library-card-image">
+                    <div class="library-card-content">
+                        <div class="library-card-title">${game.title}</div>
+                        <div class="library-card-meta">${game.price === 0 ? 'Free' : '$' + (game.discount > 0 ? (game.price * (1 - game.discount / 100)).toFixed(2) : game.price.toFixed(2))}</div>
+                    </div>
+                    <div class="library-card-actions">
+                        <button class="library-card-btn" onclick="event.stopPropagation(); addToLibraryById('${game.id}')">Add to Library</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function addToLibraryById(id) {
+            if (!library.includes(id)) {
+                library.push(id);
+                localStorage.setItem('playmore_library', JSON.stringify(library));
+                logActivity('library_add', id);
+                renderLibrary();
+            }
+        }
+
         function addToLibrary() {
             if (!currentGameId) return;
             if (!library.includes(currentGameId)) {
