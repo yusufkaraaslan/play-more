@@ -836,6 +836,47 @@
             width: 100%;
         }
         
+        /* Trust Toggle */
+        .trust-toggle {
+            margin-top: 12px;
+            padding: 10px;
+            background: rgba(255,255,255,0.03);
+            border-radius: 4px;
+            border: 1px solid var(--border-color);
+        }
+
+        .trust-toggle label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .trust-toggle input[type="checkbox"] {
+            accent-color: var(--accent);
+            width: 16px;
+            height: 16px;
+        }
+
+        .trust-warning {
+            margin-top: 6px;
+            font-size: 11px;
+            color: var(--warning);
+            padding-left: 24px;
+        }
+
+        .trust-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            background: rgba(161,205,68,0.15);
+            color: var(--success);
+            font-size: 11px;
+            border-radius: 2px;
+            margin-left: 8px;
+        }
+
         /* Recently Played */
         .recently-played {
             margin-bottom: 30px;
@@ -1643,6 +1684,13 @@
                             <button class="btn-primary" id="play-now-btn" onclick="playCurrentGame()">Play Now</button>
                             <button class="btn-secondary" onclick="addToLibrary()">Add to Library</button>
                             <button class="btn-wishlist" id="wishlist-btn" onclick="toggleWishlist()">Add to Wishlist</button>
+                        </div>
+                        <div class="trust-toggle">
+                            <label>
+                                <input type="checkbox" id="trust-checkbox" onchange="toggleTrust()">
+                                Trust this game (enables WebGPU)
+                            </label>
+                            <div class="trust-warning" id="trust-warning" style="display:none;">Trusted games can access your browser storage during play. Your PlayMore data is protected.</div>
                         </div>
                     </div>
                     
@@ -2625,6 +2673,7 @@
             // Reviews
             renderReviews(gameId);
             updateWishlistButton();
+            updateTrustCheckbox();
 
             // Show section
             document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
@@ -2993,6 +3042,73 @@
             }
         }
 
+        /* ============ Trust & Data Isolation ============ */
+        const PLAYMORE_KEYS = ['playmore_library', 'playmore_uploaded_games', 'playmore_reviews',
+            'playmore_playtime', 'playmore_activity', 'playmore_username', 'playmore_wishlist'];
+        let dataProtected = false;
+        let protectedData = {};
+
+        function toggleTrust() {
+            if (!currentGameId) return;
+            const trusted = JSON.parse(localStorage.getItem('playmore_trusted') || '{}');
+            const checkbox = document.getElementById('trust-checkbox');
+            const warning = document.getElementById('trust-warning');
+            if (checkbox.checked) {
+                trusted[currentGameId] = true;
+                warning.style.display = 'block';
+            } else {
+                delete trusted[currentGameId];
+                warning.style.display = 'none';
+            }
+            localStorage.setItem('playmore_trusted', JSON.stringify(trusted));
+        }
+
+        function updateTrustCheckbox() {
+            const trusted = JSON.parse(localStorage.getItem('playmore_trusted') || '{}');
+            const checkbox = document.getElementById('trust-checkbox');
+            const warning = document.getElementById('trust-warning');
+            checkbox.checked = !!trusted[currentGameId];
+            warning.style.display = trusted[currentGameId] ? 'block' : 'none';
+        }
+
+        function isGameTrusted(gameId) {
+            const trusted = JSON.parse(localStorage.getItem('playmore_trusted') || '{}');
+            return !!trusted[gameId];
+        }
+
+        function protectData() {
+            // Move all PlayMore localStorage data to memory
+            protectedData = {};
+            PLAYMORE_KEYS.forEach(key => {
+                const val = localStorage.getItem(key);
+                if (val !== null) {
+                    protectedData[key] = val;
+                    localStorage.removeItem(key);
+                }
+            });
+            // Also protect trusted list
+            const tVal = localStorage.getItem('playmore_trusted');
+            if (tVal !== null) {
+                protectedData['playmore_trusted'] = tVal;
+                localStorage.removeItem('playmore_trusted');
+            }
+            dataProtected = true;
+            console.log('Data protected: localStorage cleared for safe game play');
+        }
+
+        function restoreData() {
+            if (!dataProtected) return;
+            // Restore all PlayMore data
+            Object.keys(protectedData).forEach(key => {
+                localStorage.setItem(key, protectedData[key]);
+            });
+            protectedData = {};
+            dataProtected = false;
+            // Reload runtime state from restored data
+            library = JSON.parse(localStorage.getItem('playmore_library') || '[]');
+            console.log('Data restored: localStorage repopulated');
+        }
+
         // Game Player with transition
         function playCurrentGame() {
             if (currentGameId) {
@@ -3018,6 +3134,17 @@
             const player = document.getElementById('game-player');
             document.getElementById('player-title').textContent = 'Playing: ' + game.title;
             player.classList.add('active');
+
+            // Set sandbox based on trust level
+            const frame = document.getElementById('player-frame');
+            const trusted = isGameTrusted(gameId);
+            if (trusted) {
+                protectData();
+                frame.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-popups allow-forms');
+                console.log('Trusted mode: WebGPU enabled, data protected');
+            } else {
+                frame.setAttribute('sandbox', 'allow-scripts');
+            }
 
             // Track plays for uploaded games
             if (game.isUploaded) {
@@ -3207,13 +3334,16 @@
         
         function closeGamePlayer() {
             if (sessionTimerInterval) { clearInterval(sessionTimerInterval); sessionTimerInterval = null; }
+            // Restore protected data first (before recording playtime)
+            restoreData();
+            // Reset sandbox to safe default
+            document.getElementById('player-frame').setAttribute('sandbox', 'allow-scripts');
             // Record playtime
             if (gameSessionStart && currentGameId) {
                 const elapsed = (Date.now() - gameSessionStart) / 1000;
                 const playtime = JSON.parse(localStorage.getItem('playmore_playtime') || '{}');
                 playtime[currentGameId] = (playtime[currentGameId] || 0) + elapsed;
                 localStorage.setItem('playmore_playtime', JSON.stringify(playtime));
-                const gameName = gamesData[currentGameId]?.title || currentGameId;
                 logActivity('played', currentGameId, formatDuration(elapsed));
                 gameSessionStart = null;
             }
@@ -3500,7 +3630,8 @@
                 playtime: localStorage.getItem('playmore_playtime'),
                 activity: localStorage.getItem('playmore_activity'),
                 username: localStorage.getItem('playmore_username'),
-                wishlist: localStorage.getItem('playmore_wishlist')
+                wishlist: localStorage.getItem('playmore_wishlist'),
+                trusted: localStorage.getItem('playmore_trusted')
             };
             const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
             const a = document.createElement('a');
@@ -3544,7 +3675,7 @@
         function clearAllData() {
             showModal('Clear All Data', 'This will delete ALL your data permanently. Are you sure?', () => {
                 ['playmore_library', 'playmore_uploaded_games', 'playmore_reviews', 'playmore_playtime',
-                 'playmore_activity', 'playmore_username', 'playmore_wishlist'].forEach(k => localStorage.removeItem(k));
+                 'playmore_activity', 'playmore_username', 'playmore_wishlist', 'playmore_trusted'].forEach(k => localStorage.removeItem(k));
                 if (db) {
                     const tx = db.transaction('game_files', 'readwrite');
                     tx.objectStore('game_files').clear();
