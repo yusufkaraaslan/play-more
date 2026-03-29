@@ -46,6 +46,9 @@ CREATE TABLE IF NOT EXISTS users (
     avatar_url  TEXT DEFAULT '',
     bio         TEXT DEFAULT '',
     is_developer BOOLEAN DEFAULT 0,
+    banner_url  TEXT DEFAULT '',
+    theme_color TEXT DEFAULT '#66c0f4',
+    links       TEXT DEFAULT '[]',
     created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 

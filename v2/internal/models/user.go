@@ -1,6 +1,7 @@
 package models
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -13,10 +14,18 @@ type User struct {
 	Username    string `json:"username"`
 	Email       string `json:"email"`
 	Password    string `json:"-"`
-	AvatarURL   string `json:"avatar_url"`
-	Bio         string `json:"bio"`
-	IsDeveloper bool   `json:"is_developer"`
-	CreatedAt   string `json:"created_at"`
+	AvatarURL   string   `json:"avatar_url"`
+	Bio         string   `json:"bio"`
+	IsDeveloper bool     `json:"is_developer"`
+	BannerURL   string   `json:"banner_url"`
+	ThemeColor  string   `json:"theme_color"`
+	Links       []Link   `json:"links"`
+	CreatedAt   string   `json:"created_at"`
+}
+
+type Link struct {
+	Label string `json:"label"`
+	URL   string `json:"url"`
 }
 
 func CreateUser(username, email, password string) (*User, error) {
@@ -43,39 +52,44 @@ func CreateUser(username, email, password string) (*User, error) {
 	return user, nil
 }
 
+func scanUser(user *User, linksJSON string) {
+	json.Unmarshal([]byte(linksJSON), &user.Links)
+	if user.Links == nil { user.Links = []Link{} }
+}
+
 func GetUserByEmail(email string) (*User, error) {
 	user := &User{}
+	var linksJSON string
 	err := storage.DB.QueryRow(
-		`SELECT id, username, email, password, avatar_url, bio, is_developer, created_at FROM users WHERE email = ?`,
+		`SELECT id, username, email, password, avatar_url, bio, is_developer, banner_url, theme_color, links, created_at FROM users WHERE email = ?`,
 		email,
-	).Scan(&user.ID, &user.Username, &user.Email, &user.Password, &user.AvatarURL, &user.Bio, &user.IsDeveloper, &user.CreatedAt)
-	if err != nil {
-		return nil, err
-	}
+	).Scan(&user.ID, &user.Username, &user.Email, &user.Password, &user.AvatarURL, &user.Bio, &user.IsDeveloper, &user.BannerURL, &user.ThemeColor, &linksJSON, &user.CreatedAt)
+	if err != nil { return nil, err }
+	scanUser(user, linksJSON)
 	return user, nil
 }
 
 func GetUserByID(id string) (*User, error) {
 	user := &User{}
+	var linksJSON string
 	err := storage.DB.QueryRow(
-		`SELECT id, username, email, password, avatar_url, bio, is_developer, created_at FROM users WHERE id = ?`,
+		`SELECT id, username, email, password, avatar_url, bio, is_developer, banner_url, theme_color, links, created_at FROM users WHERE id = ?`,
 		id,
-	).Scan(&user.ID, &user.Username, &user.Email, &user.Password, &user.AvatarURL, &user.Bio, &user.IsDeveloper, &user.CreatedAt)
-	if err != nil {
-		return nil, err
-	}
+	).Scan(&user.ID, &user.Username, &user.Email, &user.Password, &user.AvatarURL, &user.Bio, &user.IsDeveloper, &user.BannerURL, &user.ThemeColor, &linksJSON, &user.CreatedAt)
+	if err != nil { return nil, err }
+	scanUser(user, linksJSON)
 	return user, nil
 }
 
 func GetUserByUsername(username string) (*User, error) {
 	user := &User{}
+	var linksJSON string
 	err := storage.DB.QueryRow(
-		`SELECT id, username, email, password, avatar_url, bio, is_developer, created_at FROM users WHERE username = ?`,
+		`SELECT id, username, email, password, avatar_url, bio, is_developer, banner_url, theme_color, links, created_at FROM users WHERE username = ?`,
 		username,
-	).Scan(&user.ID, &user.Username, &user.Email, &user.Password, &user.AvatarURL, &user.Bio, &user.IsDeveloper, &user.CreatedAt)
-	if err != nil {
-		return nil, err
-	}
+	).Scan(&user.ID, &user.Username, &user.Email, &user.Password, &user.AvatarURL, &user.Bio, &user.IsDeveloper, &user.BannerURL, &user.ThemeColor, &linksJSON, &user.CreatedAt)
+	if err != nil { return nil, err }
+	scanUser(user, linksJSON)
 	return user, nil
 }
 
@@ -83,10 +97,11 @@ func (u *User) CheckPassword(password string) bool {
 	return bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(password)) == nil
 }
 
-func (u *User) Update(username, bio, avatarURL string) error {
+func (u *User) Update(username, bio, avatarURL, bannerURL, themeColor string, links []Link) error {
+	linksJSON, _ := json.Marshal(links)
 	_, err := storage.DB.Exec(
-		`UPDATE users SET username = ?, bio = ?, avatar_url = ? WHERE id = ?`,
-		username, bio, avatarURL, u.ID,
+		`UPDATE users SET username = ?, bio = ?, avatar_url = ?, banner_url = ?, theme_color = ?, links = ? WHERE id = ?`,
+		username, bio, avatarURL, bannerURL, themeColor, string(linksJSON), u.ID,
 	)
 	return err
 }

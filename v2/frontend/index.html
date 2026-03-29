@@ -140,7 +140,6 @@
             <button class="nav-tab" data-tab="library" onclick="navigate('library')">Library</button>
             <button class="nav-tab" data-tab="upload" onclick="navigate('upload')">Upload</button>
             <button class="nav-tab" data-tab="profile" onclick="navigate('profile')">Profile</button>
-            <button class="nav-tab" data-tab="deveditor" onclick="navigate('deveditor')" id="nav-deveditor" style="display:none;">Publisher</button>
         </nav>
         <div class="header-actions" id="header-actions"></div>
     </header>
@@ -278,13 +277,10 @@
 
         function renderHeader() {
             const el = document.getElementById('header-actions');
-            const devTab = document.getElementById('nav-deveditor');
             if (currentUser) {
                 el.innerHTML = '<span class="user-info">Welcome, <strong>' + currentUser.username + '</strong></span> <button class="btn-secondary" onclick="logout()">Logout</button>';
-                devTab.style.display = '';
             } else {
                 el.innerHTML = '<button class="btn-secondary" onclick="showAuth(\'login\')">Login</button> <button class="btn-primary" style="width:auto;padding:8px 20px;" onclick="showAuth(\'register\')">Register</button>';
-                devTab.style.display = 'none';
             }
         }
 
@@ -479,6 +475,8 @@
         }
 
         /* ============ Profile ============ */
+        let profileEditMode = false;
+
         async function loadProfile() {
             if (!currentUser) {
                 document.getElementById('profile-content').innerHTML = '<div class="empty-state">Please <a style="color:var(--accent);cursor:pointer" onclick="showAuth(\'login\')">login</a> to see your profile.</div>';
@@ -486,40 +484,51 @@
             }
             try {
                 const data = await api('/profile/' + currentUser.username);
+                const u = data.user;
                 const s = data.stats;
+                const themeColor = u.theme_color || 'var(--accent)';
 
-                // Check if developer page exists
-                let hasDevPage = false;
-                try { const d = await api('/developer/' + currentUser.username); hasDevPage = !!d.page; } catch {}
+                if (profileEditMode) {
+                    renderProfileEditor(u);
+                    return;
+                }
 
                 let html = '';
-                // Profile header
-                html += '<div style="background:rgba(0,0,0,0.2);border-radius:8px;padding:30px;margin-bottom:20px;">';
-                html += '<h1 style="font-size:28px;margin-bottom:10px;">' + data.user.username + '</h1>';
-                html += '<p style="color:var(--text-secondary);">' + (data.user.bio || 'No bio yet.') + '</p></div>';
+                // Banner
+                if (u.banner_url) {
+                    html += '<div class="dev-banner"><img src="' + u.banner_url + '"></div>';
+                } else {
+                    html += '<div class="dev-banner" style="background:linear-gradient(135deg, var(--bg-secondary), ' + themeColor + '30);"></div>';
+                }
+
+                // Profile header with edit button
+                html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">';
+                html += '<div class="dev-profile" style="margin-bottom:0;">';
+                html += '<img src="' + (u.avatar_url || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + u.username) + '" class="dev-avatar">';
+                html += '<div><div class="dev-name">' + u.username + '</div>';
+                html += '<div class="dev-meta">' + (u.bio || 'No bio yet.') + '</div>';
+                if (u.links && u.links.length > 0) {
+                    html += '<div class="dev-links">';
+                    u.links.forEach(l => html += '<a href="' + l.url + '" target="_blank" class="dev-link">' + l.label + '</a>');
+                    html += '</div>';
+                }
+                html += '</div></div>';
+                html += '<button class="btn-secondary" onclick="profileEditMode=true;loadProfile();">Edit Profile</button>';
+                html += '</div>';
 
                 // Stats
                 html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:15px;margin-bottom:20px;">';
                 html += statCard(s.games_owned, 'Games') + statCard(s.hours_played.toFixed(1), 'Hours');
                 html += statCard(s.review_count, 'Reviews') + statCard(s.games_uploaded, 'Uploads') + '</div>';
 
-                // Publisher Page section
-                html += '<div style="background:rgba(0,0,0,0.2);border-radius:8px;padding:25px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;">';
-                html += '<div>';
-                html += '<h3 style="font-size:16px;margin-bottom:6px;">Publisher Page</h3>';
-                if (hasDevPage) {
-                    html += '<p style="color:var(--text-secondary);font-size:13px;">Your public storefront is live. Players can find your games and learn about you.</p>';
-                } else {
-                    html += '<p style="color:var(--text-secondary);font-size:13px;">Create your public storefront — showcase your games with a custom banner, bio, and links.</p>';
+                // Developer page link (if they have games)
+                if (s.games_uploaded > 0) {
+                    html += '<div style="background:rgba(0,0,0,0.2);border-radius:8px;padding:20px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;">';
+                    html += '<div><h3 style="font-size:16px;margin-bottom:4px;">Developer Page</h3>';
+                    html += '<p style="color:var(--text-secondary);font-size:13px;">Your public game storefront</p></div>';
+                    html += '<button class="btn-primary" style="width:auto;padding:10px 25px;" onclick="showDeveloper(\'' + u.username + '\')">View Developer Page</button>';
+                    html += '</div>';
                 }
-                html += '</div><div style="display:flex;gap:10px;">';
-                if (hasDevPage) {
-                    html += '<button class="btn-secondary" onclick="showDeveloper(\'' + currentUser.username + '\')">View Page</button>';
-                    html += '<button class="btn-primary" style="width:auto;padding:10px 25px;" onclick="navigate(\'deveditor\')">Edit Page</button>';
-                } else {
-                    html += '<button class="btn-primary" style="width:auto;padding:10px 25px;" onclick="navigate(\'deveditor\')">Create Publisher Page</button>';
-                }
-                html += '</div></div>';
 
                 // Activity
                 html += '<h2 class="section-title">Recent Activity</h2>';
@@ -532,6 +541,80 @@
                 document.getElementById('profile-content').innerHTML = html;
             } catch (e) {
                 console.error('Failed to load profile:', e);
+            }
+        }
+
+        function renderProfileEditor(u) {
+            let html = '<div class="dev-editor">';
+            html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">';
+            html += '<h2 class="section-title" style="margin-bottom:0;">Edit Profile</h2>';
+            html += '<button class="btn-secondary" onclick="profileEditMode=false;loadProfile();">Back to Profile</button></div>';
+
+            html += '<div class="form-group"><label class="form-label">Username</label>';
+            html += '<input type="text" class="form-input" id="edit-username" value="' + u.username + '"></div>';
+
+            html += '<div class="form-group"><label class="form-label">Bio</label>';
+            html += '<textarea class="form-textarea" id="edit-bio">' + (u.bio || '') + '</textarea></div>';
+
+            html += '<div class="form-group"><label class="form-label">Avatar URL</label>';
+            html += '<input type="text" class="form-input" id="edit-avatar" value="' + (u.avatar_url || '') + '" placeholder="https://... or leave empty for auto-generated"></div>';
+
+            html += '<div class="form-row"><div class="form-group"><label class="form-label">Banner Image URL</label>';
+            html += '<input type="text" class="form-input" id="edit-banner" value="' + (u.banner_url || '') + '" placeholder="https://..."></div>';
+
+            html += '<div class="form-group"><label class="form-label">Theme Color <span class="color-preview" id="edit-color-preview" style="background:' + (u.theme_color || '#66c0f4') + '"></span></label>';
+            html += '<input type="color" class="form-input" id="edit-theme-color" value="' + (u.theme_color || '#66c0f4') + '" style="height:40px;padding:4px;" oninput="document.getElementById(\'edit-color-preview\').style.background=this.value"></div></div>';
+
+            // Links
+            html += '<div class="form-group"><label class="form-label">Links</label><div id="edit-links-list">';
+            const links = u.links || [];
+            links.forEach((l, i) => {
+                html += '<div class="form-row" style="margin-bottom:8px;"><div><input type="text" class="form-input" placeholder="Label" value="' + l.label + '" data-plink-label="' + i + '"></div>';
+                html += '<div><input type="text" class="form-input" placeholder="URL" value="' + l.url + '" data-plink-url="' + i + '"></div></div>';
+            });
+            html += '</div><button class="btn-secondary" style="margin-top:8px;" onclick="addProfileLink()">+ Add Link</button></div>';
+
+            html += '<button class="btn-primary" onclick="saveProfile()">Save Profile</button>';
+            html += '</div>';
+
+            document.getElementById('profile-content').innerHTML = html;
+        }
+
+        function addProfileLink() {
+            const list = document.getElementById('edit-links-list');
+            const idx = list.children.length;
+            const div = document.createElement('div');
+            div.className = 'form-row';
+            div.style.marginBottom = '8px';
+            div.innerHTML = '<div><input type="text" class="form-input" placeholder="Label" data-plink-label="' + idx + '"></div><div><input type="text" class="form-input" placeholder="URL" data-plink-url="' + idx + '"></div>';
+            list.appendChild(div);
+        }
+
+        async function saveProfile() {
+            const links = [];
+            document.querySelectorAll('[data-plink-label]').forEach(el => {
+                const idx = el.dataset.plinkLabel;
+                const urlEl = document.querySelector('[data-plink-url="' + idx + '"]');
+                if (el.value && urlEl?.value) links.push({ label: el.value, url: urlEl.value });
+            });
+
+            try {
+                await api('/profile', {
+                    method: 'PUT',
+                    body: JSON.stringify({
+                        username: document.getElementById('edit-username').value,
+                        bio: document.getElementById('edit-bio').value,
+                        avatar_url: document.getElementById('edit-avatar').value,
+                        banner_url: document.getElementById('edit-banner').value,
+                        theme_color: document.getElementById('edit-theme-color').value,
+                        links
+                    })
+                });
+                profileEditMode = false;
+                await checkAuth(); // refresh currentUser
+                loadProfile();
+            } catch (e) {
+                alert('Failed to save: ' + e.message);
             }
         }
 
@@ -702,7 +785,9 @@
                     html += '<div class="dev-banner" style="background:linear-gradient(135deg, var(--bg-secondary), ' + themeColor + '30);"></div>';
                 }
 
-                // Profile header
+                // Profile header with optional edit button
+                const isOwnPage = currentUser && currentUser.username === u.username;
+                html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;">';
                 html += '<div class="dev-profile">';
                 html += '<img src="' + (u.avatar_url || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + u.username) + '" class="dev-avatar">';
                 html += '<div><div class="dev-name">' + (page?.display_name || u.username) + '</div>';
@@ -713,6 +798,10 @@
                     html += '</div>';
                 }
                 html += '</div></div>';
+                if (isOwnPage) {
+                    html += '<button class="btn-secondary" onclick="navigate(\'deveditor\')">Edit Developer Page</button>';
+                }
+                html += '</div>';
 
                 // About
                 if (page?.about) {
