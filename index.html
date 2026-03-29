@@ -836,6 +836,56 @@
             width: 100%;
         }
         
+        /* Recently Played */
+        .recently-played {
+            margin-bottom: 30px;
+        }
+
+        .recently-played-scroll {
+            display: flex;
+            gap: 15px;
+            overflow-x: auto;
+            padding-bottom: 10px;
+        }
+
+        .recent-card {
+            flex: 0 0 200px;
+            background: var(--card-bg);
+            border-radius: 8px;
+            overflow: hidden;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: 1px solid var(--border-color);
+        }
+
+        .recent-card:hover {
+            transform: translateY(-5px);
+            border-color: var(--accent);
+        }
+
+        .recent-card img {
+            width: 100%;
+            height: 100px;
+            object-fit: cover;
+        }
+
+        .recent-card-info {
+            padding: 10px;
+        }
+
+        .recent-card-title {
+            font-size: 13px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .recent-card-time {
+            font-size: 11px;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+
         /* Pagination */
         .games-pagination {
             text-align: center;
@@ -1366,6 +1416,20 @@
         .genre-link:hover {
             text-decoration: underline;
         }
+
+        /* Responsive - 1366x768 */
+        @media (max-width: 1400px) {
+            .main-content { padding: 15px; }
+            .offers-grid { grid-template-columns: repeat(2, 1fr); }
+            .game-detail-layout { grid-template-columns: 1fr; }
+            .profile-stats { grid-template-columns: repeat(2, 1fr); }
+            .community-stats { grid-template-columns: repeat(2, 1fr); }
+            .sysreq-columns { grid-template-columns: 1fr; }
+            .hero-banner { min-height: 200px; padding: 25px; }
+            .hero-title { font-size: 28px; }
+            .nav-tabs { gap: 2px; }
+            .nav-tab { padding: 8px 12px; font-size: 12px; }
+        }
     </style>
 </head>
 <body>
@@ -1383,6 +1447,7 @@
             <button class="nav-tab" data-tab="profile" onclick="showProfile()">Profile</button>
             <button class="nav-tab" data-tab="upload" onclick="showUpload()">Upload</button>
             <button class="nav-tab" data-tab="dashboard" onclick="showDashboard()">Dashboard</button>
+            <button class="nav-tab" data-tab="settings" onclick="showSettings()">⚙</button>
         </nav>
         <div class="header-actions">
             <span id="webgpu-badge" class="webgpu-badge">WebGPU: Checking...</span>
@@ -1403,6 +1468,12 @@
                 <img src="https://images.unsplash.com/photo-1542751371-adc38448a05e?w=800" alt="Featured" class="hero-image">
             </div>
             
+            <!-- Recently Played -->
+            <div class="recently-played" id="recently-played-section" style="display:none;">
+                <h2 class="section-title">Recently Played</h2>
+                <div class="recently-played-scroll" id="recently-played-list"></div>
+            </div>
+
             <!-- Special Offers -->
             <div class="special-offers">
                 <h2 class="section-title">Special Offers</h2>
@@ -1571,7 +1642,7 @@
                         <div class="purchase-buttons">
                             <button class="btn-primary" id="play-now-btn" onclick="playCurrentGame()">Play Now</button>
                             <button class="btn-secondary" onclick="addToLibrary()">Add to Library</button>
-                            <button class="btn-wishlist">Add to Wishlist</button>
+                            <button class="btn-wishlist" id="wishlist-btn" onclick="toggleWishlist()">Add to Wishlist</button>
                         </div>
                     </div>
                     
@@ -1608,7 +1679,17 @@
         
         <!-- Library Section -->
         <section id="library-section" class="section">
-            <h2 class="section-title">My Library</h2>
+            <div class="listings-header">
+                <h2 class="section-title">My Library</h2>
+                <div class="search-filter">
+                    <input type="text" class="search-input" id="library-search" placeholder="Search library..." oninput="renderLibrary()">
+                    <select class="filter-select" id="library-sort" onchange="renderLibrary()">
+                        <option value="alpha">A-Z</option>
+                        <option value="recent">Recently Played</option>
+                        <option value="playtime">Most Played</option>
+                    </select>
+                </div>
+            </div>
             <div class="library-grid" id="library-grid"></div>
         </section>
         
@@ -1688,6 +1769,16 @@
                     <label class="form-label">Description</label>
                     <textarea class="form-textarea" id="upload-description" placeholder="Describe your game..."></textarea>
                 </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Cover Image (optional)</label>
+                        <input type="file" class="form-input" id="upload-cover" accept="image/*" style="padding:8px;">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Screenshots (optional)</label>
+                        <input type="file" class="form-input" id="upload-screenshots" accept="image/*" multiple style="padding:8px;">
+                    </div>
+                </div>
                 <button class="btn-primary" onclick="submitGameUpload()" style="width: 100%;">Upload Game</button>
             </div>
             
@@ -1696,6 +1787,29 @@
                 <div class="games-list" id="uploaded-games-list"></div>
             </div>
         </section>
+        <!-- Settings Section -->
+        <section id="settings-section" class="section">
+            <h2 class="section-title">Settings</h2>
+            <div style="display:flex; flex-direction:column; gap:15px; max-width:600px;">
+                <div style="background:rgba(0,0,0,0.2); border-radius:8px; padding:20px;">
+                    <h3 style="font-size:16px; margin-bottom:10px;">Export Library Backup</h3>
+                    <p style="color:var(--text-secondary); font-size:13px; margin-bottom:15px;">Download all your library data, reviews, playtime, and activity as a JSON file.</p>
+                    <button class="btn-primary" onclick="exportBackup()">Export Backup</button>
+                </div>
+                <div style="background:rgba(0,0,0,0.2); border-radius:8px; padding:20px;">
+                    <h3 style="font-size:16px; margin-bottom:10px;">Import Backup</h3>
+                    <p style="color:var(--text-secondary); font-size:13px; margin-bottom:15px;">Restore from a previously exported backup file.</p>
+                    <input type="file" id="import-backup-file" accept=".json" class="form-input" style="padding:8px; margin-bottom:10px;">
+                    <button class="btn-secondary" onclick="importBackup()">Import Backup</button>
+                </div>
+                <div style="background:rgba(0,0,0,0.2); border-radius:8px; padding:20px;">
+                    <h3 style="font-size:16px; margin-bottom:10px; color:var(--danger);">Clear All Data</h3>
+                    <p style="color:var(--text-secondary); font-size:13px; margin-bottom:15px;">Delete all saved data including library, reviews, playtime, uploaded games, and activity. This cannot be undone.</p>
+                    <button class="btn-secondary" style="border-color:var(--danger); color:var(--danger);" onclick="clearAllData()">Clear All Data</button>
+                </div>
+            </div>
+        </section>
+
         <!-- Dashboard Section -->
         <section id="dashboard-section" class="section">
             <h2 class="section-title">Creator Dashboard</h2>
@@ -1707,6 +1821,7 @@
     <div class="game-player-container" id="game-player">
         <div class="game-player-header">
             <span class="game-player-title" id="player-title">Playing Game</span>
+            <span id="session-timer" style="color: var(--text-secondary); font-size: 14px; font-family: monospace;">00:00:00</span>
             <button class="game-player-close" onclick="closeGamePlayer()">Close</button>
         </div>
         <iframe class="game-player-frame" id="player-frame" sandbox="allow-scripts"></iframe>
@@ -1851,6 +1966,7 @@
         let pendingFileName = null;
         let editingGameId = null;
         let gameSessionStart = null;
+        let sessionTimerInterval = null;
         let selectedRating = 0;
         let currentPage = 1;
         let currentFilteredGames = [];
@@ -1875,6 +1991,15 @@
             const uploaded = JSON.parse(localStorage.getItem('playmore_uploaded_games') || '[]');
             uploaded.forEach(g => { gamesData[g.id] = g; });
             console.log('Loaded', uploaded.length, 'uploaded games');
+        }
+
+        function readImageAsDataURL(file) {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = () => resolve(null);
+                reader.readAsDataURL(file);
+            });
         }
 
         function generateCover(title, genre) {
@@ -1935,6 +2060,7 @@
             loadUploadedGames();
             checkWebGPU();
             initParticles();
+            renderRecentlyPlayed();
             renderOffers();
             renderGamesList();
             if (library.length === 0) {
@@ -1944,6 +2070,16 @@
             renderLibrary();
             renderUploadedGames();
             initUploadArea();
+            // Keyboard shortcuts
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') {
+                    if (document.getElementById('game-player').classList.contains('active')) {
+                        closeGamePlayer();
+                    } else if (document.getElementById('modal').classList.contains('active')) {
+                        closeModal();
+                    }
+                }
+            });
         });
         
         // Graphics API Check — WebGPU with WebGL2 fallback
@@ -1990,6 +2126,7 @@
             currentGenreFilter = '';
             document.getElementById('genre-filter').value = '';
             switchTab('home');
+            renderRecentlyPlayed();
             renderGamesList();
         }
         
@@ -2215,7 +2352,8 @@
             
             // Reviews
             renderReviews(gameId);
-            
+            updateWishlistButton();
+
             // Show section
             document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
             document.getElementById('game-detail-section').classList.add('active');
@@ -2335,6 +2473,27 @@
         }
         
         // Offers
+        function renderRecentlyPlayed() {
+            const activity = JSON.parse(localStorage.getItem('playmore_activity') || '[]');
+            const seen = new Set();
+            const recent = activity.filter(a => a.type === 'played' && gamesData[a.gameId] && !seen.has(a.gameId) && seen.add(a.gameId)).slice(0, 5);
+            const section = document.getElementById('recently-played-section');
+            if (recent.length === 0) { section.style.display = 'none'; return; }
+            section.style.display = 'block';
+            const playtime = JSON.parse(localStorage.getItem('playmore_playtime') || '{}');
+            document.getElementById('recently-played-list').innerHTML = recent.map(a => {
+                const g = gamesData[a.gameId];
+                const hrs = ((playtime[a.gameId] || 0) / 3600).toFixed(1);
+                return `<div class="recent-card" onclick="showGameDetail('${a.gameId}')">
+                    <img src="${g.cover}" alt="${g.title}">
+                    <div class="recent-card-info">
+                        <div class="recent-card-title">${g.title}</div>
+                        <div class="recent-card-time">${hrs}h played · ${timeAgo(a.timestamp)}</div>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
         function renderOffers() {
             const offers = [
                 { id: 'neon-overdrive', title: 'Neon Overdrive', discount: 20, original: 19.99, image: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400' },
@@ -2443,19 +2602,36 @@
         function renderLibrary() {
             const container = document.getElementById('library-grid');
             if (library.length === 0) {
-                container.innerHTML = '<p style="color: var(--text-secondary); text-align: center; grid-column: 1/-1;">Your library is empty. Add some games!</p>';
+                container.innerHTML = '<p style="color: var(--text-secondary); text-align: center; grid-column: 1/-1;">Your library is empty. Browse the <a style="color:var(--accent);cursor:pointer" onclick="showHome()">Store</a> to add games!</p>';
                 return;
             }
-            
-            container.innerHTML = library.map(id => {
-                const game = gamesData[id];
-                if (!game) return '';
+            const searchEl = document.getElementById('library-search');
+            const sortEl = document.getElementById('library-sort');
+            const search = searchEl ? searchEl.value.toLowerCase() : '';
+            const sort = sortEl ? sortEl.value : 'alpha';
+            const playtime = JSON.parse(localStorage.getItem('playmore_playtime') || '{}');
+            const activity = JSON.parse(localStorage.getItem('playmore_activity') || '[]');
+
+            let games = library.map(id => gamesData[id]).filter(g => g && g.title.toLowerCase().includes(search));
+
+            if (sort === 'alpha') {
+                games.sort((a, b) => a.title.localeCompare(b.title));
+            } else if (sort === 'playtime') {
+                games.sort((a, b) => (playtime[b.id] || 0) - (playtime[a.id] || 0));
+            } else if (sort === 'recent') {
+                const lastPlayed = {};
+                activity.forEach(a => { if (a.type === 'played' && !lastPlayed[a.gameId]) lastPlayed[a.gameId] = a.timestamp; });
+                games.sort((a, b) => (lastPlayed[b.id] || 0) - (lastPlayed[a.id] || 0));
+            }
+
+            container.innerHTML = games.map(game => {
+                const hrs = ((playtime[game.id] || 0) / 3600).toFixed(1);
                 return `
                     <div class="library-card" onclick="showGameDetail('${game.id}')">
                         <img src="${game.cover}" class="library-card-image">
                         <div class="library-card-content">
                             <div class="library-card-title">${game.title}</div>
-                            <div class="library-card-meta">${game.genre.charAt(0).toUpperCase() + game.genre.slice(1)}</div>
+                            <div class="library-card-meta">${game.genre.charAt(0).toUpperCase() + game.genre.slice(1)} · ${hrs}h</div>
                         </div>
                         <div class="library-card-actions">
                             <button class="library-card-btn" onclick="event.stopPropagation(); playGame('${game.id}')">Play</button>
@@ -2463,6 +2639,9 @@
                     </div>
                 `;
             }).join('');
+            if (games.length === 0 && search) {
+                container.innerHTML = '<p style="color: var(--text-secondary); text-align: center; grid-column: 1/-1;">No games match your search.</p>';
+            }
         }
         
         function addToLibrary() {
@@ -2477,6 +2656,38 @@
             }
         }
         
+        function toggleWishlist() {
+            if (!currentGameId) return;
+            let wishlist = JSON.parse(localStorage.getItem('playmore_wishlist') || '[]');
+            const btn = document.getElementById('wishlist-btn');
+            if (wishlist.includes(currentGameId)) {
+                wishlist = wishlist.filter(id => id !== currentGameId);
+                btn.textContent = 'Add to Wishlist';
+                btn.style.borderColor = '';
+                btn.style.color = '';
+            } else {
+                wishlist.push(currentGameId);
+                btn.textContent = 'On Wishlist ✓';
+                btn.style.borderColor = 'var(--accent)';
+                btn.style.color = 'var(--accent)';
+            }
+            localStorage.setItem('playmore_wishlist', JSON.stringify(wishlist));
+        }
+
+        function updateWishlistButton() {
+            const wishlist = JSON.parse(localStorage.getItem('playmore_wishlist') || '[]');
+            const btn = document.getElementById('wishlist-btn');
+            if (wishlist.includes(currentGameId)) {
+                btn.textContent = 'On Wishlist ✓';
+                btn.style.borderColor = 'var(--accent)';
+                btn.style.color = 'var(--accent)';
+            } else {
+                btn.textContent = 'Add to Wishlist';
+                btn.style.borderColor = '';
+                btn.style.color = '';
+            }
+        }
+
         // Game Player with transition
         function playCurrentGame() {
             if (currentGameId) {
@@ -2489,6 +2700,15 @@
             if (!game) return;
             console.log('Playing:', game.title);
             gameSessionStart = Date.now();
+            if (sessionTimerInterval) clearInterval(sessionTimerInterval);
+            document.getElementById('session-timer').textContent = '00:00:00';
+            sessionTimerInterval = setInterval(() => {
+                const s = Math.floor((Date.now() - gameSessionStart) / 1000);
+                const h = String(Math.floor(s / 3600)).padStart(2, '0');
+                const m = String(Math.floor((s % 3600) / 60)).padStart(2, '0');
+                const sec = String(s % 60).padStart(2, '0');
+                document.getElementById('session-timer').textContent = h + ':' + m + ':' + sec;
+            }, 1000);
 
             const player = document.getElementById('game-player');
             document.getElementById('player-title').textContent = 'Playing: ' + game.title;
@@ -2681,6 +2901,7 @@
         }
         
         function closeGamePlayer() {
+            if (sessionTimerInterval) { clearInterval(sessionTimerInterval); sessionTimerInterval = null; }
             // Record playtime
             if (gameSessionStart && currentGameId) {
                 const elapsed = (Date.now() - gameSessionStart) / 1000;
@@ -2780,15 +3001,31 @@
             reader.readAsArrayBuffer(file);
         }
 
-        function submitGameUpload() {
+        async function submitGameUpload() {
             const title = document.getElementById('upload-title').value.trim();
             const genre = document.getElementById('upload-genre').value;
             const price = parseFloat(document.getElementById('upload-price').value) || 0;
             const description = document.getElementById('upload-description').value.trim();
+            const coverInput = document.getElementById('upload-cover');
+            const screenshotsInput = document.getElementById('upload-screenshots');
 
             if (!title) {
                 showModal('Error', 'Please enter a game title.', () => closeModal());
                 return;
+            }
+
+            // Read optional cover image
+            let customCover = null;
+            if (coverInput.files.length > 0) {
+                customCover = await readImageAsDataURL(coverInput.files[0]);
+            }
+            // Read optional screenshots
+            let customScreenshots = [];
+            if (screenshotsInput.files.length > 0) {
+                for (const file of screenshotsInput.files) {
+                    const url = await readImageAsDataURL(file);
+                    if (url) customScreenshots.push(url);
+                }
             }
 
             // Edit mode
@@ -2801,12 +3038,11 @@
                     uploaded[idx].price = price;
                     uploaded[idx].description = description;
                     uploaded[idx].tags = [genre.charAt(0).toUpperCase() + genre.slice(1)];
-                    if (!uploaded[idx].cover || pendingUploadFile) {
-                        uploaded[idx].cover = generateCover(title, genre);
-                    }
+                    if (customCover) uploaded[idx].cover = customCover;
+                    else if (!uploaded[idx].cover) uploaded[idx].cover = generateCover(title, genre);
+                    if (customScreenshots.length > 0) uploaded[idx].screenshots = customScreenshots;
                     localStorage.setItem('playmore_uploaded_games', JSON.stringify(uploaded));
                     gamesData[editingGameId] = uploaded[idx];
-                    // Update file in IndexedDB if new file selected
                     if (pendingUploadFile && db) {
                         const tx = db.transaction('game_files', 'readwrite');
                         tx.objectStore('game_files').put({ id: editingGameId, fileName: pendingFileName, fileData: pendingUploadFile, mimeType: 'text/html' });
@@ -2828,7 +3064,8 @@
             }
 
             const id = 'upload-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5);
-            const cover = generateCover(title, genre);
+            const cover = customCover || generateCover(title, genre);
+            const screenshots = customScreenshots.length > 0 ? customScreenshots : [cover];
             const now = new Date();
             const meta = {
                 id, title, genre, price, discount: 0,
@@ -2838,7 +3075,7 @@
                 tags: [genre.charAt(0).toUpperCase() + genre.slice(1)],
                 score: 0, reviewCount: 0, positivePercent: 0,
                 description: description || 'A community-uploaded game.',
-                cover, screenshots: [cover], video: null,
+                cover, screenshots, video: null,
                 community: { discussions: 0, screenshots: 0, artwork: 0, guides: 0 },
                 isUploaded: true,
                 uploadedAt: now.toISOString(),
@@ -2878,6 +3115,8 @@
             document.getElementById('upload-description').value = '';
             document.getElementById('upload-price').value = '';
             document.getElementById('upload-genre').selectedIndex = 0;
+            document.getElementById('upload-cover').value = '';
+            document.getElementById('upload-screenshots').value = '';
             document.getElementById('upload-file-status').style.display = 'none';
             document.getElementById('upload-progress').style.display = 'none';
             pendingUploadFile = null;
@@ -2896,6 +3135,80 @@
             document.getElementById('modal').classList.remove('active');
         }
         
+        // Settings
+        function showSettings() { switchTab('settings'); }
+
+        function exportBackup() {
+            const backup = {
+                version: 1,
+                exportedAt: new Date().toISOString(),
+                library: localStorage.getItem('playmore_library'),
+                uploaded_games: localStorage.getItem('playmore_uploaded_games'),
+                reviews: localStorage.getItem('playmore_reviews'),
+                playtime: localStorage.getItem('playmore_playtime'),
+                activity: localStorage.getItem('playmore_activity'),
+                username: localStorage.getItem('playmore_username'),
+                wishlist: localStorage.getItem('playmore_wishlist')
+            };
+            const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'playmore-backup-' + new Date().toISOString().slice(0, 10) + '.json';
+            a.click();
+            URL.revokeObjectURL(a.href);
+            console.log('Backup exported');
+        }
+
+        function importBackup() {
+            const fileInput = document.getElementById('import-backup-file');
+            if (!fileInput.files.length) {
+                showModal('Error', 'Please select a backup JSON file.', () => closeModal());
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = () => {
+                try {
+                    const backup = JSON.parse(reader.result);
+                    if (!backup.version) throw new Error('Invalid backup');
+                    const keys = ['library', 'uploaded_games', 'reviews', 'playtime', 'activity', 'username', 'wishlist'];
+                    keys.forEach(k => {
+                        const lsKey = 'playmore_' + k;
+                        if (backup[k]) localStorage.setItem(lsKey, backup[k]);
+                    });
+                    // Reload state
+                    library = JSON.parse(localStorage.getItem('playmore_library') || '[]');
+                    loadUploadedGames();
+                    renderGamesList();
+                    renderLibrary();
+                    renderUploadedGames();
+                    showModal('Success', 'Backup restored! ' + (backup.exportedAt ? 'From: ' + new Date(backup.exportedAt).toLocaleDateString() : ''), () => closeModal());
+                } catch (e) {
+                    showModal('Error', 'Invalid backup file: ' + e.message, () => closeModal());
+                }
+            };
+            reader.readAsText(fileInput.files[0]);
+        }
+
+        function clearAllData() {
+            showModal('Clear All Data', 'This will delete ALL your data permanently. Are you sure?', () => {
+                ['playmore_library', 'playmore_uploaded_games', 'playmore_reviews', 'playmore_playtime',
+                 'playmore_activity', 'playmore_username', 'playmore_wishlist'].forEach(k => localStorage.removeItem(k));
+                if (db) {
+                    const tx = db.transaction('game_files', 'readwrite');
+                    tx.objectStore('game_files').clear();
+                }
+                // Reset runtime state
+                library = [];
+                // Remove uploaded games from gamesData
+                Object.keys(gamesData).forEach(id => { if (gamesData[id].isUploaded) delete gamesData[id]; });
+                renderGamesList();
+                renderLibrary();
+                renderUploadedGames();
+                closeModal();
+                showModal('Done', 'All data has been cleared.', () => closeModal());
+            });
+        }
+
         // Particles
         function initParticles() {
             const canvas = document.getElementById('particles-canvas');
