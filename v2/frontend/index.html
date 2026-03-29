@@ -9,90 +9,126 @@
         :root {
             --bg-primary: #1b2838;
             --bg-secondary: #171a21;
+            --bg-tertiary: #2a475e;
             --accent: #66c0f4;
+            --accent-hover: #417a9b;
             --text-primary: #c7d5e0;
             --text-secondary: #8f98a0;
             --success: #a1cd44;
+            --warning: #d2a960;
             --danger: #c15757;
-            --card-bg: rgba(0,0,0,0.3);
-            --border-color: rgba(255,255,255,0.1);
+            --price: #beee11;
+            --discount-bg: #4c6b22;
+            --card-bg: rgba(0, 0, 0, 0.3);
+            --border-color: rgba(255, 255, 255, 0.1);
         }
-        body { font-family: 'Segoe UI', sans-serif; background: var(--bg-primary); color: var(--text-primary); min-height: 100vh; }
-        .header { background: var(--bg-secondary); padding: 0 20px; height: 60px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border-color); position: sticky; top: 0; z-index: 1000; }
-        .logo { font-size: 24px; font-weight: bold; color: var(--accent); cursor: pointer; }
-        .nav-tabs { display: flex; gap: 5px; }
-        .nav-tab { padding: 10px 20px; background: transparent; border: none; color: var(--text-secondary); cursor: pointer; font-size: 14px; text-transform: uppercase; letter-spacing: 1px; border-radius: 3px; transition: all 0.3s; }
-        .nav-tab:hover { color: var(--text-primary); background: rgba(255,255,255,0.05); }
-        .nav-tab.active { color: var(--accent); background: rgba(102,192,244,0.1); }
-        .header-actions { display: flex; align-items: center; gap: 15px; }
-        .main-content { max-width: 1200px; margin: 0 auto; padding: 20px; }
-        .section { display: none; animation: fadeIn 0.3s ease; }
-        .section.active { display: block; }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: var(--bg-primary); color: var(--text-primary); min-height: 100vh; overflow-x: hidden; }
 
-        /* Auth forms */
-        .auth-form { max-width: 400px; margin: 60px auto; background: var(--bg-secondary); padding: 30px; border-radius: 8px; }
-        .auth-form h2 { margin-bottom: 20px; color: var(--accent); }
-        .form-group { margin-bottom: 15px; }
-        .form-label { display: block; font-size: 13px; color: var(--text-secondary); margin-bottom: 5px; text-transform: uppercase; }
-        .form-input { width: 100%; padding: 12px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: 3px; color: var(--text-primary); font-size: 14px; }
-        .btn-primary { padding: 12px; background: linear-gradient(135deg, var(--success), #7ba828); border: none; color: white; font-size: 14px; font-weight: bold; border-radius: 3px; cursor: pointer; width: 100%; transition: filter 0.3s; }
-        .btn-primary:hover { filter: brightness(1.1); }
-        .btn-secondary { padding: 10px 20px; background: rgba(255,255,255,0.1); border: 1px solid var(--border-color); color: var(--text-primary); font-size: 14px; border-radius: 3px; cursor: pointer; }
-        .auth-toggle { margin-top: 15px; text-align: center; color: var(--text-secondary); font-size: 13px; }
-        .auth-toggle a { color: var(--accent); cursor: pointer; text-decoration: none; }
-        .error-msg { color: var(--danger); font-size: 13px; margin-top: 10px; }
+        /* Particle Canvas */
+        #particles-canvas { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none; }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg-secondary); }
+        ::-webkit-scrollbar-thumb { background: var(--bg-tertiary); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+
+        /* Header */
+        .header { background: var(--bg-secondary); padding: 0 20px; height: 60px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border-color); position: sticky; top: 0; z-index: 1000; }
+        .logo { display: flex; align-items: center; gap: 10px; font-size: 24px; font-weight: bold; color: var(--accent); cursor: pointer; }
+        .logo svg { width: 32px; height: 32px; fill: var(--accent); }
+        .nav-tabs { display: flex; gap: 5px; }
+        .nav-tab { padding: 10px 20px; background: transparent; border: none; color: var(--text-secondary); cursor: pointer; font-size: 14px; text-transform: uppercase; letter-spacing: 1px; transition: all 0.3s ease; border-radius: 3px; }
+        .nav-tab:hover { color: var(--text-primary); background: rgba(255,255,255,0.05); }
+        .nav-tab.active { color: var(--accent); background: rgba(102, 192, 244, 0.1); }
+        .header-actions { display: flex; align-items: center; gap: 15px; }
         .user-info { color: var(--text-secondary); font-size: 14px; }
         .user-info strong { color: var(--accent); }
 
-        /* Game grid */
-        .game-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; }
-        .game-card { background: var(--card-bg); border-radius: 8px; overflow: hidden; cursor: pointer; transition: all 0.3s; border: 1px solid var(--border-color); }
-        .game-card:hover { transform: translateY(-5px); border-color: var(--accent); }
-        .game-card img { width: 100%; height: 150px; object-fit: cover; background: var(--bg-secondary); }
-        .game-card-info { padding: 15px; }
-        .game-card-title { font-size: 16px; margin-bottom: 5px; }
-        .game-card-meta { font-size: 12px; color: var(--text-secondary); }
-        .game-card-genre { display: inline-block; padding: 2px 8px; background: rgba(255,255,255,0.1); border-radius: 2px; font-size: 11px; margin-top: 8px; }
-
-        /* Game player */
-        .game-player { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--bg-secondary); z-index: 2000; display: flex; flex-direction: column; pointer-events: none; opacity: 0; transform: scale(0.95); transition: opacity 0.4s, transform 0.4s; }
-        .game-player.active { pointer-events: all; opacity: 1; transform: scale(1); }
-        .game-player-header { height: 50px; background: var(--bg-secondary); display: flex; align-items: center; justify-content: space-between; padding: 0 20px; border-bottom: 1px solid var(--border-color); }
-        .game-player iframe { flex: 1; border: none; width: 100%; }
-
-        /* Upload */
-        .upload-area { border: 2px dashed var(--border-color); border-radius: 8px; padding: 60px; text-align: center; background: rgba(0,0,0,0.2); cursor: pointer; transition: all 0.3s; margin-bottom: 20px; }
-        .upload-area.dragover { border-color: var(--accent); background: rgba(102,192,244,0.1); }
-        .upload-form { background: rgba(0,0,0,0.2); border-radius: 8px; padding: 30px; }
-        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-        .form-select { width: 100%; padding: 12px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: 3px; color: var(--text-primary); font-size: 14px; }
-        .form-textarea { width: 100%; min-height: 100px; padding: 12px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: 3px; color: var(--text-primary); font-size: 14px; resize: vertical; }
-
-        /* Status messages */
-        .status-msg { padding: 10px 15px; border-radius: 4px; margin-bottom: 15px; font-size: 13px; }
-        .status-success { background: rgba(161,205,68,0.15); color: var(--success); }
-        .status-error { background: rgba(193,87,87,0.15); color: var(--danger); }
-
+        /* Main */
+        .main-content { max-width: 1200px; margin: 0 auto; padding: 20px; }
+        .section { display: none; animation: fadeIn 0.3s ease; }
+        .section.active { display: block; }
         .section-title { font-size: 18px; color: var(--text-primary); margin-bottom: 20px; text-transform: uppercase; letter-spacing: 1px; }
         .empty-state { text-align: center; padding: 40px; color: var(--text-secondary); }
+        .empty-state a { color: var(--accent); cursor: pointer; text-decoration: none; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* Buttons */
+        .btn-primary { padding: 12px; background: linear-gradient(135deg, var(--success), #7ba828); border: none; color: white; font-size: 14px; font-weight: bold; border-radius: 3px; cursor: pointer; width: 100%; transition: all 0.3s ease; }
+        .btn-primary:hover { filter: brightness(1.1); transform: translateY(-1px); }
+        .btn-secondary { padding: 10px 20px; background: rgba(255,255,255,0.1); border: 1px solid var(--border-color); color: var(--text-primary); font-size: 14px; border-radius: 3px; cursor: pointer; transition: all 0.3s ease; }
+        .btn-secondary:hover { background: rgba(255,255,255,0.2); }
+        .btn-accent { padding: 10px 20px; background: var(--accent); border: none; color: white; font-size: 14px; font-weight: bold; border-radius: 3px; cursor: pointer; transition: all 0.3s; }
+        .btn-accent:hover { filter: brightness(1.1); }
+
+        /* Forms */
+        .auth-form { max-width: 400px; margin: 60px auto; background: var(--bg-secondary); padding: 30px; border-radius: 8px; border: 1px solid var(--border-color); }
+        .auth-form h2 { margin-bottom: 20px; color: var(--accent); }
+        .form-group { margin-bottom: 15px; }
+        .form-label { display: block; font-size: 13px; color: var(--text-secondary); margin-bottom: 5px; text-transform: uppercase; }
+        .form-input, .form-select, .form-textarea { width: 100%; padding: 12px 15px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: 3px; color: var(--text-primary); font-size: 14px; transition: border-color 0.3s; }
+        .form-input:focus, .form-select:focus, .form-textarea:focus { outline: none; border-color: var(--accent); }
+        .form-textarea { min-height: 100px; resize: vertical; }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .auth-toggle { margin-top: 15px; text-align: center; color: var(--text-secondary); font-size: 13px; }
+        .auth-toggle a { color: var(--accent); cursor: pointer; text-decoration: none; }
+        .error-msg { color: var(--danger); font-size: 13px; margin-top: 10px; }
+
+        /* Hero Banner */
+        .hero-banner { background: linear-gradient(135deg, var(--bg-tertiary) 0%, var(--bg-secondary) 100%); border-radius: 8px; padding: 40px; margin-bottom: 30px; position: relative; overflow: hidden; min-height: 280px; display: flex; align-items: center; }
+        .hero-content { max-width: 500px; z-index: 1; }
+        .hero-title { font-size: 36px; margin-bottom: 15px; color: var(--text-primary); }
+        .hero-subtitle { font-size: 16px; color: var(--text-secondary); margin-bottom: 25px; line-height: 1.6; }
+        .hero-btn { padding: 12px 30px; background: linear-gradient(135deg, var(--accent), var(--accent-hover)); border: none; color: white; font-size: 14px; font-weight: bold; border-radius: 3px; cursor: pointer; transition: all 0.3s ease; }
+        .hero-btn:hover { transform: translateY(-2px); box-shadow: 0 5px 20px rgba(102, 192, 244, 0.4); }
+
+        /* Search/Filter Bar */
+        .filter-bar { display: flex; gap: 10px; margin-bottom: 20px; align-items: center; }
+        .search-input { padding: 10px 15px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: 3px; color: var(--text-primary); width: 300px; font-size: 14px; transition: border-color 0.3s; }
+        .search-input:focus { outline: none; border-color: var(--accent); }
+        .filter-select { padding: 10px 15px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: 3px; color: var(--text-primary); font-size: 14px; }
+
+        /* Game Grid */
+        .game-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; }
+        .game-card { background: var(--card-bg); border-radius: 8px; overflow: hidden; cursor: pointer; transition: all 0.3s ease; border: 1px solid var(--border-color); position: relative; }
+        .game-card:hover { transform: translateY(-5px); border-color: var(--accent); box-shadow: 0 8px 25px rgba(102, 192, 244, 0.15); }
+        .game-card img { width: 100%; height: 160px; object-fit: cover; background: var(--bg-secondary); }
+        .game-card-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 160px; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.3s; }
+        .game-card:hover .game-card-overlay { opacity: 1; }
+        .game-card-play { padding: 10px 30px; background: var(--accent); border: none; color: white; font-weight: bold; border-radius: 3px; font-size: 14px; pointer-events: none; }
+        .game-card-info { padding: 15px; }
+        .game-card-title { font-size: 16px; margin-bottom: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .game-card-meta { font-size: 12px; color: var(--text-secondary); margin-bottom: 8px; }
+        .game-card-footer { display: flex; justify-content: space-between; align-items: center; }
+        .game-card-genre { display: inline-block; padding: 2px 8px; background: rgba(255,255,255,0.1); border-radius: 2px; font-size: 11px; color: var(--text-secondary); }
+        .game-card-price { font-size: 14px; font-weight: bold; color: var(--price); }
+        .webgpu-badge { padding: 2px 8px; background: rgba(161,205,68,0.2); color: var(--success); font-size: 11px; border-radius: 2px; }
 
         /* Game Detail */
         .game-detail { animation: fadeIn 0.3s ease; }
-        .game-header { position: relative; border-radius: 8px; overflow: hidden; margin-bottom: 20px; min-height: 200px; background: var(--bg-secondary); display: flex; align-items: flex-end; padding: 30px; }
+        .game-header { position: relative; border-radius: 8px; overflow: hidden; margin-bottom: 20px; min-height: 250px; background: var(--bg-secondary); display: flex; align-items: flex-end; padding: 30px; }
         .game-header-bg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0.3; }
         .game-header-content { position: relative; z-index: 1; }
-        .game-header h1 { font-size: 32px; margin-bottom: 8px; }
+        .game-header h1 { font-size: 32px; margin-bottom: 8px; text-shadow: 0 2px 10px rgba(0,0,0,0.5); }
         .game-header-meta { color: var(--text-secondary); font-size: 14px; }
         .game-header-meta a { color: var(--accent); text-decoration: none; cursor: pointer; }
         .game-layout { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; }
-        .game-media { background: #000; border-radius: 8px; overflow: hidden; height: 350px; margin-bottom: 20px; }
-        .game-media img { width: 100%; height: 100%; object-fit: cover; }
+        .game-media { background: #000; border-radius: 8px; overflow: hidden; margin-bottom: 20px; }
+        .game-media-main { height: 350px; }
+        .game-media-main img { width: 100%; height: 100%; object-fit: cover; }
+        .game-media-thumbs { display: flex; gap: 5px; padding: 10px; overflow-x: auto; background: rgba(0,0,0,0.3); }
+        .game-media-thumb { width: 120px; height: 68px; object-fit: cover; cursor: pointer; border: 2px solid transparent; opacity: 0.7; transition: all 0.2s; border-radius: 2px; }
+        .game-media-thumb:hover, .game-media-thumb.active { border-color: var(--accent); opacity: 1; }
         .game-section { background: rgba(0,0,0,0.2); border-radius: 8px; padding: 20px; margin-bottom: 20px; }
         .game-section h3 { font-size: 16px; text-transform: uppercase; margin-bottom: 15px; letter-spacing: 1px; }
         .game-sidebar { display: flex; flex-direction: column; gap: 15px; }
-        .purchase-box { background: linear-gradient(135deg, rgba(0,0,0,0.4), rgba(0,0,0,0.2)); border-radius: 8px; padding: 20px; }
-        .purchase-price { font-size: 24px; font-weight: bold; color: var(--success); margin-bottom: 15px; }
+        .purchase-box { background: linear-gradient(135deg, rgba(0,0,0,0.4), rgba(0,0,0,0.2)); border-radius: 8px; padding: 20px; border: 1px solid var(--border-color); }
+        .purchase-title { font-size: 18px; margin-bottom: 12px; }
+        .purchase-price-row { display: flex; align-items: center; gap: 10px; margin-bottom: 15px; }
+        .purchase-discount { background: var(--discount-bg); color: var(--price); padding: 3px 8px; font-size: 16px; font-weight: bold; }
+        .purchase-original { text-decoration: line-through; color: var(--text-secondary); font-size: 13px; }
+        .purchase-final { color: var(--price); font-size: 22px; font-weight: bold; }
         .purchase-buttons { display: flex; flex-direction: column; gap: 10px; }
         .info-box { background: rgba(0,0,0,0.2); border-radius: 8px; padding: 15px; }
         .info-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border-color); font-size: 13px; }
@@ -101,41 +137,111 @@
         .info-value { color: var(--text-primary); }
         .info-value a { color: var(--accent); text-decoration: none; cursor: pointer; }
         .tag-list { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 10px; }
-        .tag { padding: 3px 10px; background: rgba(255,255,255,0.1); border-radius: 2px; font-size: 11px; color: var(--text-secondary); }
+        .tag { padding: 3px 10px; background: rgba(255,255,255,0.1); border-radius: 2px; font-size: 11px; color: var(--text-secondary); cursor: pointer; transition: all 0.2s; }
+        .tag:hover { background: var(--accent); color: white; }
+
+        /* Reviews */
         .review-card { background: rgba(0,0,0,0.3); border-radius: 4px; padding: 15px; margin-bottom: 10px; }
         .review-header { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 13px; }
-        .review-stars { color: #d2a960; }
+        .review-stars { color: var(--warning); }
         .review-author { color: var(--accent); }
         .review-text { color: var(--text-secondary); font-size: 13px; line-height: 1.5; }
         .star-selector { display: flex; gap: 5px; font-size: 28px; margin-bottom: 15px; }
-        .star-select { cursor: pointer; color: rgba(255,255,255,0.2); transition: color 0.15s; }
-        .star-select.active, .star-select:hover { color: #d2a960; }
+        .star-select { cursor: pointer; color: rgba(255,255,255,0.2); transition: color 0.15s, transform 0.15s; }
+        .star-select.active, .star-select:hover { color: var(--warning); }
+        .star-select:hover { transform: scale(1.2); }
+
+        /* Community Stats */
+        .community-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+        .community-stat { text-align: center; padding: 15px; background: rgba(0,0,0,0.2); border-radius: 4px; }
+        .community-stat-value { font-size: 20px; font-weight: bold; color: var(--accent); }
+        .community-stat-label { font-size: 11px; color: var(--text-secondary); margin-top: 5px; }
 
         /* Developer Page */
         .dev-page { animation: fadeIn 0.3s ease; }
         .dev-banner { position: relative; height: 250px; border-radius: 8px; overflow: hidden; margin-bottom: 20px; background: var(--bg-secondary); }
         .dev-banner img { width: 100%; height: 100%; object-fit: cover; }
         .dev-profile { display: flex; gap: 20px; margin-bottom: 30px; align-items: center; }
-        .dev-avatar { width: 80px; height: 80px; border-radius: 50%; border: 3px solid var(--accent); }
+        .dev-avatar { width: 80px; height: 80px; border-radius: 50%; border: 3px solid var(--accent); object-fit: cover; }
         .dev-name { font-size: 24px; font-weight: bold; }
         .dev-meta { color: var(--text-secondary); font-size: 14px; margin-top: 4px; }
-        .dev-links { display: flex; gap: 10px; margin-top: 8px; }
-        .dev-link { padding: 4px 12px; background: rgba(255,255,255,0.1); border-radius: 3px; color: var(--accent); text-decoration: none; font-size: 12px; }
+        .dev-links { display: flex; gap: 10px; margin-top: 8px; flex-wrap: wrap; }
+        .dev-link { padding: 4px 12px; background: rgba(255,255,255,0.1); border-radius: 3px; color: var(--accent); text-decoration: none; font-size: 12px; transition: background 0.2s; }
+        .dev-link:hover { background: rgba(102,192,244,0.2); }
         .dev-about { background: rgba(0,0,0,0.2); border-radius: 8px; padding: 20px; margin-bottom: 20px; line-height: 1.6; color: var(--text-secondary); }
         .dev-editor { max-width: 700px; }
         .dev-editor .form-group { margin-bottom: 20px; }
         .color-preview { display: inline-block; width: 24px; height: 24px; border-radius: 4px; vertical-align: middle; margin-left: 8px; border: 1px solid var(--border-color); }
 
+        /* Profile Stats */
+        .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 20px; }
+        .stat-card { background: rgba(0,0,0,0.2); border-radius: 8px; padding: 20px; text-align: center; transition: transform 0.3s; }
+        .stat-card:hover { transform: translateY(-3px); }
+        .stat-value { font-size: 32px; font-weight: bold; color: var(--accent); }
+        .stat-label { font-size: 12px; color: var(--text-secondary); margin-top: 5px; }
+
+        /* Upload */
+        .upload-area { border: 2px dashed var(--border-color); border-radius: 8px; padding: 60px; text-align: center; background: rgba(0,0,0,0.2); cursor: pointer; transition: all 0.3s ease; margin-bottom: 20px; }
+        .upload-area:hover { border-color: var(--accent); background: rgba(102,192,244,0.05); }
+        .upload-area.dragover { border-color: var(--accent); background: rgba(102,192,244,0.1); }
+        .upload-form { background: rgba(0,0,0,0.2); border-radius: 8px; padding: 30px; }
+        .status-msg { padding: 12px 15px; border-radius: 4px; margin-bottom: 15px; font-size: 13px; }
+        .status-success { background: rgba(161,205,68,0.15); color: var(--success); border: 1px solid rgba(161,205,68,0.3); }
+        .status-error { background: rgba(193,87,87,0.15); color: var(--danger); border: 1px solid rgba(193,87,87,0.3); }
+
+        /* Game Player */
+        .game-player { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--bg-secondary); z-index: 2000; display: flex; flex-direction: column; pointer-events: none; opacity: 0; transform: scale(0.95); transition: opacity 0.4s ease, transform 0.4s ease; }
+        .game-player.active { pointer-events: all; opacity: 1; transform: scale(1); }
+        .game-player-header { height: 50px; background: var(--bg-secondary); display: flex; align-items: center; justify-content: space-between; padding: 0 20px; border-bottom: 1px solid var(--border-color); flex-shrink: 0; }
+        .game-player-title { font-size: 16px; }
+        .game-player iframe { flex: 1; border: none; width: 100%; }
+
+        /* Toast Notifications */
+        .toast-container { position: fixed; bottom: 20px; right: 20px; z-index: 3000; display: flex; flex-direction: column; gap: 10px; }
+        .toast { padding: 12px 20px; border-radius: 4px; font-size: 13px; animation: toastIn 0.3s ease; max-width: 350px; cursor: pointer; }
+        .toast-success { background: rgba(161,205,68,0.9); color: white; }
+        .toast-error { background: rgba(193,87,87,0.9); color: white; }
+        .toast-info { background: rgba(102,192,244,0.9); color: white; }
+        @keyframes toastIn { from { opacity: 0; transform: translateX(50px); } to { opacity: 1; transform: translateX(0); } }
+        @keyframes toastOut { from { opacity: 1; } to { opacity: 0; transform: translateX(50px); } }
+
+        /* Load More */
+        .load-more { text-align: center; padding: 20px; }
+        .load-more-btn { padding: 12px 40px; background: rgba(255,255,255,0.1); border: 1px solid var(--border-color); color: var(--text-primary); font-size: 14px; border-radius: 3px; cursor: pointer; transition: all 0.3s; }
+        .load-more-btn:hover { background: rgba(102,192,244,0.2); border-color: var(--accent); }
+
+        /* Section Card (reusable box) */
+        .card-box { background: rgba(0,0,0,0.2); border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+
+        /* Activity Item */
+        .activity-item { display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border-color); font-size: 13px; color: var(--text-secondary); }
+        .activity-item:last-child { border-bottom: none; }
+        .activity-icon { width: 32px; height: 32px; background: rgba(255,255,255,0.1); border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .activity-text strong { color: var(--text-primary); }
+
+        /* Responsive */
         @media (max-width: 1400px) {
             .game-layout { grid-template-columns: 1fr; }
             .game-grid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            .community-stats { grid-template-columns: repeat(2, 1fr); }
+            .hero-banner { min-height: 200px; padding: 25px; }
+            .hero-title { font-size: 28px; }
+            .nav-tab { padding: 8px 12px; font-size: 12px; }
+            .filter-bar { flex-wrap: wrap; }
+            .search-input { width: 100%; }
         }
     </style>
 </head>
 <body>
+    <canvas id="particles-canvas"></canvas>
+
     <header class="header">
-        <div class="logo" onclick="navigate('store')">PlayMore</div>
-        <nav class="nav-tabs" id="nav-tabs">
+        <div class="logo" onclick="navigate('store')">
+            <svg viewBox="0 0 24 24"><path d="M21 6H3c-1.1 0-2 .9-2 2v8c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-10 7H8v3H6v-3H3v-2h3V8h2v3h3v2zm4.5 2c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm4-3c-.83 0-1.5-.67-1.5-1.5S18.67 9 19.5 9s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/></svg>
+            PlayMore
+        </div>
+        <nav class="nav-tabs">
             <button class="nav-tab active" data-tab="store" onclick="navigate('store')">Store</button>
             <button class="nav-tab" data-tab="library" onclick="navigate('library')">Library</button>
             <button class="nav-tab" data-tab="upload" onclick="navigate('upload')">Upload</button>
@@ -145,24 +251,54 @@
     </header>
 
     <main class="main-content">
-        <!-- Auth Section -->
         <section id="auth-section" class="section">
             <div class="auth-form" id="auth-form"></div>
         </section>
 
-        <!-- Store Section -->
         <section id="store-section" class="section active">
-            <h2 class="section-title">Store</h2>
+            <div class="hero-banner">
+                <div class="hero-content">
+                    <h1 class="hero-title">Welcome to PlayMore</h1>
+                    <p class="hero-subtitle">Your self-hosted game publishing platform. Upload, play, and share HTML5 games with WebGPU support.</p>
+                    <button class="hero-btn" onclick="navigate('upload')">Upload a Game</button>
+                </div>
+            </div>
+            <div class="filter-bar">
+                <input type="text" class="search-input" id="store-search" placeholder="Search games..." oninput="loadStore()">
+                <select class="filter-select" id="store-genre" onchange="loadStore()">
+                    <option value="">All Genres</option>
+                    <option value="action">Action</option>
+                    <option value="adventure">Adventure</option>
+                    <option value="rpg">RPG</option>
+                    <option value="strategy">Strategy</option>
+                    <option value="puzzle">Puzzle</option>
+                    <option value="racing">Racing</option>
+                    <option value="horror">Horror</option>
+                    <option value="experimental">Experimental</option>
+                </select>
+                <select class="filter-select" id="store-sort" onchange="loadStore()">
+                    <option value="newest">Newest</option>
+                    <option value="popular">Most Popular</option>
+                    <option value="rating">Highest Rated</option>
+                    <option value="title">A-Z</option>
+                </select>
+            </div>
             <div class="game-grid" id="store-grid"></div>
+            <div class="load-more" id="store-load-more"></div>
         </section>
 
-        <!-- Library Section -->
         <section id="library-section" class="section">
-            <h2 class="section-title">My Library</h2>
+            <div class="filter-bar">
+                <h2 class="section-title" style="margin-bottom:0;flex:1;">My Library</h2>
+                <input type="text" class="search-input" id="lib-search" placeholder="Search library..." style="width:200px;" oninput="loadLibrary()">
+                <select class="filter-select" id="lib-sort" onchange="loadLibrary()">
+                    <option value="recent">Recent</option>
+                    <option value="title">A-Z</option>
+                </select>
+            </div>
             <div class="game-grid" id="library-grid"></div>
         </section>
 
-        <!-- Upload Section -->
         <section id="upload-section" class="section">
             <h2 class="section-title">Upload a Game</h2>
             <div class="upload-area" id="upload-area">
@@ -171,7 +307,7 @@
                 <p style="font-size:13px; color:var(--text-secondary); margin-top:8px;">HTML, JS, or ZIP files supported</p>
             </div>
             <div id="upload-status"></div>
-            <div class="upload-form" id="upload-form">
+            <div class="upload-form">
                 <div class="form-group">
                     <label class="form-label">Game Title</label>
                     <input type="text" class="form-input" id="upload-title" placeholder="Enter game title">
@@ -180,14 +316,10 @@
                     <div class="form-group">
                         <label class="form-label">Genre</label>
                         <select class="form-select" id="upload-genre">
-                            <option value="action">Action</option>
-                            <option value="adventure">Adventure</option>
-                            <option value="rpg">RPG</option>
-                            <option value="strategy">Strategy</option>
-                            <option value="puzzle">Puzzle</option>
-                            <option value="racing">Racing</option>
-                            <option value="horror">Horror</option>
-                            <option value="experimental">Experimental</option>
+                            <option value="action">Action</option><option value="adventure">Adventure</option>
+                            <option value="rpg">RPG</option><option value="strategy">Strategy</option>
+                            <option value="puzzle">Puzzle</option><option value="racing">Racing</option>
+                            <option value="horror">Horror</option><option value="experimental">Experimental</option>
                         </select>
                     </div>
                     <div class="form-group">
@@ -199,49 +331,41 @@
                     <label class="form-label">Description</label>
                     <textarea class="form-textarea" id="upload-description" placeholder="Describe your game..."></textarea>
                 </div>
-                <div class="form-group">
-                    <label class="form-label">Cover Image (optional)</label>
-                    <input type="file" class="form-input" id="upload-cover" accept="image/*" style="padding:8px;">
-                </div>
-                <div class="form-group">
-                    <input type="checkbox" id="upload-webgpu" style="accent-color:var(--accent);">
-                    <label for="upload-webgpu" style="font-size:13px; color:var(--text-secondary);">This game uses WebGPU</label>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Cover Image (optional)</label>
+                        <input type="file" class="form-input" id="upload-cover" accept="image/*" style="padding:8px;">
+                    </div>
+                    <div class="form-group" style="display:flex;align-items:flex-end;padding-bottom:15px;">
+                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--text-secondary);">
+                            <input type="checkbox" id="upload-webgpu" style="accent-color:var(--accent);width:16px;height:16px;">
+                            This game uses WebGPU
+                        </label>
+                    </div>
                 </div>
                 <button class="btn-primary" onclick="submitUpload()">Upload Game</button>
             </div>
         </section>
 
-        <!-- Game Detail Section -->
-        <section id="gamedetail-section" class="section">
-            <div id="game-detail-content"></div>
-        </section>
-
-        <!-- Developer Page Section -->
-        <section id="developer-section" class="section">
-            <div id="developer-content"></div>
-        </section>
-
-        <!-- Developer Editor Section -->
+        <section id="gamedetail-section" class="section"><div id="game-detail-content"></div></section>
+        <section id="developer-section" class="section"><div id="developer-content"></div></section>
         <section id="deveditor-section" class="section">
             <h2 class="section-title">Edit Developer Page</h2>
             <div id="deveditor-content" class="dev-editor"></div>
         </section>
-
-        <!-- Profile Section -->
-        <section id="profile-section" class="section">
-            <div id="profile-content"></div>
-        </section>
+        <section id="profile-section" class="section"><div id="profile-content"></div></section>
     </main>
 
-    <!-- Game Player Overlay -->
     <div class="game-player" id="game-player">
         <div class="game-player-header">
-            <span id="player-title">Playing Game</span>
-            <span id="session-timer" style="color:var(--text-secondary); font-family:monospace;">00:00:00</span>
+            <span class="game-player-title" id="player-title">Playing Game</span>
+            <span id="session-timer" style="color:var(--text-secondary); font-size:14px; font-family:monospace;">00:00:00</span>
             <button class="btn-secondary" onclick="closePlayer()">Close</button>
         </div>
         <iframe id="player-frame"></iframe>
     </div>
+
+    <div class="toast-container" id="toast-container"></div>
 
     <script>
         /* ============ State ============ */
@@ -250,29 +374,33 @@
         let pendingFile = null;
         let gameSessionStart = null;
         let sessionTimerInterval = null;
+        let storePage = 1;
+        const STORE_LIMIT = 12;
 
         /* ============ API Helper ============ */
         async function api(path, opts = {}) {
-            const res = await fetch('/api' + path, {
-                headers: { 'Content-Type': 'application/json', ...opts.headers },
-                credentials: 'same-origin',
-                ...opts,
-            });
+            const headers = opts.body && typeof opts.body === 'string' ? { 'Content-Type': 'application/json' } : {};
+            const res = await fetch('/api' + path, { headers: {...headers, ...opts.headers}, credentials: 'same-origin', ...opts });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || 'Request failed');
             return data;
         }
 
+        /* ============ Toast Notifications ============ */
+        function toast(msg, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const el = document.createElement('div');
+            el.className = 'toast toast-' + type;
+            el.textContent = msg;
+            el.onclick = () => el.remove();
+            container.appendChild(el);
+            setTimeout(() => { el.style.animation = 'toastOut 0.3s ease forwards'; setTimeout(() => el.remove(), 300); }, 3000);
+        }
+
         /* ============ Auth ============ */
         async function checkAuth() {
-            try {
-                const data = await api('/auth/me');
-                currentUser = data.user;
-                renderHeader();
-            } catch {
-                currentUser = null;
-                renderHeader();
-            }
+            try { const data = await api('/auth/me'); currentUser = data.user; } catch { currentUser = null; }
+            renderHeader();
         }
 
         function renderHeader() {
@@ -280,7 +408,7 @@
             if (currentUser) {
                 el.innerHTML = '<span class="user-info">Welcome, <strong>' + currentUser.username + '</strong></span> <button class="btn-secondary" onclick="logout()">Logout</button>';
             } else {
-                el.innerHTML = '<button class="btn-secondary" onclick="showAuth(\'login\')">Login</button> <button class="btn-primary" style="width:auto;padding:8px 20px;" onclick="showAuth(\'register\')">Register</button>';
+                el.innerHTML = '<button class="btn-secondary" onclick="showAuth(\'login\')">Login</button> <button class="btn-accent" onclick="showAuth(\'register\')">Register</button>';
             }
         }
 
@@ -296,45 +424,19 @@
 
         async function doLogin() {
             try {
-                const data = await api('/auth/login', {
-                    method: 'POST',
-                    body: JSON.stringify({
-                        email: document.getElementById('auth-email').value,
-                        password: document.getElementById('auth-password').value
-                    })
-                });
-                currentUser = data.user;
-                renderHeader();
-                navigate('store');
-            } catch (e) {
-                document.getElementById('auth-error').textContent = e.message;
-            }
+                const data = await api('/auth/login', { method: 'POST', body: JSON.stringify({ email: document.getElementById('auth-email').value, password: document.getElementById('auth-password').value }) });
+                currentUser = data.user; renderHeader(); navigate('store'); toast('Welcome back, ' + currentUser.username + '!', 'success');
+            } catch (e) { document.getElementById('auth-error').textContent = e.message; }
         }
 
         async function doRegister() {
             try {
-                const data = await api('/auth/register', {
-                    method: 'POST',
-                    body: JSON.stringify({
-                        username: document.getElementById('auth-username').value,
-                        email: document.getElementById('auth-email').value,
-                        password: document.getElementById('auth-password').value
-                    })
-                });
-                currentUser = data.user;
-                renderHeader();
-                navigate('store');
-            } catch (e) {
-                document.getElementById('auth-error').textContent = e.message;
-            }
+                const data = await api('/auth/register', { method: 'POST', body: JSON.stringify({ username: document.getElementById('auth-username').value, email: document.getElementById('auth-email').value, password: document.getElementById('auth-password').value }) });
+                currentUser = data.user; renderHeader(); navigate('store'); toast('Account created! Welcome to PlayMore.', 'success');
+            } catch (e) { document.getElementById('auth-error').textContent = e.message; }
         }
 
-        async function logout() {
-            await api('/auth/logout', { method: 'POST' });
-            currentUser = null;
-            renderHeader();
-            navigate('store');
-        }
+        async function logout() { await api('/auth/logout', { method: 'POST' }); currentUser = null; renderHeader(); navigate('store'); toast('Logged out.', 'info'); }
 
         /* ============ Navigation ============ */
         function navigate(tab) {
@@ -345,7 +447,7 @@
             if (section) section.classList.add('active');
             const navTab = document.querySelector('[data-tab="' + tab + '"]');
             if (navTab) navTab.classList.add('active');
-
+            window.scrollTo(0, 0);
             if (tab === 'store') loadStore();
             if (tab === 'library') loadLibrary();
             if (tab === 'profile') loadProfile();
@@ -354,49 +456,76 @@
 
         /* ============ Store ============ */
         async function loadStore() {
+            const search = document.getElementById('store-search')?.value || '';
+            const genre = document.getElementById('store-genre')?.value || '';
+            const sort = document.getElementById('store-sort')?.value || 'newest';
             try {
-                const data = await api('/games?limit=50');
+                const data = await api('/games?limit=' + STORE_LIMIT + '&page=1&search=' + encodeURIComponent(search) + '&genre=' + genre + '&sort=' + sort);
                 const grid = document.getElementById('store-grid');
                 if (!data.games || data.games.length === 0) {
-                    grid.innerHTML = '<div class="empty-state">No games yet. Be the first to <a style="color:var(--accent);cursor:pointer" onclick="navigate(\'upload\')">upload one</a>!</div>';
+                    grid.innerHTML = '<div class="empty-state">No games found. ' + (search || genre ? 'Try different filters.' : 'Be the first to <a onclick="navigate(\'upload\')">upload one</a>!') + '</div>';
+                    document.getElementById('store-load-more').innerHTML = '';
                     return;
                 }
+                storePage = 1;
                 grid.innerHTML = data.games.map(g => gameCardHTML(g)).join('');
-            } catch (e) {
-                console.error('Failed to load store:', e);
-            }
+                renderLoadMore(data.total, data.games.length, search, genre, sort);
+            } catch (e) { console.error('Failed to load store:', e); }
+        }
+
+        function renderLoadMore(total, shown, search, genre, sort) {
+            const el = document.getElementById('store-load-more');
+            if (shown < total) {
+                el.innerHTML = '<button class="load-more-btn" onclick="loadMoreGames()">Load More (' + shown + ' of ' + total + ')</button>';
+            } else { el.innerHTML = ''; }
+        }
+
+        async function loadMoreGames() {
+            storePage++;
+            const search = document.getElementById('store-search')?.value || '';
+            const genre = document.getElementById('store-genre')?.value || '';
+            const sort = document.getElementById('store-sort')?.value || 'newest';
+            try {
+                const data = await api('/games?limit=' + STORE_LIMIT + '&page=' + storePage + '&search=' + encodeURIComponent(search) + '&genre=' + genre + '&sort=' + sort);
+                if (data.games && data.games.length > 0) {
+                    document.getElementById('store-grid').innerHTML += data.games.map(g => gameCardHTML(g)).join('');
+                    const totalShown = document.getElementById('store-grid').children.length;
+                    renderLoadMore(data.total, totalShown, search, genre, sort);
+                }
+            } catch (e) { console.error('Failed to load more:', e); }
         }
 
         function gameCardHTML(g) {
-            const coverSrc = g.cover_path || 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="225"><rect fill="%231e1e2e" width="400" height="225"/><text x="200" y="120" text-anchor="middle" fill="%2366c0f4" font-size="20">' + g.title + '</text></svg>');
+            const coverSrc = g.cover_path || 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="225"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="%232a475e"/><stop offset="100%" stop-color="%23171a21"/></linearGradient></defs><rect fill="url(%23g)" width="400" height="225"/><text x="200" y="120" text-anchor="middle" fill="%2366c0f4" font-family="Segoe UI" font-size="22" font-weight="bold">' + g.title + '</text></svg>');
             const rating = g.avg_rating > 0 ? '★ ' + g.avg_rating.toFixed(1) : '';
+            const price = g.price === 0 ? 'Free' : '$' + g.price.toFixed(2);
             return '<div class="game-card" onclick="showGameDetail(\'' + g.id + '\')">' +
                 '<img src="' + coverSrc + '" alt="' + g.title + '">' +
+                '<div class="game-card-overlay"><span class="game-card-play">VIEW GAME</span></div>' +
                 '<div class="game-card-info">' +
                 '<div class="game-card-title">' + g.title + '</div>' +
                 '<div class="game-card-meta">by ' + (g.developer_name || 'Unknown') + (rating ? ' · ' + rating : '') + '</div>' +
+                '<div class="game-card-footer">' +
                 '<span class="game-card-genre">' + g.genre + '</span>' +
-                (g.is_webgpu ? ' <span class="game-card-genre" style="background:rgba(161,205,68,0.2);color:var(--success);">WebGPU</span>' : '') +
-                '</div></div>';
+                (g.is_webgpu ? '<span class="webgpu-badge">WebGPU</span>' : '') +
+                '<span class="game-card-price">' + price + '</span>' +
+                '</div></div></div>';
         }
 
         /* ============ Library ============ */
         async function loadLibrary() {
-            if (!currentUser) {
-                document.getElementById('library-grid').innerHTML = '<div class="empty-state">Please <a style="color:var(--accent);cursor:pointer" onclick="showAuth(\'login\')">login</a> to see your library.</div>';
-                return;
-            }
+            if (!currentUser) { document.getElementById('library-grid').innerHTML = '<div class="empty-state">Please <a onclick="showAuth(\'login\')">login</a> to see your library.</div>'; return; }
             try {
                 const data = await api('/library');
                 const grid = document.getElementById('library-grid');
-                if (!data.games || data.games.length === 0) {
-                    grid.innerHTML = '<div class="empty-state">Your library is empty. Browse the <a style="color:var(--accent);cursor:pointer" onclick="navigate(\'store\')">Store</a>!</div>';
-                    return;
-                }
-                grid.innerHTML = data.games.map(g => gameCardHTML(g)).join('');
-            } catch (e) {
-                console.error('Failed to load library:', e);
-            }
+                if (!data.games || data.games.length === 0) { grid.innerHTML = '<div class="empty-state">Your library is empty. Browse the <a onclick="navigate(\'store\')">Store</a>!</div>'; return; }
+                let games = data.games;
+                const search = document.getElementById('lib-search')?.value?.toLowerCase() || '';
+                if (search) games = games.filter(g => g.title.toLowerCase().includes(search));
+                const sort = document.getElementById('lib-sort')?.value || 'recent';
+                if (sort === 'title') games.sort((a, b) => a.title.localeCompare(b.title));
+                grid.innerHTML = games.map(g => gameCardHTML(g)).join('');
+            } catch (e) { console.error('Failed to load library:', e); }
         }
 
         /* ============ Upload ============ */
@@ -404,39 +533,23 @@
             const area = document.getElementById('upload-area');
             area.addEventListener('dragover', e => { e.preventDefault(); area.classList.add('dragover'); });
             area.addEventListener('dragleave', () => area.classList.remove('dragover'));
-            area.addEventListener('drop', e => {
-                e.preventDefault();
-                area.classList.remove('dragover');
-                handleUploadFile(e.dataTransfer.files);
-            });
-            area.addEventListener('click', () => {
-                const input = document.createElement('input');
-                input.type = 'file';
-                input.accept = '.html,.js,.zip';
-                input.onchange = e => handleUploadFile(e.target.files);
-                input.click();
-            });
+            area.addEventListener('drop', e => { e.preventDefault(); area.classList.remove('dragover'); handleUploadFile(e.dataTransfer.files); });
+            area.addEventListener('click', () => { const input = document.createElement('input'); input.type='file'; input.accept='.html,.js,.zip'; input.onchange=e=>handleUploadFile(e.target.files); input.click(); });
         }
 
         function handleUploadFile(files) {
-            const file = Array.from(files).find(f =>
-                f.name.endsWith('.html') || f.name.endsWith('.htm') || f.name.endsWith('.js') || f.name.endsWith('.zip')
-            );
-            if (!file) {
-                showStatus('Please select an HTML, JS, or ZIP file.', 'error');
-                return;
-            }
+            const file = Array.from(files).find(f => f.name.endsWith('.html') || f.name.endsWith('.htm') || f.name.endsWith('.js') || f.name.endsWith('.zip'));
+            if (!file) { showStatus('Please select an HTML, JS, or ZIP file.', 'error'); return; }
             pendingFile = file;
-            showStatus('Ready: ' + file.name + ' (' + (file.size / 1024).toFixed(1) + ' KB)', 'success');
+            const size = file.size > 1024*1024 ? (file.size/1024/1024).toFixed(1)+' MB' : (file.size/1024).toFixed(1)+' KB';
+            showStatus('Ready: ' + file.name + ' (' + size + ')' + (file.name.endsWith('.zip') ? ' [ZIP]' : ''), 'success');
         }
 
         async function submitUpload() {
             if (!currentUser) { showAuth('login'); return; }
             if (!pendingFile) { showStatus('Please select a game file first.', 'error'); return; }
-
             const title = document.getElementById('upload-title').value.trim();
             if (!title) { showStatus('Please enter a game title.', 'error'); return; }
-
             const formData = new FormData();
             formData.append('game_file', pendingFile);
             formData.append('title', title);
@@ -444,10 +557,8 @@
             formData.append('description', document.getElementById('upload-description').value);
             formData.append('tags', document.getElementById('upload-tags').value);
             formData.append('is_webgpu', document.getElementById('upload-webgpu').checked ? 'true' : 'false');
-
             const coverFile = document.getElementById('upload-cover').files[0];
             if (coverFile) formData.append('cover', coverFile);
-
             try {
                 showStatus('Uploading...', 'success');
                 const res = await fetch('/api/games', { method: 'POST', body: formData, credentials: 'same-origin' });
@@ -457,172 +568,91 @@
                 document.getElementById('upload-title').value = '';
                 document.getElementById('upload-description').value = '';
                 document.getElementById('upload-tags').value = '';
-                // Check if user has a publisher page
-                let hasDevPage = false;
-                try { const d = await api('/developer/' + currentUser.username); hasDevPage = !!d.page; } catch {}
-                if (!hasDevPage) {
-                    showStatus('"' + title + '" uploaded! <a style="color:var(--accent);cursor:pointer;text-decoration:underline;" onclick="navigate(\'deveditor\')">Create your Publisher Page</a> to showcase your games.', 'success');
-                } else {
-                    showStatus('"' + title + '" uploaded successfully!', 'success');
-                }
-            } catch (e) {
-                showStatus('Upload failed: ' + e.message, 'error');
-            }
+                showStatus('', '');
+                toast('"' + title + '" uploaded successfully!', 'success');
+            } catch (e) { showStatus('Upload failed: ' + e.message, 'error'); }
         }
 
         function showStatus(msg, type) {
-            document.getElementById('upload-status').innerHTML = '<div class="status-msg status-' + type + '">' + msg + '</div>';
+            document.getElementById('upload-status').innerHTML = msg ? '<div class="status-msg status-' + type + '">' + msg + '</div>' : '';
         }
 
         /* ============ Profile ============ */
         let profileEditMode = false;
 
         async function loadProfile() {
-            if (!currentUser) {
-                document.getElementById('profile-content').innerHTML = '<div class="empty-state">Please <a style="color:var(--accent);cursor:pointer" onclick="showAuth(\'login\')">login</a> to see your profile.</div>';
-                return;
-            }
+            if (!currentUser) { document.getElementById('profile-content').innerHTML = '<div class="empty-state">Please <a onclick="showAuth(\'login\')">login</a> to see your profile.</div>'; return; }
             try {
                 const data = await api('/profile/' + currentUser.username);
-                const u = data.user;
-                const s = data.stats;
+                const u = data.user; const s = data.stats;
                 const themeColor = u.theme_color || 'var(--accent)';
-
-                if (profileEditMode) {
-                    renderProfileEditor(u);
-                    return;
-                }
+                if (profileEditMode) { renderProfileEditor(u); return; }
 
                 let html = '';
-                // Banner
-                if (u.banner_url) {
-                    html += '<div class="dev-banner"><img src="' + u.banner_url + '"></div>';
-                } else {
-                    html += '<div class="dev-banner" style="background:linear-gradient(135deg, var(--bg-secondary), ' + themeColor + '30);"></div>';
-                }
+                html += '<div class="dev-banner" style="' + (u.banner_url ? '' : 'background:linear-gradient(135deg, var(--bg-secondary), ' + themeColor + '30);') + '">';
+                if (u.banner_url) html += '<img src="' + u.banner_url + '">';
+                html += '</div>';
 
-                // Profile header with edit button
                 html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">';
                 html += '<div class="dev-profile" style="margin-bottom:0;">';
                 html += '<img src="' + (u.avatar_url || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + u.username) + '" class="dev-avatar">';
                 html += '<div><div class="dev-name">' + u.username + '</div>';
                 html += '<div class="dev-meta">' + (u.bio || 'No bio yet.') + '</div>';
-                if (u.links && u.links.length > 0) {
-                    html += '<div class="dev-links">';
-                    u.links.forEach(l => html += '<a href="' + l.url + '" target="_blank" class="dev-link">' + l.label + '</a>');
-                    html += '</div>';
-                }
+                if (u.links && u.links.length > 0) { html += '<div class="dev-links">'; u.links.forEach(l => html += '<a href="' + l.url + '" target="_blank" class="dev-link">' + l.label + '</a>'); html += '</div>'; }
                 html += '</div></div>';
-                html += '<button class="btn-secondary" onclick="profileEditMode=true;loadProfile();">Edit Profile</button>';
-                html += '</div>';
+                html += '<button class="btn-secondary" onclick="profileEditMode=true;loadProfile();">Edit Profile</button></div>';
 
-                // Stats
-                html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:15px;margin-bottom:20px;">';
+                html += '<div class="stats-grid">';
                 html += statCard(s.games_owned, 'Games') + statCard(s.hours_played.toFixed(1), 'Hours');
                 html += statCard(s.review_count, 'Reviews') + statCard(s.games_uploaded, 'Uploads') + '</div>';
 
-                // Developer page link - always visible
-                html += '<div style="background:rgba(0,0,0,0.2);border-radius:8px;padding:20px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;">';
+                html += '<div class="card-box" style="display:flex;align-items:center;justify-content:space-between;">';
                 html += '<div><h3 style="font-size:16px;margin-bottom:4px;">Developer Page</h3>';
                 html += '<p style="color:var(--text-secondary);font-size:13px;">Your public storefront — showcase your games, bio, and links</p></div>';
                 html += '<div style="display:flex;gap:10px;">';
                 html += '<button class="btn-secondary" onclick="showDeveloper(\'' + u.username + '\')">View Page</button>';
-                html += '<button class="btn-primary" style="width:auto;padding:10px 25px;" onclick="navigate(\'deveditor\')">Edit Page</button>';
-                html += '</div></div>';
+                html += '<button class="btn-accent" onclick="navigate(\'deveditor\')">Edit Page</button></div></div>';
 
-                // Activity
                 html += '<h2 class="section-title">Recent Activity</h2>';
-                html += (data.activity.length > 0 ? data.activity.map(a =>
-                    '<div style="padding:10px 0;border-bottom:1px solid var(--border-color);color:var(--text-secondary);font-size:13px;">' +
-                    actIcon(a.type) + ' ' + actVerb(a.type) + ' <strong style="color:var(--text-primary);">' + a.game_title + '</strong> · ' + a.created_at +
-                    '</div>'
-                ).join('') : '<div class="empty-state">No activity yet.</div>');
+                if (data.activity.length > 0) {
+                    html += '<div class="card-box">';
+                    data.activity.forEach(a => { html += '<div class="activity-item"><div class="activity-icon">' + actIcon(a.type) + '</div><div class="activity-text">' + actVerb(a.type) + ' <strong>' + a.game_title + '</strong><div style="font-size:11px;color:var(--text-secondary);margin-top:2px;">' + a.created_at + '</div></div></div>'; });
+                    html += '</div>';
+                } else { html += '<div class="empty-state">No activity yet.</div>'; }
 
                 document.getElementById('profile-content').innerHTML = html;
-            } catch (e) {
-                console.error('Failed to load profile:', e);
-            }
+            } catch (e) { console.error('Failed to load profile:', e); }
         }
 
         function renderProfileEditor(u) {
             let html = '<div class="dev-editor">';
-            html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">';
-            html += '<h2 class="section-title" style="margin-bottom:0;">Edit Profile</h2>';
+            html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;"><h2 class="section-title" style="margin-bottom:0;">Edit Profile</h2>';
             html += '<button class="btn-secondary" onclick="profileEditMode=false;loadProfile();">Back to Profile</button></div>';
-
-            html += '<div class="form-group"><label class="form-label">Username</label>';
-            html += '<input type="text" class="form-input" id="edit-username" value="' + u.username + '"></div>';
-
-            html += '<div class="form-group"><label class="form-label">Bio</label>';
-            html += '<textarea class="form-textarea" id="edit-bio">' + (u.bio || '') + '</textarea></div>';
-
-            html += '<div class="form-group"><label class="form-label">Avatar URL</label>';
-            html += '<input type="text" class="form-input" id="edit-avatar" value="' + (u.avatar_url || '') + '" placeholder="https://... or leave empty for auto-generated"></div>';
-
-            html += '<div class="form-row"><div class="form-group"><label class="form-label">Banner Image URL</label>';
-            html += '<input type="text" class="form-input" id="edit-banner" value="' + (u.banner_url || '') + '" placeholder="https://..."></div>';
-
-            html += '<div class="form-group"><label class="form-label">Theme Color <span class="color-preview" id="edit-color-preview" style="background:' + (u.theme_color || '#66c0f4') + '"></span></label>';
-            html += '<input type="color" class="form-input" id="edit-theme-color" value="' + (u.theme_color || '#66c0f4') + '" style="height:40px;padding:4px;" oninput="document.getElementById(\'edit-color-preview\').style.background=this.value"></div></div>';
-
-            // Links
+            html += '<div class="form-group"><label class="form-label">Username</label><input type="text" class="form-input" id="edit-username" value="' + u.username + '"></div>';
+            html += '<div class="form-group"><label class="form-label">Bio</label><textarea class="form-textarea" id="edit-bio">' + (u.bio || '') + '</textarea></div>';
+            html += '<div class="form-group"><label class="form-label">Avatar URL</label><input type="text" class="form-input" id="edit-avatar" value="' + (u.avatar_url || '') + '" placeholder="https://... or leave empty for auto-generated"></div>';
+            html += '<div class="form-row"><div class="form-group"><label class="form-label">Banner Image URL</label><input type="text" class="form-input" id="edit-banner" value="' + (u.banner_url || '') + '" placeholder="https://..."></div>';
+            html += '<div class="form-group"><label class="form-label">Theme Color <span class="color-preview" id="edit-color-preview" style="background:' + (u.theme_color || '#66c0f4') + '"></span></label><input type="color" class="form-input" id="edit-theme-color" value="' + (u.theme_color || '#66c0f4') + '" style="height:40px;padding:4px;" oninput="document.getElementById(\'edit-color-preview\').style.background=this.value"></div></div>';
             html += '<div class="form-group"><label class="form-label">Links</label><div id="edit-links-list">';
-            const links = u.links || [];
-            links.forEach((l, i) => {
-                html += '<div class="form-row" style="margin-bottom:8px;"><div><input type="text" class="form-input" placeholder="Label" value="' + l.label + '" data-plink-label="' + i + '"></div>';
-                html += '<div><input type="text" class="form-input" placeholder="URL" value="' + l.url + '" data-plink-url="' + i + '"></div></div>';
-            });
+            (u.links || []).forEach((l, i) => { html += '<div class="form-row" style="margin-bottom:8px;"><div><input type="text" class="form-input" placeholder="Label" value="' + l.label + '" data-plink-label="' + i + '"></div><div><input type="text" class="form-input" placeholder="URL" value="' + l.url + '" data-plink-url="' + i + '"></div></div>'; });
             html += '</div><button class="btn-secondary" style="margin-top:8px;" onclick="addProfileLink()">+ Add Link</button></div>';
-
-            html += '<button class="btn-primary" onclick="saveProfile()">Save Profile</button>';
-            html += '</div>';
-
+            html += '<button class="btn-primary" onclick="saveProfile()">Save Profile</button></div>';
             document.getElementById('profile-content').innerHTML = html;
         }
 
-        function addProfileLink() {
-            const list = document.getElementById('edit-links-list');
-            const idx = list.children.length;
-            const div = document.createElement('div');
-            div.className = 'form-row';
-            div.style.marginBottom = '8px';
-            div.innerHTML = '<div><input type="text" class="form-input" placeholder="Label" data-plink-label="' + idx + '"></div><div><input type="text" class="form-input" placeholder="URL" data-plink-url="' + idx + '"></div>';
-            list.appendChild(div);
-        }
+        function addProfileLink() { const l=document.getElementById('edit-links-list'); const i=l.children.length; const d=document.createElement('div'); d.className='form-row'; d.style.marginBottom='8px'; d.innerHTML='<div><input type="text" class="form-input" placeholder="Label" data-plink-label="'+i+'"></div><div><input type="text" class="form-input" placeholder="URL" data-plink-url="'+i+'"></div>'; l.appendChild(d); }
 
         async function saveProfile() {
-            const links = [];
-            document.querySelectorAll('[data-plink-label]').forEach(el => {
-                const idx = el.dataset.plinkLabel;
-                const urlEl = document.querySelector('[data-plink-url="' + idx + '"]');
-                if (el.value && urlEl?.value) links.push({ label: el.value, url: urlEl.value });
-            });
-
+            const links = []; document.querySelectorAll('[data-plink-label]').forEach(el => { const u=document.querySelector('[data-plink-url="'+el.dataset.plinkLabel+'"]'); if(el.value&&u?.value) links.push({label:el.value,url:u.value}); });
             try {
-                await api('/profile', {
-                    method: 'PUT',
-                    body: JSON.stringify({
-                        username: document.getElementById('edit-username').value,
-                        bio: document.getElementById('edit-bio').value,
-                        avatar_url: document.getElementById('edit-avatar').value,
-                        banner_url: document.getElementById('edit-banner').value,
-                        theme_color: document.getElementById('edit-theme-color').value,
-                        links
-                    })
-                });
-                profileEditMode = false;
-                await checkAuth(); // refresh currentUser
-                loadProfile();
-            } catch (e) {
-                alert('Failed to save: ' + e.message);
-            }
+                await api('/profile', { method:'PUT', body:JSON.stringify({ username:document.getElementById('edit-username').value, bio:document.getElementById('edit-bio').value, avatar_url:document.getElementById('edit-avatar').value, banner_url:document.getElementById('edit-banner').value, theme_color:document.getElementById('edit-theme-color').value, links }) });
+                profileEditMode = false; await checkAuth(); loadProfile(); toast('Profile saved!', 'success');
+            } catch (e) { toast('Failed to save: ' + e.message, 'error'); }
         }
 
-        function statCard(val, label) {
-            return '<div style="background:rgba(0,0,0,0.2);border-radius:8px;padding:20px;text-align:center;"><div style="font-size:32px;font-weight:bold;color:var(--accent);">' + val + '</div><div style="font-size:12px;color:var(--text-secondary);margin-top:5px;">' + label + '</div></div>';
-        }
-        function actIcon(t) { return { played:'🎮', library_add:'📚', review:'✍️', upload:'📤' }[t] || '🎯'; }
-        function actVerb(t) { return { played:'Played', library_add:'Added', review:'Reviewed', upload:'Uploaded' }[t] || t; }
+        function statCard(v, l) { return '<div class="stat-card"><div class="stat-value">' + v + '</div><div class="stat-label">' + l + '</div></div>'; }
+        function actIcon(t) { return {played:'🎮',library_add:'📚',review:'✍️',upload:'📤'}[t]||'🎯'; }
+        function actVerb(t) { return {played:'Played',library_add:'Added to library',review:'Reviewed',upload:'Uploaded'}[t]||t; }
 
         /* ============ Game Detail ============ */
         let currentGameData = null;
@@ -631,79 +661,55 @@
         async function showGameDetail(gameId) {
             try {
                 const data = await api('/games/' + gameId);
-                const game = data.game;
-                currentGameData = game;
+                const game = data.game; currentGameData = game;
                 const reviews = await api('/games/' + gameId + '/reviews');
-
                 const coverSrc = game.cover_path || '';
-                const themeColor = game.theme_color || 'var(--accent)';
                 const avgRating = game.avg_rating > 0 ? '★ ' + game.avg_rating.toFixed(1) + ' (' + game.review_count + ' reviews)' : 'No reviews yet';
 
                 let html = '<div class="game-detail">';
-                // Header
-                html += '<div class="game-header" style="' + (game.header_image ? 'background-image:url(' + game.header_image + ');background-size:cover;' : '') + '">';
+                html += '<div class="game-header">';
                 if (coverSrc) html += '<img src="' + coverSrc + '" class="game-header-bg">';
                 html += '<div class="game-header-content"><h1>' + game.title + '</h1>';
-                html += '<div class="game-header-meta">by <a onclick="showDeveloper(\'' + game.developer_name + '\')">' + game.developer_name + '</a> · ' + game.genre + ' · ' + avgRating + '</div>';
-                html += '</div></div>';
+                html += '<div class="game-header-meta">by <a onclick="showDeveloper(\'' + game.developer_name + '\')">' + game.developer_name + '</a> · ' + game.genre + ' · ' + avgRating + '</div></div></div>';
 
-                // Layout
-                html += '<div class="game-layout"><div class="game-main">';
+                html += '<div class="game-layout"><div>';
 
-                // Media
-                if (game.screenshots && game.screenshots.length > 0) {
-                    html += '<div class="game-media"><img src="' + game.screenshots[0] + '"></div>';
-                } else if (coverSrc) {
-                    html += '<div class="game-media"><img src="' + coverSrc + '"></div>';
+                // Media with thumbnails
+                if ((game.screenshots && game.screenshots.length > 0) || coverSrc) {
+                    const mainImg = (game.screenshots && game.screenshots.length > 0) ? game.screenshots[0] : coverSrc;
+                    html += '<div class="game-media"><div class="game-media-main" id="media-main"><img src="' + mainImg + '" id="media-main-img"></div>';
+                    if (game.screenshots && game.screenshots.length > 1) {
+                        html += '<div class="game-media-thumbs">';
+                        game.screenshots.forEach((s, i) => html += '<img src="' + s + '" class="game-media-thumb' + (i===0?' active':'') + '" onclick="setMediaImg(\'' + s + '\',this)">');
+                        html += '</div>';
+                    }
+                    html += '</div>';
                 }
 
-                // About
-                html += '<div class="game-section"><h3>About This Game</h3>';
-                html += '<p style="color:var(--text-secondary);line-height:1.6;">' + (game.custom_about || game.description || 'No description.') + '</p>';
-                if (game.features && game.features.length > 0) {
-                    html += '<ul style="margin-top:15px;color:var(--text-secondary);padding-left:20px;">';
-                    game.features.forEach(f => html += '<li>' + f + '</li>');
-                    html += '</ul>';
-                }
+                html += '<div class="game-section"><h3>About This Game</h3><p style="color:var(--text-secondary);line-height:1.6;">' + (game.custom_about || game.description || 'No description.') + '</p>';
+                if (game.features && game.features.length > 0) { html += '<ul style="margin-top:15px;color:var(--text-secondary);padding-left:20px;">'; game.features.forEach(f => html += '<li style="margin-bottom:5px;">' + f + '</li>'); html += '</ul>'; }
                 html += '</div>';
-
-                // System Requirements
-                if (game.sys_req_min || game.sys_req_rec) {
-                    html += '<div class="game-section"><h3>System Requirements</h3>';
-                    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">';
-                    html += '<div><h4 style="font-size:14px;margin-bottom:10px;">Minimum</h4><p style="color:var(--text-secondary);font-size:13px;white-space:pre-line;">' + (game.sys_req_min || 'Any modern browser') + '</p></div>';
-                    html += '<div><h4 style="font-size:14px;margin-bottom:10px;">Recommended</h4><p style="color:var(--text-secondary);font-size:13px;white-space:pre-line;">' + (game.sys_req_rec || 'Chrome 110+ / Firefox 115+') + '</p></div>';
-                    html += '</div></div>';
-                }
 
                 // Reviews
-                html += '<div class="game-section"><h3>Reviews</h3>';
+                html += '<div class="game-section"><h3>Customer Reviews</h3>';
                 if (currentUser) {
-                    html += '<div style="margin-bottom:20px;">';
-                    html += '<div class="star-selector" id="star-selector">';
-                    for (let i = 1; i <= 5; i++) html += '<span class="star-select" data-r="' + i + '" onclick="selectStar(' + i + ')">☆</span>';
-                    html += '</div>';
-                    html += '<textarea class="form-textarea" id="review-text" placeholder="Share your thoughts..." style="margin-bottom:10px;"></textarea>';
-                    html += '<button class="btn-primary" style="width:auto;padding:10px 30px;" onclick="submitGameReview()">Submit Review</button>';
-                    html += '</div>';
+                    html += '<div style="margin-bottom:20px;padding:15px;background:rgba(0,0,0,0.2);border-radius:4px;">';
+                    html += '<div class="star-selector" id="star-selector">'; for (let i=1;i<=5;i++) html += '<span class="star-select" onclick="selectStar('+i+')">☆</span>'; html += '</div>';
+                    html += '<textarea class="form-textarea" id="review-text" placeholder="Share your thoughts..." style="margin-bottom:10px;min-height:80px;"></textarea>';
+                    html += '<button class="btn-accent" onclick="submitGameReview()">Submit Review</button></div>';
                 }
                 if (reviews.reviews && reviews.reviews.length > 0) {
-                    reviews.reviews.forEach(r => {
-                        html += '<div class="review-card"><div class="review-header"><span class="review-author">' + r.username + '</span><span class="review-stars">' + '★'.repeat(r.rating) + '☆'.repeat(5 - r.rating) + '</span></div>';
-                        html += '<p class="review-text">' + r.text + '</p></div>';
-                    });
-                } else if (!currentUser) {
-                    html += '<p style="color:var(--text-secondary);">No reviews yet. <a style="color:var(--accent);cursor:pointer;" onclick="showAuth(\'login\')">Login</a> to be the first!</p>';
-                }
+                    reviews.reviews.forEach(r => { html += '<div class="review-card"><div class="review-header"><span class="review-author">' + r.username + '</span><span class="review-stars">' + '★'.repeat(r.rating) + '☆'.repeat(5-r.rating) + '</span></div><p class="review-text">' + r.text + '</p></div>'; });
+                } else if (!currentUser) { html += '<p style="color:var(--text-secondary);">No reviews yet. <a style="color:var(--accent);cursor:pointer;" onclick="showAuth(\'login\')">Login</a> to be the first!</p>'; }
                 html += '</div>';
 
-                html += '</div>'; // game-main
+                html += '</div><div class="game-sidebar">';
 
-                // Sidebar
-                html += '<div class="game-sidebar">';
                 // Purchase box
-                html += '<div class="purchase-box">';
-                html += '<div class="purchase-price">' + (game.price === 0 ? 'Free to Play' : '$' + game.price.toFixed(2)) + '</div>';
+                html += '<div class="purchase-box"><div class="purchase-title">' + game.title + '</div>';
+                html += '<div class="purchase-price-row">';
+                if (game.discount > 0) { html += '<span class="purchase-discount">-' + game.discount + '%</span><span class="purchase-original">$' + game.price.toFixed(2) + '</span>'; }
+                html += '<span class="purchase-final">' + (game.price === 0 ? 'Free to Play' : '$' + (game.price * (1 - game.discount/100)).toFixed(2)) + '</span></div>';
                 html += '<div class="purchase-buttons">';
                 html += '<button class="btn-primary" onclick="playGame(\'' + game.id + '\',\'' + game.entry_file + '\')">Play Now</button>';
                 if (currentUser) {
@@ -716,200 +722,99 @@
                 html += '<div class="info-box">';
                 html += '<div class="info-row"><span class="info-label">Developer</span><span class="info-value"><a onclick="showDeveloper(\'' + game.developer_name + '\')">' + game.developer_name + '</a></span></div>';
                 html += '<div class="info-row"><span class="info-label">Genre</span><span class="info-value">' + game.genre + '</span></div>';
-                html += '<div class="info-row"><span class="info-label">Released</span><span class="info-value">' + game.created_at + '</span></div>';
-                if (game.is_webgpu) html += '<div class="info-row"><span class="info-label">Graphics</span><span class="info-value" style="color:var(--success);">WebGPU</span></div>';
+                html += '<div class="info-row"><span class="info-label">Released</span><span class="info-value">' + (game.created_at || 'Unknown') + '</span></div>';
+                if (game.is_webgpu) html += '<div class="info-row"><span class="info-label">Graphics</span><span class="info-value" style="color:var(--success);">WebGPU Enabled</span></div>';
                 html += '</div>';
 
-                // Tags
-                if (game.tags && game.tags.length > 0) {
-                    html += '<div class="tag-list">';
-                    game.tags.forEach(t => html += '<span class="tag">' + t + '</span>');
-                    html += '</div>';
-                }
+                if (game.tags && game.tags.length > 0) { html += '<div class="tag-list">'; game.tags.forEach(t => html += '<span class="tag">' + t + '</span>'); html += '</div>'; }
 
-                html += '</div></div></div>'; // sidebar, layout, detail
-
+                html += '</div></div></div>';
                 document.getElementById('game-detail-content').innerHTML = html;
                 selectedRating = 0;
                 navigate('gamedetail');
-            } catch (e) {
-                console.error('Failed to load game:', e);
-            }
+            } catch (e) { console.error('Failed to load game:', e); }
         }
 
-        function selectStar(n) {
-            selectedRating = n;
-            document.querySelectorAll('#star-selector .star-select').forEach((s, i) => {
-                s.classList.toggle('active', i < n);
-                s.textContent = i < n ? '★' : '☆';
-            });
+        function setMediaImg(src, el) {
+            document.getElementById('media-main-img').src = src;
+            document.querySelectorAll('.game-media-thumb').forEach(t => t.classList.remove('active'));
+            el.classList.add('active');
         }
+
+        function selectStar(n) { selectedRating=n; document.querySelectorAll('#star-selector .star-select').forEach((s,i) => { s.classList.toggle('active',i<n); s.textContent=i<n?'★':'☆'; }); }
 
         async function submitGameReview() {
-            if (!currentGameData || selectedRating === 0) return;
+            if (!currentGameData || selectedRating === 0) { toast('Please select a rating.', 'error'); return; }
             const text = document.getElementById('review-text').value.trim();
-            if (!text) return;
-            try {
-                await api('/games/' + currentGameData.id + '/reviews', {
-                    method: 'POST',
-                    body: JSON.stringify({ rating: selectedRating, text })
-                });
-                showGameDetail(currentGameData.id);
-            } catch (e) {
-                alert(e.message);
-            }
+            if (!text) { toast('Please write a review.', 'error'); return; }
+            try { await api('/games/' + currentGameData.id + '/reviews', { method:'POST', body:JSON.stringify({rating:selectedRating,text}) }); toast('Review submitted!', 'success'); showGameDetail(currentGameData.id); } catch (e) { toast(e.message, 'error'); }
         }
 
-        async function addToLib(gameId) {
-            try { await api('/library/' + gameId, { method: 'POST' }); alert('Added to library!'); } catch (e) { alert(e.message); }
-        }
-        async function addToWish(gameId) {
-            try { await api('/wishlist/' + gameId, { method: 'POST' }); alert('Added to wishlist!'); } catch (e) { alert(e.message); }
-        }
+        async function addToLib(id) { try { await api('/library/'+id, {method:'POST'}); toast('Added to library!', 'success'); } catch (e) { toast(e.message, 'error'); } }
+        async function addToWish(id) { try { await api('/wishlist/'+id, {method:'POST'}); toast('Added to wishlist!', 'success'); } catch (e) { toast(e.message, 'error'); } }
 
         /* ============ Developer Page ============ */
         async function showDeveloper(username) {
             try {
                 const data = await api('/developer/' + username);
-                const u = data.user;
-                const page = data.page;
-                const stats = data.stats;
+                const u = data.user; const page = data.page; const stats = data.stats;
                 const themeColor = page?.theme_color || 'var(--accent)';
+                const isOwnPage = currentUser && currentUser.username === u.username;
 
                 let html = '<div class="dev-page">';
-
-                // Banner
-                if (page?.banner_url) {
-                    html += '<div class="dev-banner"><img src="' + page.banner_url + '"></div>';
-                } else {
-                    html += '<div class="dev-banner" style="background:linear-gradient(135deg, var(--bg-secondary), ' + themeColor + '30);"></div>';
-                }
-
-                // Profile header with optional edit button
-                const isOwnPage = currentUser && currentUser.username === u.username;
-                html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;">';
-                html += '<div class="dev-profile">';
-                html += '<img src="' + (u.avatar_url || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + u.username) + '" class="dev-avatar">';
-                html += '<div><div class="dev-name">' + (page?.display_name || u.username) + '</div>';
-                html += '<div class="dev-meta">@' + u.username + ' · ' + stats.games_uploaded + ' games · ' + stats.hours_played.toFixed(0) + ' hours played</div>';
-                if (page?.links && page.links.length > 0) {
-                    html += '<div class="dev-links">';
-                    page.links.forEach(l => html += '<a href="' + l.url + '" target="_blank" class="dev-link">' + l.label + '</a>');
-                    html += '</div>';
-                }
-                html += '</div></div>';
-                if (isOwnPage) {
-                    html += '<button class="btn-secondary" onclick="navigate(\'deveditor\')">Edit Developer Page</button>';
-                }
+                html += '<div class="dev-banner" style="' + (page?.banner_url ? '' : 'background:linear-gradient(135deg, var(--bg-secondary), ' + themeColor + '30);') + '">';
+                if (page?.banner_url) html += '<img src="' + page.banner_url + '">';
                 html += '</div>';
 
-                // About
-                if (page?.about) {
-                    html += '<div class="dev-about">' + page.about + '</div>';
-                }
+                html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;">';
+                html += '<div class="dev-profile"><img src="' + (u.avatar_url || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + u.username) + '" class="dev-avatar">';
+                html += '<div><div class="dev-name">' + (page?.display_name || u.username) + '</div>';
+                html += '<div class="dev-meta">@' + u.username + ' · ' + stats.games_uploaded + ' games · ' + stats.hours_played.toFixed(0) + ' hours played</div>';
+                if (page?.links && page.links.length > 0) { html += '<div class="dev-links">'; page.links.forEach(l => html += '<a href="' + l.url + '" target="_blank" class="dev-link">' + l.label + '</a>'); html += '</div>'; }
+                html += '</div></div>';
+                if (isOwnPage) html += '<button class="btn-secondary" onclick="navigate(\'deveditor\')">Edit Developer Page</button>';
+                html += '</div>';
 
-                // Games grid
+                if (page?.about) html += '<div class="dev-about">' + page.about + '</div>';
+
                 html += '<h2 class="section-title">Published Games</h2>';
-                if (data.games && data.games.length > 0) {
-                    html += '<div class="game-grid">';
-                    data.games.forEach(g => html += gameCardHTML(g));
-                    html += '</div>';
-                } else {
-                    html += '<div class="empty-state">No published games yet.</div>';
-                }
+                if (data.games && data.games.length > 0) { html += '<div class="game-grid">'; data.games.forEach(g => html += gameCardHTML(g)); html += '</div>'; }
+                else html += '<div class="empty-state">No published games yet.</div>';
 
-                // Recent activity
                 if (data.activity && data.activity.length > 0) {
-                    html += '<h2 class="section-title" style="margin-top:30px;">Recent Activity</h2>';
-                    data.activity.forEach(a => {
-                        html += '<div style="padding:8px 0;border-bottom:1px solid var(--border-color);color:var(--text-secondary);font-size:13px;">';
-                        html += actIcon(a.type) + ' ' + actVerb(a.type) + ' <strong style="color:var(--text-primary);">' + a.game_title + '</strong> · ' + a.created_at;
-                        html += '</div>';
-                    });
+                    html += '<h2 class="section-title" style="margin-top:30px;">Recent Activity</h2><div class="card-box">';
+                    data.activity.forEach(a => { html += '<div class="activity-item"><div class="activity-icon">' + actIcon(a.type) + '</div><div class="activity-text">' + actVerb(a.type) + ' <strong>' + a.game_title + '</strong><div style="font-size:11px;color:var(--text-secondary);margin-top:2px;">' + a.created_at + '</div></div></div>'; });
+                    html += '</div>';
                 }
-
                 html += '</div>';
                 document.getElementById('developer-content').innerHTML = html;
                 navigate('developer');
-            } catch (e) {
-                console.error('Failed to load developer page:', e);
-            }
+            } catch (e) { console.error('Failed to load developer page:', e); }
         }
 
         /* ============ Developer Editor ============ */
         async function loadDevEditor() {
             if (!currentUser) { showAuth('login'); return; }
-            try {
-                let page = null;
-                try { const data = await api('/developer/' + currentUser.username); page = data.page; } catch {}
-
-                let html = '';
-                html += '<div class="form-group"><label class="form-label">Display Name</label>';
-                html += '<input type="text" class="form-input" id="dev-display-name" value="' + (page?.display_name || currentUser.username) + '"></div>';
-
-                html += '<div class="form-group"><label class="form-label">About (supports HTML)</label>';
-                html += '<textarea class="form-textarea" id="dev-about" style="min-height:150px;">' + (page?.about || '') + '</textarea></div>';
-
-                html += '<div class="form-row"><div class="form-group"><label class="form-label">Theme Color <span class="color-preview" id="dev-color-preview" style="background:' + (page?.theme_color || '#66c0f4') + '"></span></label>';
-                html += '<input type="color" class="form-input" id="dev-theme-color" value="' + (page?.theme_color || '#66c0f4') + '" style="height:40px;padding:4px;" oninput="document.getElementById(\'dev-color-preview\').style.background=this.value"></div>';
-
-                html += '<div class="form-group"><label class="form-label">Banner Image URL</label>';
-                html += '<input type="text" class="form-input" id="dev-banner" value="' + (page?.banner_url || '') + '" placeholder="https://..."></div></div>';
-
-                // Links
-                html += '<div class="form-group"><label class="form-label">Links</label><div id="dev-links-list">';
-                const links = page?.links || [];
-                links.forEach((l, i) => {
-                    html += '<div class="form-row" style="margin-bottom:8px;"><div><input type="text" class="form-input" placeholder="Label" value="' + l.label + '" data-link-label="' + i + '"></div>';
-                    html += '<div><input type="text" class="form-input" placeholder="URL" value="' + l.url + '" data-link-url="' + i + '"></div></div>';
-                });
-                html += '</div><button class="btn-secondary" style="margin-top:8px;" onclick="addDevLink()">+ Add Link</button></div>';
-
-                html += '<button class="btn-primary" onclick="saveDevPage()">Save Developer Page</button>';
-                html += '<button class="btn-secondary" style="margin-left:10px;" onclick="showDeveloper(\'' + currentUser.username + '\')">Preview</button>';
-
-                document.getElementById('deveditor-content').innerHTML = html;
-            } catch (e) {
-                console.error('Failed to load dev editor:', e);
-            }
+            let page = null;
+            try { const d = await api('/developer/' + currentUser.username); page = d.page; } catch {}
+            let html = '';
+            html += '<div class="form-group"><label class="form-label">Display Name</label><input type="text" class="form-input" id="dev-display-name" value="' + (page?.display_name || currentUser.username) + '"></div>';
+            html += '<div class="form-group"><label class="form-label">About (supports HTML)</label><textarea class="form-textarea" id="dev-about" style="min-height:150px;">' + (page?.about || '') + '</textarea></div>';
+            html += '<div class="form-row"><div class="form-group"><label class="form-label">Theme Color <span class="color-preview" id="dev-color-preview" style="background:' + (page?.theme_color || '#66c0f4') + '"></span></label><input type="color" class="form-input" id="dev-theme-color" value="' + (page?.theme_color || '#66c0f4') + '" style="height:40px;padding:4px;" oninput="document.getElementById(\'dev-color-preview\').style.background=this.value"></div>';
+            html += '<div class="form-group"><label class="form-label">Banner Image URL</label><input type="text" class="form-input" id="dev-banner" value="' + (page?.banner_url || '') + '" placeholder="https://..."></div></div>';
+            html += '<div class="form-group"><label class="form-label">Links</label><div id="dev-links-list">';
+            (page?.links || []).forEach((l, i) => { html += '<div class="form-row" style="margin-bottom:8px;"><div><input type="text" class="form-input" placeholder="Label" value="' + l.label + '" data-link-label="' + i + '"></div><div><input type="text" class="form-input" placeholder="URL" value="' + l.url + '" data-link-url="' + i + '"></div></div>'; });
+            html += '</div><button class="btn-secondary" style="margin-top:8px;" onclick="addDevLink()">+ Add Link</button></div>';
+            html += '<div style="display:flex;gap:10px;"><button class="btn-primary" style="width:auto;padding:12px 30px;" onclick="saveDevPage()">Save Developer Page</button>';
+            html += '<button class="btn-secondary" onclick="showDeveloper(\'' + currentUser.username + '\')">Preview</button></div>';
+            document.getElementById('deveditor-content').innerHTML = html;
         }
 
-        let devLinkCount = 0;
-        function addDevLink() {
-            const list = document.getElementById('dev-links-list');
-            const idx = list.children.length;
-            const div = document.createElement('div');
-            div.className = 'form-row';
-            div.style.marginBottom = '8px';
-            div.innerHTML = '<div><input type="text" class="form-input" placeholder="Label" data-link-label="' + idx + '"></div><div><input type="text" class="form-input" placeholder="URL" data-link-url="' + idx + '"></div>';
-            list.appendChild(div);
-        }
+        function addDevLink() { const l=document.getElementById('dev-links-list'); const i=l.children.length; const d=document.createElement('div'); d.className='form-row'; d.style.marginBottom='8px'; d.innerHTML='<div><input type="text" class="form-input" placeholder="Label" data-link-label="'+i+'"></div><div><input type="text" class="form-input" placeholder="URL" data-link-url="'+i+'"></div>'; l.appendChild(d); }
 
         async function saveDevPage() {
-            const links = [];
-            document.querySelectorAll('[data-link-label]').forEach(el => {
-                const idx = el.dataset.linkLabel;
-                const urlEl = document.querySelector('[data-link-url="' + idx + '"]');
-                if (el.value && urlEl?.value) {
-                    links.push({ label: el.value, url: urlEl.value });
-                }
-            });
-
-            try {
-                await api('/developer', {
-                    method: 'PUT',
-                    body: JSON.stringify({
-                        display_name: document.getElementById('dev-display-name').value,
-                        about: document.getElementById('dev-about').value,
-                        theme_color: document.getElementById('dev-theme-color').value,
-                        banner_url: document.getElementById('dev-banner').value,
-                        links
-                    })
-                });
-                alert('Developer page saved!');
-            } catch (e) {
-                alert('Failed to save: ' + e.message);
-            }
+            const links = []; document.querySelectorAll('[data-link-label]').forEach(el => { const u=document.querySelector('[data-link-url="'+el.dataset.linkLabel+'"]'); if(el.value&&u?.value) links.push({label:el.value,url:u.value}); });
+            try { await api('/developer', { method:'PUT', body:JSON.stringify({ display_name:document.getElementById('dev-display-name').value, about:document.getElementById('dev-about').value, theme_color:document.getElementById('dev-theme-color').value, banner_url:document.getElementById('dev-banner').value, links }) }); toast('Developer page saved!', 'success'); } catch (e) { toast('Failed to save: ' + e.message, 'error'); }
         }
 
         /* ============ Game Player ============ */
@@ -923,10 +828,7 @@
             document.getElementById('session-timer').textContent = '00:00:00';
             sessionTimerInterval = setInterval(() => {
                 const s = Math.floor((Date.now() - gameSessionStart) / 1000);
-                document.getElementById('session-timer').textContent =
-                    String(Math.floor(s/3600)).padStart(2,'0') + ':' +
-                    String(Math.floor((s%3600)/60)).padStart(2,'0') + ':' +
-                    String(s%60).padStart(2,'0');
+                document.getElementById('session-timer').textContent = String(Math.floor(s/3600)).padStart(2,'0') + ':' + String(Math.floor((s%3600)/60)).padStart(2,'0') + ':' + String(s%60).padStart(2,'0');
             }, 1000);
         }
 
@@ -934,26 +836,47 @@
             if (sessionTimerInterval) { clearInterval(sessionTimerInterval); sessionTimerInterval = null; }
             if (gameSessionStart && currentUser) {
                 const seconds = (Date.now() - gameSessionStart) / 1000;
-                const src = document.getElementById('player-frame').src;
-                const match = src.match(/\/play\/([^/]+)\//);
-                if (match) {
-                    try { await api('/playtime', { method: 'POST', body: JSON.stringify({ game_id: match[1], seconds }) }); } catch {}
-                }
+                const match = document.getElementById('player-frame').src.match(/\/play\/([^/]+)\//);
+                if (match) { try { await api('/playtime', { method:'POST', body:JSON.stringify({game_id:match[1],seconds}) }); } catch {} }
                 gameSessionStart = null;
             }
-            const player = document.getElementById('game-player');
-            player.classList.remove('active');
+            document.getElementById('game-player').classList.remove('active');
             setTimeout(() => { document.getElementById('player-frame').src = ''; }, 400);
         }
 
         /* ============ Keyboard ============ */
-        document.addEventListener('keydown', e => {
-            if (e.key === 'Escape') closePlayer();
-        });
+        document.addEventListener('keydown', e => { if (e.key === 'Escape') closePlayer(); });
+
+        /* ============ Particles ============ */
+        function initParticles() {
+            const canvas = document.getElementById('particles-canvas');
+            const ctx = canvas.getContext('2d');
+            function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+            resize(); window.addEventListener('resize', resize);
+            const particles = [];
+            for (let i = 0; i < 40; i++) particles.push({ x: Math.random()*canvas.width, y: Math.random()*canvas.height, vx: (Math.random()-0.5)*0.4, vy: (Math.random()-0.5)*0.4, r: Math.random()*2+1 });
+            function animate() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                particles.forEach(p => {
+                    p.x += p.vx; p.y += p.vy;
+                    if (p.x < 0 || p.x > canvas.width) p.vx *= -1;
+                    if (p.y < 0 || p.y > canvas.height) p.vy *= -1;
+                    ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+                    ctx.fillStyle = 'rgba(102, 192, 244, 0.3)'; ctx.fill();
+                });
+                particles.forEach((a, i) => particles.slice(i+1).forEach(b => {
+                    const d = Math.hypot(a.x-b.x, a.y-b.y);
+                    if (d < 100) { ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.strokeStyle='rgba(102,192,244,'+(0.1*(1-d/100))+')'; ctx.stroke(); }
+                }));
+                requestAnimationFrame(animate);
+            }
+            animate();
+        }
 
         /* ============ Init ============ */
         document.addEventListener('DOMContentLoaded', async () => {
             console.log('PlayMore v2 initialized');
+            initParticles();
             await checkAuth();
             loadStore();
             initUpload();
