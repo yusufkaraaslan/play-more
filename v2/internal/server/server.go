@@ -52,6 +52,10 @@ func New(frontendFS embed.FS) *gin.Engine {
 		api.GET("/activity", middleware.AuthRequired(), handlers.GetActivity)
 		api.POST("/playtime", middleware.AuthRequired(), handlers.RecordPlaytime)
 
+		// Settings
+		api.DELETE("/settings/account", middleware.AuthRequired(), handlers.DeleteAccount)
+		api.PUT("/settings/password", middleware.AuthRequired(), handlers.ChangePassword)
+
 		// Developer pages
 		api.GET("/developer/:username", handlers.GetDeveloperPage)
 		api.PUT("/developer", middleware.AuthRequired(), handlers.UpdateDeveloperPage)
