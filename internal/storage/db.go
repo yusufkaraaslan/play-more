@@ -165,6 +165,21 @@ CREATE TABLE IF NOT EXISTS collections (
 
 CREATE INDEX IF NOT EXISTS idx_devlogs_game ON devlogs(game_id);
 CREATE INDEX IF NOT EXISTS idx_follows_followed ON follows(followed_id);
+CREATE VIRTUAL TABLE IF NOT EXISTS games_fts USING fts5(title, description, tags, content='games', content_rowid='rowid');
+
+CREATE TRIGGER IF NOT EXISTS games_fts_insert AFTER INSERT ON games BEGIN
+    INSERT INTO games_fts(rowid, title, description, tags) VALUES (new.rowid, new.title, new.description, new.tags);
+END;
+
+CREATE TRIGGER IF NOT EXISTS games_fts_update AFTER UPDATE ON games BEGIN
+    INSERT INTO games_fts(games_fts, rowid, title, description, tags) VALUES ('delete', old.rowid, old.title, old.description, old.tags);
+    INSERT INTO games_fts(rowid, title, description, tags) VALUES (new.rowid, new.title, new.description, new.tags);
+END;
+
+CREATE TRIGGER IF NOT EXISTS games_fts_delete AFTER DELETE ON games BEGIN
+    INSERT INTO games_fts(games_fts, rowid, title, description, tags) VALUES ('delete', old.rowid, old.title, old.description, old.tags);
+END;
+
 CREATE INDEX IF NOT EXISTS idx_games_genre ON games(genre);
 CREATE INDEX IF NOT EXISTS idx_games_developer ON games(developer_id);
 CREATE INDEX IF NOT EXISTS idx_reviews_game ON reviews(game_id);

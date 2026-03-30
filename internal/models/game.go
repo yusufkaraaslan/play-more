@@ -135,9 +135,10 @@ func ListGames(p GameListParams) ([]Game, int, error) {
 		args = append(args, p.Genre)
 	}
 	if p.Search != "" {
-		where = append(where, "(g.title LIKE ? OR g.tags LIKE ?)")
+		where = append(where, "(g.rowid IN (SELECT rowid FROM games_fts WHERE games_fts MATCH ?) OR g.title LIKE ? OR g.tags LIKE ?)")
+		ftsQuery := p.Search + "*"
 		q := "%" + p.Search + "%"
-		args = append(args, q, q)
+		args = append(args, ftsQuery, q, q)
 	}
 	if p.DevID != "" {
 		where = append(where, "g.developer_id = ?")
