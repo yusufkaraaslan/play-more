@@ -22,6 +22,22 @@
             --card-bg: rgba(0, 0, 0, 0.3);
             --border-color: rgba(255, 255, 255, 0.1);
         }
+        [data-theme="light"] {
+            --bg-primary: #e8edf2;
+            --bg-secondary: #ffffff;
+            --bg-tertiary: #d1dce6;
+            --accent: #1a6fb5;
+            --accent-hover: #145a94;
+            --text-primary: #1a1a2e;
+            --text-secondary: #555566;
+            --success: #4a8c1c;
+            --warning: #b08930;
+            --danger: #c15757;
+            --price: #2a7a0a;
+            --discount-bg: #d4edbc;
+            --card-bg: rgba(255, 255, 255, 0.8);
+            --border-color: rgba(0, 0, 0, 0.1);
+        }
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: var(--bg-primary); color: var(--text-primary); min-height: 100vh; overflow-x: hidden; }
 
         /* Particle Canvas */
@@ -381,6 +397,7 @@
             <button class="nav-tab" data-tab="upload" onclick="navigate('upload')">Upload</button>
             <button class="nav-tab" data-tab="profile" onclick="navigate('profile')">Profile</button>
         </nav>
+        <button onclick="toggleTheme()" id="theme-toggle" title="Toggle theme" style="background:none;border:none;font-size:18px;cursor:pointer;padding:5px;">🌙</button>
         <div class="global-search">
             <input type="text" id="global-search-input" placeholder="Search games..." oninput="debounceGlobalSearch()" onfocus="debounceGlobalSearch()" autocomplete="off">
             <div class="global-search-results" id="global-search-results"></div>
@@ -583,6 +600,23 @@
     </div>
 
     <script>
+        /* ============ Theme ============ */
+        function applyTheme() {
+            const saved = localStorage.getItem('playmore_theme') || 'dark';
+            document.documentElement.setAttribute('data-theme', saved);
+            const btn = document.getElementById('theme-toggle');
+            if (btn) btn.textContent = saved === 'light' ? '☀️' : '🌙';
+        }
+        function toggleTheme() {
+            const current = document.documentElement.getAttribute('data-theme') || 'dark';
+            const next = current === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', next);
+            localStorage.setItem('playmore_theme', next);
+            const btn = document.getElementById('theme-toggle');
+            if (btn) btn.textContent = next === 'light' ? '☀️' : '🌙';
+        }
+        applyTheme(); // Apply before any rendering
+
         /* ============ State ============ */
         let currentUser = null;
         let currentTab = 'store';
@@ -1909,16 +1943,17 @@
             for (let i = 0; i < 40; i++) particles.push({ x: Math.random()*canvas.width, y: Math.random()*canvas.height, vx: (Math.random()-0.5)*0.4, vy: (Math.random()-0.5)*0.4, r: Math.random()*2+1 });
             function animate() {
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
+                const isLight = document.documentElement.getAttribute('data-theme') === 'light';
                 particles.forEach(p => {
                     p.x += p.vx; p.y += p.vy;
                     if (p.x < 0 || p.x > canvas.width) p.vx *= -1;
                     if (p.y < 0 || p.y > canvas.height) p.vy *= -1;
                     ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
-                    ctx.fillStyle = 'rgba(102, 192, 244, 0.3)'; ctx.fill();
+                    ctx.fillStyle = isLight ? 'rgba(26, 111, 181, 0.2)' : 'rgba(102, 192, 244, 0.3)'; ctx.fill();
                 });
                 particles.forEach((a, i) => particles.slice(i+1).forEach(b => {
                     const d = Math.hypot(a.x-b.x, a.y-b.y);
-                    if (d < 100) { ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.strokeStyle='rgba(102,192,244,'+(0.1*(1-d/100))+')'; ctx.stroke(); }
+                    if (d < 100) { ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.strokeStyle=(isLight?'rgba(26,111,181,':'rgba(102,192,244,')+(0.1*(1-d/100))+')'; ctx.stroke(); }
                 }));
                 requestAnimationFrame(animate);
             }
