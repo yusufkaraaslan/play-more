@@ -1,2 +1,49 @@
-# play-more
-gaming portal.
+# PlayMore
+
+A self-hosted game publishing platform for HTML5 games. Think Steam/itch.io but you own the server.
+
+## Features
+
+- **Game Store** — browse, search, filter, sort games with hero banner and special offers
+- **Game Upload** — drag-and-drop .html or .zip files, auto-extracts multi-file games
+- **Game Player** — fullscreen iframe player with session timer, WebGPU support
+- **Developer Pages** — customizable storefront with banner, bio, links, game grid
+- **Profile** — customizable with banner, theme color, bio, links, level badge
+- **Reviews** — star ratings, review summary stats, reviewer avatars
+- **Library & Wishlist** — add/remove games, search, sort by playtime/recent/A-Z
+- **Feed** — aggregated timeline from followed developers with type filters
+- **Devlogs** — blog posts tied to games
+- **Follow System** — follow developers, see their activity in your feed
+- **Collections** — user-created game groups
+- **Dashboard** — manage uploaded games (view/edit/delete)
+- **Admin Panel** — moderate users and games (first registered user = admin)
+- **Settings** — change password, export/import backup, delete account
+- **Docker** — multi-stage Dockerfile + docker-compose
+
+## Quick Start
+
+```bash
+go build -o playmore
+./playmore                    # http://localhost:8080
+
+# Seed demo data (4 games with reviews)
+curl -X POST http://localhost:8080/api/seed
+```
+
+## Docker
+
+```bash
+docker-compose up -d
+```
+
+## Tech Stack
+
+- **Backend**: Go + Gin + SQLite (pure Go, no CGO)
+- **Frontend**: Vanilla JS SPA (no framework)
+- **Database**: SQLite (single file, zero config)
+- **Auth**: bcrypt + session cookies
+- **Deploy**: Single binary with embedded frontend (`go:embed`)
+
+## v1
+
+The original single-file HTML version is archived in `v1/`. Open `v1/index.html` in a browser — no server needed.

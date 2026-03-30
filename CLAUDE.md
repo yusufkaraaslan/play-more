@@ -4,62 +4,46 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-PlayMore is a **single-file web application** (`index.html`, ~2960 lines) — a self-hosted game publishing platform UI modeled after Steam. Self-contained HTML/CSS/JS with no build system or external JS dependencies.
+PlayMore is a self-hosted game publishing platform (Go + Gin + SQLite). Single binary deployment with embedded frontend.
 
-## Running
+## Commands
 
-Open `index.html` directly in a browser (`file://` protocol works). No server required.
+```bash
+go build -o playmore          # Build
+./playmore                     # Run (localhost:8080)
+./playmore --port 3000         # Custom port
+curl -X POST localhost:8080/api/seed  # Seed demo data
+```
 
 ## Architecture
 
-Everything lives in one `index.html` with three inline sections:
+```
+main.go                    # Entry point, go:embed frontend
+internal/
+  server/server.go         # Gin routes (40+ endpoints)
+  handlers/                # HTTP handlers (auth, games, library, reviews, profile, developer, feed, devlogs, social, admin, settings, seed)
+  models/                  # DB queries (user, game, review, activity, developer)
+  storage/db.go            # SQLite schema (13 tables), migrations
+  storage/files.go         # Game file storage, ZIP extraction
+  middleware/auth.go        # Session auth
+frontend/
+  index.html               # SPA (vanilla JS, ~1700 lines)
+```
 
-### CSS (~1350 lines)
-- Custom properties in `:root` for theming (`--bg-primary`, `--accent`, `--card-bg`, etc.)
-- Steam-like dark theme: `#1b2838` background, `#66c0f4` accent blue
-- Desktop-first, responsive down to 1366x768
-- Overlay animations use `pointer-events`/`opacity`/`transform` (not `display` toggling)
+## Key patterns
 
-### HTML (~530 lines)
-Tab-based SPA with 7 sections:
-- **Home** (Store): hero banner, offers, paginated game listings with search/filter/sort
-- **Game Detail**: shared template populated by `showGameDetail(gameId)` — media carousel, reviews (with write-review form), purchase box, community hub, system requirements
-- **Library**: grid of owned games
-- **Profile**: dynamic stats, activity feed, editable username
-- **Upload**: drag-drop file upload with IndexedDB storage
-- **Dashboard**: creator tools — edit/delete uploaded games with stats
+- **Auth**: bcrypt passwords, session tokens in `sessions` table, cookie-based
+- **Game serving**: files at `/play/<id>/` — WebGPU works natively (no sandbox hacks)
+- **Frontend**: single HTML file with inline CSS/JS, all rendering via `innerHTML` template strings
+- **API calls**: `api(path, opts)` helper wraps `fetch()` with JSON handling
+- **Navigation**: hash routing (`#store`, `#game/<id>`, `#developer/<name>`) with `navigate(tab)` function
+- **Admin**: first registered user is admin (checked by `created_at` order)
+- **Database**: SQLite with WAL mode, single connection, pure Go driver (no CGO)
 
-Navigation via `data-tab` attributes and `switchTab()`.
+## Database tables
 
-### JavaScript (~1080 lines)
+users, sessions, games, reviews, library, wishlist, playtime, activity, developer_pages, devlogs, follows, collections
 
-**Data layer**:
-- `gamesData` — game catalog object keyed by slug. Hardcoded games + uploaded games merged at startup
-- `reviewsData` — static review arrays. User reviews stored separately and merged at render
-- **IndexedDB** (`playmore_db` v1): `game_files` store holds uploaded game ArrayBuffers (keyPath: `id`)
-- **localStorage keys**:
-  - `playmore_library` — array of game IDs
-  - `playmore_uploaded_games` — array of uploaded game metadata (same shape as gamesData entries + `isUploaded: true`)
-  - `playmore_reviews` — `{ gameId: Review[] }` user-written reviews
-  - `playmore_playtime` — `{ gameId: totalSeconds }` per-game playtime
-  - `playmore_activity` — recent actions array (max 50 entries)
-  - `playmore_username` — editable profile name
+## v1
 
-**Key flows**:
-- **Upload**: `handleFiles()` reads via FileReader → `submitGameUpload()` saves to IndexedDB + localStorage, generates canvas cover, injects into `gamesData`
-- **Play**: `playGame(gameId)` — XOX Classic uses inline blob HTML, uploaded games load from IndexedDB, others show demo placeholder. Tracks session start time.
-- **Close**: `closeGamePlayer()` records elapsed playtime to localStorage, logs activity
-- **Reviews**: `renderReviews()` merges static + user reviews, dynamically computes rating percentage
-- **Profile**: `renderProfile()` computes all stats from real localStorage data
-- **Pagination**: `displayGamesPage()` shows `GAMES_PER_PAGE` (10) items with "Load More" button
-
-**Important patterns**:
-- `gameRowHTML(g)` is the shared template for game list rows — used by store, filters, uploaded games, dashboard
-- `logActivity(type, gameId, detail)` — called from play, library add, upload, review
-- `editingGameId` module var enables edit mode in the upload form (reuses same form for create/edit)
-- Genre navigation: `showHome()` resets filters. To navigate with genre pre-selected, use `switchTab('home')` + set dropdown directly.
-
-**External dependencies** (images only):
-- Unsplash for game covers/screenshots
-- DiceBear API for avatars
-- YouTube embed for video trailers
+Original single-file version archived in `v1/`. Not actively developed.
