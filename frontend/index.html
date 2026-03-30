@@ -544,7 +544,12 @@
         <div class="game-player-header">
             <span class="game-player-title" id="player-title">Playing Game</span>
             <span id="session-timer" style="color:var(--text-secondary); font-size:14px; font-family:monospace;">00:00:00</span>
-            <button class="btn-secondary" onclick="closePlayer()">Close</button>
+            <span id="fps-counter" style="font-size:13px; font-family:monospace; display:none; padding:3px 8px; border-radius:3px;">-- FPS</span>
+            <div style="display:flex;gap:8px;">
+                <button class="btn-secondary" style="padding:6px 12px;font-size:12px;" onclick="toggleFps()" title="Toggle FPS (F)">FPS</button>
+                <button class="btn-secondary" style="padding:6px 12px;font-size:12px;" onclick="toggleFullscreen()" title="Fullscreen (F11)">⛶</button>
+                <button class="btn-secondary" onclick="closePlayer()">Close</button>
+            </div>
         </div>
         <iframe id="player-frame"></iframe>
     </div>
@@ -1240,8 +1245,56 @@
                 if (match) { try { await api('/playtime', { method:'POST', body:JSON.stringify({game_id:match[1],seconds}) }); } catch {} }
                 gameSessionStart = null;
             }
+            stopFps();
+            if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
             document.getElementById('game-player').classList.remove('active');
             setTimeout(() => { document.getElementById('player-frame').src = ''; }, 400);
+        }
+
+        /* ============ FPS Counter ============ */
+        let fpsVisible = false;
+        let fpsRAF = null;
+
+        function toggleFps() {
+            fpsVisible = !fpsVisible;
+            const el = document.getElementById('fps-counter');
+            el.style.display = fpsVisible ? 'inline' : 'none';
+            if (fpsVisible) startFps(); else stopFps();
+        }
+
+        function startFps() {
+            let frames = 0, lastTime = performance.now();
+            function tick() {
+                frames++;
+                const now = performance.now();
+                if (now - lastTime >= 1000) {
+                    const fps = frames;
+                    const el = document.getElementById('fps-counter');
+                    el.textContent = fps + ' FPS';
+                    el.style.color = fps > 50 ? 'var(--success)' : fps > 30 ? 'var(--warning)' : 'var(--danger)';
+                    el.style.background = fps > 50 ? 'rgba(161,205,68,0.15)' : fps > 30 ? 'rgba(210,169,96,0.15)' : 'rgba(193,87,87,0.15)';
+                    frames = 0;
+                    lastTime = now;
+                }
+                fpsRAF = requestAnimationFrame(tick);
+            }
+            fpsRAF = requestAnimationFrame(tick);
+        }
+
+        function stopFps() {
+            if (fpsRAF) { cancelAnimationFrame(fpsRAF); fpsRAF = null; }
+            document.getElementById('fps-counter').style.display = 'none';
+            fpsVisible = false;
+        }
+
+        /* ============ Fullscreen ============ */
+        function toggleFullscreen() {
+            const player = document.getElementById('game-player');
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            } else {
+                player.requestFullscreen().catch(() => {});
+            }
         }
 
         /* ============ Modal ============ */
@@ -1789,7 +1842,10 @@
         }
 
         /* ============ Keyboard ============ */
-        document.addEventListener('keydown', e => { if (e.key === 'Escape') { closePlayer(); closeModal(); } });
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape') { closePlayer(); closeModal(); }
+            if (e.key === 'f' && document.getElementById('game-player').classList.contains('active') && !e.target.matches('input,textarea')) toggleFps();
+        });
 
         /* ============ Particles ============ */
         function initParticles() {
