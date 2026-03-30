@@ -971,8 +971,11 @@
             html += '<button class="btn-secondary" onclick="profileEditMode=false;loadProfile();">Back to Profile</button></div>';
             html += '<div class="form-group"><label class="form-label">Username</label><input type="text" class="form-input" id="edit-username" value="' + u.username + '"></div>';
             html += '<div class="form-group"><label class="form-label">Bio</label><textarea class="form-textarea" id="edit-bio">' + (u.bio || '') + '</textarea></div>';
-            html += '<div class="form-group"><label class="form-label">Avatar URL</label><input type="text" class="form-input" id="edit-avatar" value="' + (u.avatar_url || '') + '" placeholder="https://... or leave empty for auto-generated"></div>';
-            html += '<div class="form-row"><div class="form-group"><label class="form-label">Banner Image URL</label><input type="text" class="form-input" id="edit-banner" value="' + (u.banner_url || '') + '" placeholder="https://..."></div>';
+            html += '<div class="form-group"><label class="form-label">Avatar</label><div style="display:flex;gap:10px;align-items:center;">';
+            html += '<input type="file" class="form-input" id="edit-avatar-file" accept="image/*" style="padding:8px;flex:1;" onchange="uploadImage(this,\'edit-avatar\')">';
+            html += '<input type="text" class="form-input" id="edit-avatar" value="' + (u.avatar_url || '') + '" placeholder="URL or upload" style="flex:1;">';
+            html += '</div></div>';
+            html += '<div class="form-row"><div class="form-group"><label class="form-label">Banner Image</label><input type="file" class="form-input" id="edit-banner-file" accept="image/*" style="padding:8px;margin-bottom:5px;" onchange="uploadImage(this,\'edit-banner\')"><input type="text" class="form-input" id="edit-banner" value="' + (u.banner_url || '') + '" placeholder="URL or upload above"></div>';
             html += '<div class="form-group"><label class="form-label">Theme Color <span class="color-preview" id="edit-color-preview" style="background:' + (u.theme_color || '#66c0f4') + '"></span></label><input type="color" class="form-input" id="edit-theme-color" value="' + (u.theme_color || '#66c0f4') + '" style="height:40px;padding:4px;" oninput="document.getElementById(\'edit-color-preview\').style.background=this.value"></div></div>';
             html += '<div class="form-group"><label class="form-label">Links</label><div id="edit-links-list">';
             (u.links || []).forEach((l, i) => { html += '<div class="form-row" style="margin-bottom:8px;"><div><input type="text" class="form-input" placeholder="Label" value="' + l.label + '" data-plink-label="' + i + '"></div><div><input type="text" class="form-input" placeholder="URL" value="' + l.url + '" data-plink-url="' + i + '"></div></div>'; });
@@ -1901,6 +1904,20 @@
             } catch (e) {
                 container.innerHTML = '<div class="empty-state">Failed to load feed. Try following some developers first!</div>';
             }
+        }
+
+        /* ============ Image Upload ============ */
+        async function uploadImage(fileInput, targetInputId) {
+            if (!fileInput.files.length) return;
+            const formData = new FormData();
+            formData.append('image', fileInput.files[0]);
+            try {
+                const res = await fetch('/api/upload/image', { method: 'POST', body: formData, credentials: 'same-origin' });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error);
+                document.getElementById(targetInputId).value = data.url;
+                toast('Image uploaded!', 'success');
+            } catch (e) { toast('Upload failed: ' + e.message, 'error'); }
         }
 
         /* ============ Global Search ============ */

@@ -4,10 +4,12 @@ import (
 	"embed"
 	"io/fs"
 	"net/http"
+	"path/filepath"
 
 	"github.com/gin-gonic/gin"
 	"github.com/yusufkaraaslan/play-more/internal/handlers"
 	"github.com/yusufkaraaslan/play-more/internal/middleware"
+	"github.com/yusufkaraaslan/play-more/internal/storage"
 )
 
 func New(frontendFS embed.FS) *gin.Engine {
@@ -94,6 +96,13 @@ func New(frontendFS embed.FS) *gin.Engine {
 		admin.DELETE("/games/:id", handlers.AdminDeleteGame)
 		admin.PUT("/games/:id/publish", handlers.AdminTogglePublish)
 	}
+
+	// Image uploads
+	api.POST("/upload/image", middleware.AuthRequired(), handlers.UploadImage)
+
+	// Serve uploaded images
+	uploadsDir := filepath.Join(storage.GamesDir, "..", "uploads")
+	r.Static("/uploads", uploadsDir)
 
 	// Seed demo data
 	r.POST("/api/seed", handlers.SeedData)
