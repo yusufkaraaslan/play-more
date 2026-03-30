@@ -45,6 +45,18 @@
         .user-info { color: var(--text-secondary); font-size: 14px; }
         .user-info strong { color: var(--accent); }
 
+        /* Global Search */
+        .global-search { position: relative; }
+        .global-search input { padding: 8px 12px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: 3px; color: var(--text-primary); font-size: 13px; width: 220px; transition: all 0.3s; }
+        .global-search input:focus { outline: none; border-color: var(--accent); width: 300px; }
+        .global-search-results { display: none; position: absolute; top: 42px; left: 0; width: 350px; max-height: 400px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; overflow-y: auto; z-index: 1001; box-shadow: 0 10px 40px rgba(0,0,0,0.5); }
+        .global-search-results.open { display: block; }
+        .search-result { display: flex; gap: 10px; padding: 10px; cursor: pointer; transition: background 0.2s; font-size: 13px; }
+        .search-result:hover { background: rgba(255,255,255,0.05); }
+        .search-result img { width: 60px; height: 35px; object-fit: cover; border-radius: 3px; flex-shrink: 0; }
+        .search-result-title { font-size: 14px; }
+        .search-result-meta { font-size: 11px; color: var(--text-secondary); }
+
         /* Feed Dropdown */
         .feed-btn { position: relative; background: none; border: 1px solid var(--border-color); color: var(--text-secondary); padding: 6px 12px; border-radius: 3px; cursor: pointer; font-size: 14px; transition: all 0.2s; }
         .feed-btn:hover { border-color: var(--accent); color: var(--accent); }
@@ -369,6 +381,10 @@
             <button class="nav-tab" data-tab="upload" onclick="navigate('upload')">Upload</button>
             <button class="nav-tab" data-tab="profile" onclick="navigate('profile')">Profile</button>
         </nav>
+        <div class="global-search">
+            <input type="text" id="global-search-input" placeholder="Search games..." oninput="debounceGlobalSearch()" onfocus="debounceGlobalSearch()" autocomplete="off">
+            <div class="global-search-results" id="global-search-results"></div>
+        </div>
         <div class="header-actions" id="header-actions">
             <span id="gpu-badge" class="gpu-badge gpu-badge-no">GPU: Checking...</span>
         </div>
@@ -1840,6 +1856,42 @@
                 container.innerHTML = '<div class="empty-state">Failed to load feed. Try following some developers first!</div>';
             }
         }
+
+        /* ============ Global Search ============ */
+        let searchDebounce = null;
+        function debounceGlobalSearch() {
+            clearTimeout(searchDebounce);
+            searchDebounce = setTimeout(globalSearch, 200);
+        }
+
+        async function globalSearch() {
+            const q = document.getElementById('global-search-input').value.trim();
+            const results = document.getElementById('global-search-results');
+            if (q.length < 2) { results.classList.remove('open'); return; }
+            try {
+                const data = await api('/games?search=' + encodeURIComponent(q) + '&limit=8');
+                if (!data.games || data.games.length === 0) {
+                    results.innerHTML = '<div style="padding:15px;text-align:center;color:var(--text-secondary);">No results</div>';
+                    results.classList.add('open');
+                    return;
+                }
+                results.innerHTML = data.games.map(g => {
+                    const coverSrc = g.cover_path || '';
+                    return '<div class="search-result" onclick="document.getElementById(\'global-search-results\').classList.remove(\'open\');document.getElementById(\'global-search-input\').value=\'\';showGameDetail(\'' + g.id + '\')">' +
+                        (coverSrc ? '<img src="' + coverSrc + '">' : '<div style="width:60px;height:35px;background:var(--bg-tertiary);border-radius:3px;"></div>') +
+                        '<div><div class="search-result-title">' + g.title + '</div>' +
+                        '<div class="search-result-meta">' + g.genre + ' · by ' + (g.developer_name || 'Unknown') + '</div></div></div>';
+                }).join('');
+                results.classList.add('open');
+            } catch { results.classList.remove('open'); }
+        }
+
+        // Close search results when clicking outside
+        document.addEventListener('click', e => {
+            if (!e.target.closest('.global-search')) {
+                document.getElementById('global-search-results')?.classList.remove('open');
+            }
+        });
 
         /* ============ Keyboard ============ */
         document.addEventListener('keydown', e => {
