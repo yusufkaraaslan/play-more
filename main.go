@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/yusufkaraaslan/play-more/internal/middleware"
 	"github.com/yusufkaraaslan/play-more/internal/server"
 	"github.com/yusufkaraaslan/play-more/internal/storage"
 )
@@ -25,6 +26,8 @@ func main() {
 	if err := storage.InitFileStorage(*dataDir); err != nil {
 		log.Fatal("Failed to initialize file storage:", err)
 	}
+
+	middleware.StartRateLimitCleanup()
 
 	fmt.Printf("PlayMore server starting on http://localhost:%d\n", *port)
 	fmt.Printf("Data directory: %s\n", *dataDir)

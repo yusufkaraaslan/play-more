@@ -17,23 +17,23 @@ func New(frontendFS embed.FS) *gin.Engine {
 	api := r.Group("/api")
 	api.Use(middleware.AuthOptional())
 	{
-		// Auth
+		// Auth (strict rate limits)
 		auth := api.Group("/auth")
-		auth.POST("/register", handlers.Register)
-		auth.POST("/login", handlers.Login)
+		auth.POST("/register", middleware.RateLimit(5, 3600), handlers.Register)
+		auth.POST("/login", middleware.RateLimit(10, 300), handlers.Login)
 		auth.POST("/logout", handlers.Logout)
 		auth.GET("/me", handlers.Me)
 
 		// Games
 		api.GET("/games", handlers.ListGames)
 		api.GET("/games/:id", handlers.GetGame)
-		api.POST("/games", middleware.AuthRequired(), handlers.UploadGame)
+		api.POST("/games", middleware.AuthRequired(), middleware.RateLimit(10, 3600), handlers.UploadGame)
 		api.PUT("/games/:id", middleware.AuthRequired(), handlers.UpdateGame)
 		api.DELETE("/games/:id", middleware.AuthRequired(), handlers.DeleteGame)
 
 		// Reviews
 		api.GET("/games/:id/reviews", handlers.ListReviews)
-		api.POST("/games/:id/reviews", middleware.AuthRequired(), handlers.CreateReview)
+		api.POST("/games/:id/reviews", middleware.AuthRequired(), middleware.RateLimit(20, 3600), handlers.CreateReview)
 		api.DELETE("/reviews/:id", middleware.AuthRequired(), handlers.DeleteReview)
 
 		// Library
