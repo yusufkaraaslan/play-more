@@ -1736,6 +1736,23 @@
             if (feedOpen) switchFeedTab('activity', document.querySelector('.feed-tab'));
         }
 
+        function updateNotifBadge(count) {
+            const btn = document.querySelector('.feed-btn');
+            if (!btn) return;
+            btn.innerHTML = '🔔' + (count > 0 ? '<span class="feed-badge">' + count + '</span>' : '');
+        }
+
+        async function checkNotifCount() {
+            if (!currentUser) return;
+            try {
+                const data = await api('/notifications');
+                updateNotifBadge(data.unread || 0);
+            } catch {}
+        }
+
+        // Poll for notifications every 30 seconds
+        setInterval(() => { if (currentUser) checkNotifCount(); }, 30000);
+
         // Close feed when clicking outside
         document.addEventListener('click', (e) => {
             if (feedOpen && !e.target.closest('.feed-btn') && !e.target.closest('.feed-dropdown')) {
@@ -1747,10 +1764,28 @@
         function switchFeedTab(tab, el) {
             document.querySelectorAll('.feed-tab').forEach(t => t.classList.remove('active'));
             if (el) el.classList.add('active');
-            if (tab === 'activity') loadFeedActivity();
+            if (tab === 'activity') loadFeedNotifications();
             if (tab === 'library') loadFeedLibrary();
             if (tab === 'wishlist') loadFeedWishlist();
             if (tab === 'following') loadFeedFollowing();
+        }
+
+        async function loadFeedNotifications() {
+            const list = document.getElementById('feed-list');
+            try {
+                const data = await api('/notifications');
+                // Mark as read
+                if (data.unread > 0) api('/notifications/read', { method: 'POST' }).catch(() => {});
+                updateNotifBadge(0);
+                if (!data.notifications || data.notifications.length === 0) { list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary);">No notifications.</div>'; return; }
+                const icons = { review: '⭐', follow: '👤', devlog: '📝', new_game: '🎮' };
+                list.innerHTML = data.notifications.map(n =>
+                    '<div class="feed-item" style="' + (!n.read ? 'background:rgba(102,192,244,0.05);' : '') + '" onclick="' + (n.game_id ? "showGameDetail('" + n.game_id + "')" : '') + '">' +
+                    '<div style="font-size:20px;width:50px;text-align:center;">' + (icons[n.type] || '🔔') + '</div>' +
+                    '<div class="feed-item-info"><div class="feed-item-title">' + n.message + '</div>' +
+                    '<div class="feed-item-meta">' + n.created_at + '</div></div></div>'
+                ).join('');
+            } catch { list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary);">Failed to load.</div>'; }
         }
 
         async function loadFeedActivity() {
@@ -1995,6 +2030,7 @@
             initParticles();
             checkGPU();
             await checkAuth();
+            checkNotifCount();
             initUpload();
             // Handle initial hash route or default to store
             if (location.hash && location.hash.length > 1) {

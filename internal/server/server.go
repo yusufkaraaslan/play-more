@@ -63,6 +63,10 @@ func New(frontendFS embed.FS) *gin.Engine {
 		api.PUT("/developer", middleware.AuthRequired(), handlers.UpdateDeveloperPage)
 		api.GET("/developer/:username/games", handlers.GetDeveloperGames)
 
+		// Notifications
+		api.GET("/notifications", middleware.AuthRequired(), handlers.GetNotifications)
+		api.POST("/notifications/read", middleware.AuthRequired(), handlers.MarkNotificationsRead)
+
 		// Feed (aggregated timeline)
 		api.GET("/feed", middleware.AuthRequired(), handlers.GetFeed)
 

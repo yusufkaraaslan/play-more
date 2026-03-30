@@ -45,6 +45,13 @@ func CreateReview(c *gin.Context) {
 	}
 
 	models.LogActivity(user.ID, "review", gameID, strconv.Itoa(input.Rating)+" stars")
+
+	// Notify game developer
+	game, _ := models.GetGameByID(gameID)
+	if game != nil && game.DeveloperID != user.ID {
+		CreateNotification(game.DeveloperID, "review", user.Username+" reviewed your game \""+game.Title+"\"", gameID, user.Username)
+	}
+
 	c.JSON(http.StatusCreated, gin.H{"review": review})
 }
 

@@ -163,6 +163,18 @@ CREATE TABLE IF NOT EXISTS collections (
     created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS notifications (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    type        TEXT NOT NULL,
+    message     TEXT NOT NULL,
+    game_id     TEXT DEFAULT '',
+    from_user   TEXT DEFAULT '',
+    read        BOOLEAN DEFAULT 0,
+    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, read);
 CREATE INDEX IF NOT EXISTS idx_devlogs_game ON devlogs(game_id);
 CREATE INDEX IF NOT EXISTS idx_follows_followed ON follows(followed_id);
 CREATE VIRTUAL TABLE IF NOT EXISTS games_fts USING fts5(title, description, tags, content='games', content_rowid='rowid');
