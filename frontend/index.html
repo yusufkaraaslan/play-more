@@ -1061,6 +1061,18 @@
                     html += '<div class="review-summary">';
                     html += '<div class="review-summary-stat"><div class="review-summary-value">' + posPct + '%</div><div class="review-summary-label">Positive</div></div>';
                     html += '<div class="review-summary-stat"><div class="review-summary-value">' + allReviews.length + '</div><div class="review-summary-label">Reviews</div></div>';
+                    // Star distribution chart
+                    html += '<div style="flex:1;">';
+                    for (let s = 5; s >= 1; s--) {
+                        const count = allReviews.filter(r => r.rating === s).length;
+                        const pct = allReviews.length > 0 ? Math.round(count / allReviews.length * 100) : 0;
+                        html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;font-size:12px;">';
+                        html += '<span style="width:20px;text-align:right;color:var(--warning);">' + s + '★</span>';
+                        html += '<div style="flex:1;height:8px;background:rgba(255,255,255,0.1);border-radius:4px;overflow:hidden;">';
+                        html += '<div style="width:' + pct + '%;height:100%;background:var(--warning);border-radius:4px;transition:width 0.5s;"></div></div>';
+                        html += '<span style="width:35px;color:var(--text-secondary);">' + pct + '%</span></div>';
+                    }
+                    html += '</div>';
                     html += '</div>';
                 }
                 if (currentUser) {
