@@ -38,6 +38,7 @@ func CreateReview(c *gin.Context) {
 	}
 
 	gameID := c.Param("id")
+	input.Text = SanitizePlain(input.Text)
 	review, err := models.CreateReview(gameID, user.ID, input.Rating, input.Text)
 	if err != nil {
 		c.JSON(http.StatusConflict, gin.H{"error": "you already reviewed this game"})
@@ -49,7 +50,7 @@ func CreateReview(c *gin.Context) {
 	// Notify game developer
 	game, _ := models.GetGameByID(gameID)
 	if game != nil && game.DeveloperID != user.ID {
-		CreateNotification(game.DeveloperID, "review", user.Username+" reviewed your game \""+game.Title+"\"", gameID, user.Username)
+		CreateNotification(game.DeveloperID, "review", SanitizePlain(user.Username)+" reviewed your game \""+SanitizePlain(game.Title)+"\"", gameID, user.Username)
 	}
 
 	c.JSON(http.StatusCreated, gin.H{"review": review})

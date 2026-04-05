@@ -32,6 +32,14 @@ type seedGame struct {
 }
 
 func SeedData(c *gin.Context) {
+	// Only allow seeding if no users exist (first run) or if requester is admin
+	var userCount int
+	storage.DB.QueryRow(`SELECT COUNT(*) FROM users`).Scan(&userCount)
+	if userCount > 0 && !isAdmin(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "seed is only available on first run or for admins"})
+		return
+	}
+
 	// Check if already seeded
 	var count int
 	storage.DB.QueryRow(`SELECT COUNT(*) FROM games`).Scan(&count)

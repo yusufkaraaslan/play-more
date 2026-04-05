@@ -40,7 +40,8 @@ func DeleteAccount(c *gin.Context) {
 	// Delete user
 	storage.DB.Exec(`DELETE FROM users WHERE id = ?`, user.ID)
 
-	c.SetCookie("session", "", -1, "/", "", false, true)
+	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetCookie("session", "", -1, "/", "", true, true)
 	c.JSON(http.StatusOK, gin.H{"message": "account deleted"})
 }
 

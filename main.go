@@ -5,7 +5,9 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"os"
 
+	"github.com/gin-gonic/gin"
 	"github.com/yusufkaraaslan/play-more/internal/middleware"
 	"github.com/yusufkaraaslan/play-more/internal/server"
 	"github.com/yusufkaraaslan/play-more/internal/storage"
@@ -15,6 +17,11 @@ import (
 var frontendFS embed.FS
 
 func main() {
+	// Default to release mode unless GIN_MODE is explicitly set
+	if os.Getenv("GIN_MODE") == "" {
+		gin.SetMode(gin.ReleaseMode)
+	}
+
 	port := flag.Int("port", 8080, "server port")
 	dataDir := flag.String("data", "data", "data directory path")
 	flag.Parse()

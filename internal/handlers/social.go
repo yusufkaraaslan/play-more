@@ -29,7 +29,7 @@ func FollowDeveloper(c *gin.Context) {
 		return
 	}
 	storage.DB.Exec(`INSERT OR IGNORE INTO follows (follower_id, followed_id) VALUES (?, ?)`, user.ID, target.ID)
-	CreateNotification(target.ID, "follow", user.Username+" started following you", "", user.Username)
+	CreateNotification(target.ID, "follow", SanitizePlain(user.Username)+" started following you", "", user.Username)
 	c.JSON(http.StatusOK, gin.H{"message": "following " + target.Username})
 }
 

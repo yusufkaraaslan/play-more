@@ -36,7 +36,7 @@ func UploadImage(c *gin.Context) {
 
 	// Validate extension
 	ext := strings.ToLower(filepath.Ext(header.Filename))
-	allowed := map[string]bool{".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".webp": true, ".svg": true}
+	allowed := map[string]bool{".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".webp": true}
 	if !allowed[ext] {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported image format"})
 		return

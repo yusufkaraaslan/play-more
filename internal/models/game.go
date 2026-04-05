@@ -54,34 +54,41 @@ func makeSlug(title string) string {
 
 func CreateGame(title, genre, description, developerID string, price float64, tags []string, isWebGPU bool) (*Game, error) {
 	id := uuid.New().String()
-	slug := makeSlug(title)
-
-	// Ensure unique slug
-	base := slug
-	for i := 1; ; i++ {
-		var exists int
-		storage.DB.QueryRow(`SELECT COUNT(*) FROM games WHERE slug = ?`, slug).Scan(&exists)
-		if exists == 0 {
-			break
-		}
-		slug = fmt.Sprintf("%s-%d", base, i)
-	}
-
+	baseSlug := makeSlug(title)
 	tagsJSON, _ := json.Marshal(tags)
 	screenshotsJSON := "[]"
+
+	// Try inserting with slug, retry with suffix on UNIQUE conflict
+	var slug string
+	var err error
+	for attempt := 0; attempt < 20; attempt++ {
+		if attempt == 0 {
+			slug = baseSlug
+		} else {
+			slug = fmt.Sprintf("%s-%d", baseSlug, attempt)
+		}
+		_, err = storage.DB.Exec(
+			`INSERT INTO games (id, title, slug, genre, price, description, developer_id, tags, is_webgpu, entry_file, screenshots)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			id, title, slug, genre, price, description, developerID, string(tagsJSON), isWebGPU, "index.html", screenshotsJSON,
+		)
+		if err == nil {
+			break
+		}
+		if !strings.Contains(err.Error(), "UNIQUE") {
+			return nil, err
+		}
+	}
+	if err != nil {
+		return nil, err
+	}
 
 	game := &Game{
 		ID: id, Title: title, Slug: slug, Genre: genre, Price: price,
 		Description: description, DeveloperID: developerID, Tags: tags,
 		IsWebGPU: isWebGPU, EntryFile: "index.html", Published: true,
 	}
-
-	_, err := storage.DB.Exec(
-		`INSERT INTO games (id, title, slug, genre, price, description, developer_id, tags, is_webgpu, entry_file, screenshots)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		id, title, slug, genre, price, description, developerID, string(tagsJSON), isWebGPU, "index.html", screenshotsJSON,
-	)
-	return game, err
+	return game, nil
 }
 
 func GetGameByID(id string) (*Game, error) {
@@ -136,7 +143,14 @@ func ListGames(p GameListParams) ([]Game, int, error) {
 	}
 	if p.Search != "" {
 		where = append(where, "(g.rowid IN (SELECT rowid FROM games_fts WHERE games_fts MATCH ?) OR g.title LIKE ? OR g.tags LIKE ?)")
-		ftsQuery := p.Search + "*"
+		// Escape FTS special characters to prevent query injection
+		safe := strings.Map(func(r rune) rune {
+			if strings.ContainsRune(`+-<>():*"^~`, r) {
+				return -1
+			}
+			return r
+		}, p.Search)
+		ftsQuery := safe + "*"
 		q := "%" + p.Search + "%"
 		args = append(args, ftsQuery, q, q)
 	}

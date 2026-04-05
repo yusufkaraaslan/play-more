@@ -55,6 +55,8 @@ func UpdateProfile(c *gin.Context) {
 		input.Links = []models.Link{}
 	}
 
+	input.Bio = SanitizePlain(input.Bio)
+
 	if err := user.Update(input.Username, input.Bio, input.AvatarURL, input.BannerURL, input.ThemeColor, input.Links); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update profile"})
 		return

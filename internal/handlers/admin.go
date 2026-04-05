@@ -1,12 +1,20 @@
 package handlers
 
 import (
+	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/yusufkaraaslan/play-more/internal/middleware"
 	"github.com/yusufkaraaslan/play-more/internal/storage"
 )
+
+func adminLog(c *gin.Context, action string) {
+	user := middleware.GetUser(c)
+	if user != nil {
+		log.Printf("[ADMIN] user=%s action=%s ip=%s", user.Username, action, c.ClientIP())
+	}
+}
 
 func isAdmin(c *gin.Context) bool {
 	user := middleware.GetUser(c)
@@ -107,6 +115,7 @@ func AdminDeleteUser(c *gin.Context) {
 		storage.DB.Exec(`DELETE FROM `+table+` WHERE `+col+` = ?`, userID)
 	}
 	storage.DB.Exec(`DELETE FROM users WHERE id = ?`, userID)
+	adminLog(c, "delete_user:"+userID)
 	c.JSON(http.StatusOK, gin.H{"message": "user deleted"})
 }
 
@@ -114,6 +123,7 @@ func AdminDeleteGame(c *gin.Context) {
 	gameID := c.Param("id")
 	storage.DeleteGameFiles(gameID)
 	storage.DB.Exec(`DELETE FROM games WHERE id = ?`, gameID)
+	adminLog(c, "delete_game:"+gameID)
 	c.JSON(http.StatusOK, gin.H{"message": "game deleted"})
 }
 
@@ -150,5 +160,6 @@ func AdminListGames(c *gin.Context) {
 func AdminTogglePublish(c *gin.Context) {
 	gameID := c.Param("id")
 	storage.DB.Exec(`UPDATE games SET published = NOT published WHERE id = ?`, gameID)
+	adminLog(c, "toggle_publish:"+gameID)
 	c.JSON(http.StatusOK, gin.H{"message": "publish status toggled"})
 }

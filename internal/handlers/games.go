@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"io"
+	"log"
 	"net/http"
 	"path/filepath"
 	"strconv"
@@ -105,7 +106,8 @@ func UploadGame(c *gin.Context) {
 		ef, err := storage.ExtractZip(game.ID, data)
 		if err != nil {
 			game.Delete()
-			c.JSON(http.StatusBadRequest, gin.H{"error": "failed to extract ZIP: " + err.Error()})
+			log.Printf("ZIP extraction failed for game %s: %v", game.ID, err)
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid game file"})
 			return
 		}
 		entryFile = ef

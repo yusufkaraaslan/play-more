@@ -15,6 +15,18 @@ import (
 func New(frontendFS embed.FS) *gin.Engine {
 	r := gin.Default()
 
+	// Security headers
+	r.Use(func(c *gin.Context) {
+		c.Header("X-Content-Type-Options", "nosniff")
+		c.Header("X-Frame-Options", "SAMEORIGIN")
+		c.Header("Referrer-Policy", "strict-origin-when-cross-origin")
+		c.Header("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; frame-src 'self'; media-src 'self' https://www.youtube.com")
+		c.Next()
+	})
+
+	// CSRF protection for all state-changing requests
+	r.Use(middleware.CSRFProtect())
+
 	// API routes
 	api := r.Group("/api")
 	api.Use(middleware.AuthOptional())
@@ -50,17 +62,17 @@ func New(frontendFS embed.FS) *gin.Engine {
 
 		// Profile
 		api.GET("/profile/:username", handlers.GetProfile)
-		api.PUT("/profile", middleware.AuthRequired(), handlers.UpdateProfile)
+		api.PUT("/profile", middleware.AuthRequired(), middleware.RateLimit(10, 300), handlers.UpdateProfile)
 		api.GET("/activity", middleware.AuthRequired(), handlers.GetActivity)
 		api.POST("/playtime", middleware.AuthRequired(), handlers.RecordPlaytime)
 
 		// Settings
-		api.DELETE("/settings/account", middleware.AuthRequired(), handlers.DeleteAccount)
-		api.PUT("/settings/password", middleware.AuthRequired(), handlers.ChangePassword)
+		api.DELETE("/settings/account", middleware.AuthRequired(), middleware.RateLimit(3, 3600), handlers.DeleteAccount)
+		api.PUT("/settings/password", middleware.AuthRequired(), middleware.RateLimit(5, 3600), handlers.ChangePassword)
 
 		// Developer pages
 		api.GET("/developer/:username", handlers.GetDeveloperPage)
-		api.PUT("/developer", middleware.AuthRequired(), handlers.UpdateDeveloperPage)
+		api.PUT("/developer", middleware.AuthRequired(), middleware.RateLimit(10, 300), handlers.UpdateDeveloperPage)
 		api.GET("/developer/:username/games", handlers.GetDeveloperGames)
 
 		// Analytics
@@ -80,8 +92,8 @@ func New(frontendFS embed.FS) *gin.Engine {
 		api.DELETE("/devlogs/:id", middleware.AuthRequired(), handlers.DeleteDevlog)
 
 		// Follows
-		api.POST("/follow/:username", middleware.AuthRequired(), handlers.FollowDeveloper)
-		api.DELETE("/follow/:username", middleware.AuthRequired(), handlers.UnfollowDeveloper)
+		api.POST("/follow/:username", middleware.AuthRequired(), middleware.RateLimit(30, 3600), handlers.FollowDeveloper)
+		api.DELETE("/follow/:username", middleware.AuthRequired(), middleware.RateLimit(30, 3600), handlers.UnfollowDeveloper)
 		api.GET("/following", middleware.AuthRequired(), handlers.GetFollowing)
 		api.GET("/followers/:username", handlers.GetFollowerCount)
 
@@ -99,9 +111,9 @@ func New(frontendFS embed.FS) *gin.Engine {
 	{
 		admin.GET("/stats", handlers.AdminStats)
 		admin.GET("/users", handlers.AdminListUsers)
-		admin.DELETE("/users/:id", handlers.AdminDeleteUser)
+		admin.DELETE("/users/:id", middleware.RateLimit(10, 3600), handlers.AdminDeleteUser)
 		admin.GET("/games", handlers.AdminListGames)
-		admin.DELETE("/games/:id", handlers.AdminDeleteGame)
+		admin.DELETE("/games/:id", middleware.RateLimit(10, 3600), handlers.AdminDeleteGame)
 		admin.PUT("/games/:id/publish", handlers.AdminTogglePublish)
 	}
 
@@ -112,8 +124,8 @@ func New(frontendFS embed.FS) *gin.Engine {
 	uploadsDir := filepath.Join(storage.GamesDir, "..", "uploads")
 	r.Static("/uploads", uploadsDir)
 
-	// Seed demo data
-	r.POST("/api/seed", handlers.SeedData)
+	// Seed demo data (admin only, or first-run when no users exist)
+	r.POST("/api/seed", middleware.AuthOptional(), handlers.SeedData)
 
 	// Game file serving (for iframe player)
 	r.GET("/play/:id", handlers.ServeGameFiles)
