@@ -174,6 +174,17 @@ CREATE TABLE IF NOT EXISTS notifications (
     created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS game_views (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    game_id     TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+    user_id     TEXT DEFAULT '',
+    ip_hash     TEXT DEFAULT '',
+    referrer    TEXT DEFAULT '',
+    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_game_views_game ON game_views(game_id);
+CREATE INDEX IF NOT EXISTS idx_game_views_date ON game_views(game_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, read);
 CREATE INDEX IF NOT EXISTS idx_devlogs_game ON devlogs(game_id);
 CREATE INDEX IF NOT EXISTS idx_follows_followed ON follows(followed_id);

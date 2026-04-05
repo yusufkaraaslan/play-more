@@ -4,116 +4,273 @@ This file provides guidance for AI coding agents working with the PlayMore codeb
 
 ## Project Overview
 
-PlayMore is a **single-file web application** (`index.html`, ~2460 lines) — a self-hosted game publishing platform UI modeled after Steam. It is a completely self-contained HTML/CSS/JS app with **no build system, no dependencies, and no package manager**.
+PlayMore is a **self-hosted game publishing platform** for HTML5 games — think Steam or itch.io but you own the server. It is a full-stack Go web application with a vanilla JavaScript SPA frontend.
 
 ## Technology Stack
 
-- **Frontend**: Pure HTML5, CSS3, and vanilla JavaScript (ES6+)
-- **No frameworks**: No React, Vue, Angular, or any JS libraries
-- **No build tools**: No webpack, Vite, Rollup, or transpilers
-- **No package manager**: No `package.json`, `node_modules`, `pyproject.toml`, `Cargo.toml`, etc.
-- **Persistence**: Browser `localStorage` (key: `playmore_library`)
-- **External assets only**: Unsplash images, DiceBear avatars, YouTube embeds
+- **Backend**: Go 1.26+ with Gin web framework
+- **Database**: SQLite (pure Go driver via `modernc.org/sqlite`, no CGO required)
+- **Frontend**: Vanilla JavaScript SPA (single HTML file, ~2000 lines, no frameworks)
+- **Authentication**: bcrypt password hashing + session tokens stored in cookies
+- **Deployment**: Single binary with embedded frontend assets (`go:embed`)
 
 ## Project Structure
 
 ```
 /mnt/1ece809a-2821-4f10-aecb-fcdf34760c0b/Git/playmore/
-├── index.html   # The entire application (CSS + HTML + JS in one file)
-├── CLAUDE.md    # Guidance for Claude Code
-└── AGENTS.md    # This file
+├── main.go                      # Entry point, CLI flags, go:embed frontend
+├── go.mod, go.sum              # Go module dependencies
+├── Dockerfile                   # Multi-stage Docker build
+├── docker-compose.yml           # Docker Compose configuration
+├── frontend/
+│   └── index.html              # Single-page application (inline CSS/JS)
+├── internal/
+│   ├── server/
+│   │   └── server.go           # Gin router setup (40+ endpoints)
+│   ├── handlers/
+│   │   ├── auth.go             # Register, login, logout, session
+│   │   ├── games.go            # List, get, upload, update, delete games
+│   │   ├── library.go          # Library and wishlist management
+│   │   ├── reviews.go          # Create, list, delete reviews
+│   │   ├── profile.go          # User profiles and activity
+│   │   ├── developer.go        # Developer pages and stats
+│   │   ├── feed.go             # Aggregated activity feed
+│   │   ├── devlogs.go          # Developer blog posts
+│   │   ├── social.go           # Follow/unfollow, collections
+│   │   ├── admin.go            # Admin panel (moderation)
+│   │   ├── settings.go         # Account settings, password change
+│   │   ├── uploads.go          # Image upload handler
+│   │   ├── notifications.go    # User notifications
+│   │   └── seed.go             # Demo data seeding
+│   ├── models/
+│   │   ├── user.go             # User CRUD, sessions, bcrypt
+│   │   ├── game.go             # Game CRUD, slug generation, FTS search
+│   │   ├── review.go           # Review CRUD, rating aggregation
+│   │   ├── activity.go         # Activity logging for feeds
+│   │   └── developer.go        # Developer page CRUD
+│   ├── storage/
+│   │   ├── db.go               # SQLite connection, schema, migrations (13 tables)
+│   │   └── files.go            # Game file storage, ZIP extraction
+│   └── middleware/
+│       ├── auth.go             # Session authentication (required/optional)
+│       └── ratelimit.go        # Per-IP rate limiting
+└── v1/
+    └── index.html              # Original single-file version (archived)
 ```
 
-Everything lives inside `index.html` in three inline sections:
-
-1. **CSS (~1300 lines)** inside `<style>` — custom properties in `:root`, Steam-like dark theme, responsive layout, animations.
-2. **HTML (~400 lines)** inside `<body>` — tab-based SPA with 5 sections: Home (Store), Game Detail, Library, Profile, Upload.
-3. **JavaScript (~750 lines)** inside `<script>` — all app logic, data, and event handlers.
-
-## Running the Application
-
-Open `index.html` directly in a browser. The `file://` protocol works fine. No server is required.
+## Build and Run Commands
 
 ```bash
-# Optional: serve locally if you prefer http://localhost
-python -m http.server 8000
+# Build the binary
+go build -o playmore
+
+# Run with defaults (port 8080, data directory "data")
+./playmore
+
+# Run with custom options
+./playmore --port 3000 --data /path/to/data
+
+# Seed demo data (4 games with reviews)
+curl -X POST http://localhost:8080/api/seed
+
+# Docker deployment
+docker-compose up -d
 ```
 
-## Architecture & Code Organization
+## Database Schema
 
-### Tab-Based SPA Navigation
+SQLite with WAL mode enabled. Key tables:
 
-- Navigation uses `data-tab` attributes and `switchTab(tabName)` to toggle `.active` classes on `.nav-tab` and `.section` elements.
-- Sections: `home-section`, `game-detail-section`, `library-section`, `profile-section`, `upload-section`.
-- **Important**: `showHome()` resets the genre filter. If you need to navigate to Home with a genre pre-selected, call `switchTab('home')` directly instead of `showHome()`.
+| Table | Purpose |
+|-------|---------|
+| `users` | User accounts, passwords (bcrypted), profiles |
+| `sessions` | Session tokens with expiry |
+| `games` | Game metadata, file paths, slugs |
+| `reviews` | Star ratings (1-5) and text reviews |
+| `library` | User's owned games |
+| `wishlist` | User's wishlisted games |
+| `playtime` | Play time tracking per user/game |
+| `activity` | Feed events (uploads, follows, etc.) |
+| `developer_pages` | Customizable developer storefronts |
+| `devlogs` | Blog posts tied to games |
+| `follows` | Follow relationships |
+| `collections` | User-created game collections |
+| `notifications` | User notifications |
 
-### Key Data Structures
+Full-text search (FTS5) enabled on games via `games_fts` virtual table with triggers for automatic indexing.
 
-- `gamesData` — static catalog object keyed by game slug. Contains 4 games: `neon-overdrive`, `void-echoes`, `shadow-tactics`, `xox-classic`.
-- `reviewsData` — static review arrays keyed by game slug.
-- `library` — array of game IDs persisted to `localStorage` under key `playmore_library`.
-- `currentGameId` / `currentGenreFilter` — simple navigation state variables.
+## API Structure
 
-### Key UI Flows
+All API routes are prefixed with `/api/`:
 
-- **Store → Game Detail**: `showGameDetail(gameId)` populates DOM elements by ID, renders the media carousel, and injects reviews.
-- **Game Detail → Play**: `playCurrentGame()` → `playGame(gameId)` opens a fullscreen overlay with an `<iframe>`.
-- **Genre filtering**: `filterByGenreFromDetail()` navigates to the home tab with the genre pre-selected. `filterGames()` handles search, genre, and sort logic.
-- **Library**: On first visit, all games are auto-added to the library. Library cards click through to game detail; the Play button opens the game player.
+```
+POST   /api/auth/register          # Rate limited: 5/hour
+POST   /api/auth/login             # Rate limited: 10/5min
+POST   /api/auth/logout
+GET    /api/auth/me
 
-### Game Player
+GET    /api/games                  # Query: genre, search, sort, page, limit
+GET    /api/games/:id
+POST   /api/games                  # Auth required, rate limited: 10/hour
+PUT    /api/games/:id              # Auth required
+DELETE /api/games/:id              # Auth required
 
-- The player is a fixed-position overlay (`#game-player`) that uses CSS transitions (`opacity` and `transform`) for smooth fade in/out.
-- **Do not use `display:none` toggling** for the player overlay. It relies on `pointer-events: none` + `opacity: 0` by default, and adding `.active` enables `pointer-events: all` + `opacity: 1`.
-- `xox-classic` is a fully self-contained HTML tic-tac-toe game injected as a Blob URL into an iframe with `sandbox="allow-scripts allow-same-origin"`.
-- Other games show a placeholder demo spinner inside the iframe.
+GET    /api/games/:id/reviews
+POST   /api/games/:id/reviews     # Auth required, rate limited: 20/hour
+DELETE /api/reviews/:id            # Auth required
 
-### Visual Design System
+GET    /api/library               # Auth required
+POST   /api/library/:game_id      # Auth required
+DELETE /api/library/:game_id      # Auth required
 
-Custom CSS properties in `:root`:
+GET    /api/wishlist              # Auth required
+POST   /api/wishlist/:game_id     # Auth required
+DELETE /api/wishlist/:game_id     # Auth required
 
-```css
---bg-primary: #1b2838;
---bg-secondary: #171a21;
---bg-tertiary: #2a475e;
---accent: #66c0f4;
---accent-hover: #417a9b;
---text-primary: #c7d5e0;
---text-secondary: #8f98a0;
---success: #a1cd44;
---warning: #d2a960;
---danger: #c15757;
---price: #beee11;
---discount-bg: #4c6b22;
---card-bg: rgba(0, 0, 0, 0.3);
---border-color: rgba(255, 255, 255, 0.1);
+GET    /api/profile/:username
+PUT    /api/profile                # Auth required
+GET    /api/activity               # Auth required
+POST   /api/playtime               # Auth required
+
+GET    /api/developer/:username
+PUT    /api/developer              # Auth required
+GET    /api/developer/:username/games
+
+GET    /api/notifications          # Auth required
+POST   /api/notifications/read    # Auth required
+
+GET    /api/feed                   # Auth required
+GET    /api/games/:id/devlogs
+POST   /api/games/:id/devlogs     # Auth required
+DELETE /api/devlogs/:id            # Auth required
+
+POST   /api/follow/:username      # Auth required
+DELETE /api/follow/:username      # Auth required
+GET    /api/following              # Auth required
+GET    /api/followers/:username
+
+GET    /api/collections            # Auth required
+POST   /api/collections            # Auth required
+DELETE /api/collections/:id        # Auth required
+POST   /api/collections/:id/games # Auth required
+DELETE /api/collections/:id/games/:game_id  # Auth required
+
+DELETE /api/settings/account       # Auth required
+PUT    /api/settings/password      # Auth required
+
+GET    /api/admin/stats            # Admin only
+GET    /api/admin/users            # Admin only
+DELETE /api/admin/users/:id        # Admin only
+GET    /api/admin/games            # Admin only
+DELETE /api/admin/games/:id        # Admin only
+PUT    /api/admin/games/:id/publish # Admin only
+
+POST   /api/upload/image           # Auth required
+POST   /api/seed                   # No auth (creates demo data)
 ```
 
-- Desktop-first, responsive down to 1366x768.
-- Uses CSS Grid for game listings, library cards, and system requirements.
-- Background particle animation is rendered on a `<canvas id="particles-canvas">`.
+Game files are served at `/play/:id/*filepath` for iframe embedding.
 
-## Development Conventions
+Static uploads are served at `/uploads/`.
 
-- **Single-file constraint**: All new features, styles, and logic must be added inline to `index.html`. Do not create additional files unless explicitly requested.
-- **Vanilla JS only**: No importing npm packages or CDN libraries.
-- **Inline styles/scripts**: CSS goes in the `<style>` block; JS goes in the `<script>` block at the bottom of `<body>`.
-- **DOM manipulation**: Uses standard `document.getElementById`, `querySelector`, `innerHTML`, and event listener patterns.
-- **No modules**: Everything is in the global scope.
+SPA fallback: All non-API, non-play routes serve `frontend/index.html`.
+
+## Code Style Guidelines
+
+- **Go**: Standard Go formatting (`go fmt`). Handlers return JSON via `gin.H{}`.
+- **Error handling**: Return early pattern. Log errors with `log.Println()` if needed.
+- **Models**: Database queries live in `internal/models/`. Use `sql.NullString` for nullable fields.
+- **Handlers**: HTTP handlers in `internal/handlers/`. Get current user via `middleware.GetUser(c)`.
+- **Frontend**: Single HTML file with inline CSS/JS. All rendering via template strings and `innerHTML`.
+- **API client**: Frontend uses `api(path, opts)` helper that wraps `fetch()` with JSON handling.
+- **Navigation**: Hash-based routing (`#store`, `#game/<id>`, `#developer/<name>`).
+
+## Key Implementation Details
+
+### Authentication Flow
+
+1. Passwords hashed with bcrypt (default cost)
+2. Sessions stored in `sessions` table with 30-day expiry
+3. Session token passed via HTTP-only cookie named "session"
+4. `middleware.AuthOptional()` loads user if session exists
+5. `middleware.AuthRequired()` rejects unauthenticated requests
+6. First registered user becomes admin (lowest `created_at`)
+
+### Game Upload Process
+
+1. Validate title and genre
+2. Create game record in DB
+3. Accept `.html` or `.zip` files
+4. ZIP files auto-extracted, entry file detected (looks for `index.html`)
+5. Optional cover image saved alongside game files
+6. User marked as developer (`is_developer = 1`)
+7. Activity logged for feeds
+
+### File Storage
+
+- Game files stored at `{dataDir}/games/{gameID}/`
+- Uploads stored at `{dataDir}/uploads/`
+- Cover images served via `/play/{id}/cover.ext`
+- Uploaded images served via `/uploads/`
+- ZIP extraction includes path traversal protection
+
+### Rate Limiting
+
+- Per-IP, per-endpoint tracking in memory
+- Configurable max requests and window per endpoint
+- Cleanup goroutine removes stale entries every 5 minutes
+- Returns HTTP 429 when limit exceeded
+
+### Search
+
+- Full-text search via SQLite FTS5 on `title`, `description`, `tags`
+- Automatic indexing via triggers on INSERT/UPDATE/DELETE
+- Falls back to LIKE queries for partial matches
 
 ## Testing
 
-There is no test suite, test runner, or testing framework. Manual testing is done by opening `index.html` in a browser and interacting with the UI.
+There is no automated test suite. Manual testing is performed by:
 
-## Deployment
-
-Since the app is a single static HTML file, deployment is trivial:
-
-- Copy `index.html` to any static web host (GitHub Pages, Netlify, Vercel, S3, etc.).
-- No build step or environment variables are needed.
+1. Building and running the server
+2. Seeding demo data: `curl -X POST http://localhost:8080/api/seed`
+3. Opening `http://localhost:8080` in a browser
+4. Testing user flows: register, upload game, review, follow, etc.
 
 ## Security Considerations
 
-- The app uses `localStorage` for minimal client-side persistence (library state only). No sensitive data is stored.
-- The game player iframe uses `sandbox="allow-scripts allow-same-origin"` for Blob URL content.
-- External images and embeds are loaded over HTTPS from Unsplash, DiceBear, and YouTube.
+- **Passwords**: Bcrypt hashed, never stored plaintext
+- **Sessions**: 30-day expiry, stored server-side, HTTP-only cookies
+- **Rate limiting**: Applied to auth and upload endpoints
+- **File uploads**: Extension checks, path traversal protection in ZIP extraction
+- **SQL**: Parameterized queries throughout (no SQL injection risk)
+- **XSS**: Frontend uses `textContent` for user input where possible
+- **CSRF**: Not explicitly protected (stateless design, no CSRF tokens)
+
+## Deployment
+
+### Single Binary
+
+The frontend is embedded into the binary via `go:embed`:
+
+```go
+//go:embed all:frontend
+var frontendFS embed.FS
+```
+
+No external assets needed at runtime.
+
+### Docker
+
+Multi-stage Dockerfile:
+1. Build stage: `golang:1.26-alpine` builds the binary
+2. Run stage: `alpine:3.19` runs the binary
+
+Data directory `/app/data` is exposed as a volume.
+
+### GitHub Pages
+
+The `v1/` directory (original single-file version) is automatically deployed to GitHub Pages via `.github/workflows/pages.yml` when changes are pushed to `v1/**`.
+
+## v1 Archive
+
+The `v1/index.html` file contains the original prototype — a completely self-contained HTML/CSS/JS app with `localStorage` persistence and no server. It is not actively developed but serves as a reference/demo.

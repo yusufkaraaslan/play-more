@@ -1154,6 +1154,8 @@
                 selectedRating = 0;
                 navigate('gamedetail', false);
                 suppressHashChange = true; location.hash = 'game/' + gameId; suppressHashChange = false;
+                // Track view
+                api('/games/' + gameId + '/view', { method: 'POST' }).catch(() => {});
                 // Check library/wishlist status
                 if (currentUser) {
                     try {
@@ -1464,6 +1466,7 @@
                         '<div><div class="game-card-title" style="cursor:pointer" onclick="showGameDetail(\'' + g.id + '\')">' + g.title + '</div>' +
                         '<div class="dashboard-stats"><span>' + g.genre + '</span><span>★ ' + (g.avg_rating||0).toFixed(1) + '</span><span>' + (g.review_count||0) + ' reviews</span><span>' + (g.play_count||0) + ' plays</span></div></div>' +
                         '<div class="dashboard-actions"><button class="dash-btn dash-btn-edit" onclick="showGameDetail(\'' + g.id + '\')">View</button>' +
+                        '<button class="dash-btn dash-btn-edit" onclick="showAnalytics(\'' + g.id + '\')">Analytics</button>' +
                         '<button class="dash-btn dash-btn-edit" onclick="editGame(\'' + g.id + '\')">Edit</button>' +
                         '<button class="dash-btn dash-btn-delete" onclick="deleteGame(\'' + g.id + '\',\'' + g.title.replace(/'/g,"\\'") + '\')">Delete</button></div></div>';
                 }).join('');
@@ -1516,6 +1519,58 @@
                 toast('Game updated!', 'success');
                 loadDashboard();
             } catch (e) { toast('Failed to save: ' + e.message, 'error'); }
+        }
+
+        async function showAnalytics(gameId) {
+            try {
+                const data = await api('/games/' + gameId + '/analytics');
+                const a = data.analytics;
+                const container = document.getElementById('dashboard-content');
+                let html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">';
+                html += '<h2 class="section-title" style="margin-bottom:0;">Game Analytics</h2>';
+                html += '<button class="btn-secondary" onclick="loadDashboard()">Back to Dashboard</button></div>';
+
+                // Stats cards
+                html += '<div class="stats-grid" style="margin-bottom:20px;">';
+                html += statCard(a.total_views, 'Views');
+                html += statCard(a.unique_views, 'Unique');
+                html += statCard(a.total_plays, 'Plays');
+                html += statCard(a.review_count, 'Reviews');
+                html += '</div>';
+                html += '<div class="stats-grid" style="margin-bottom:20px;">';
+                html += statCard(a.library_adds, 'Library Adds');
+                html += statCard(a.wishlist_adds, 'Wishlist');
+                html += statCard(a.total_views > 0 ? Math.round(a.total_plays / a.total_views * 100) + '%' : '0%', 'Play Rate');
+                html += statCard(a.total_views > 0 ? Math.round(a.library_adds / a.total_views * 100) + '%' : '0%', 'Add Rate');
+                html += '</div>';
+
+                // Views chart (CSS bars)
+                if (a.views_by_day.length > 0) {
+                    html += '<div class="card-box"><h3 style="font-size:16px;margin-bottom:15px;">Views (Last 30 Days)</h3>';
+                    const maxViews = Math.max(...a.views_by_day.map(d => d.views), 1);
+                    html += '<div style="display:flex;align-items:flex-end;gap:3px;height:120px;">';
+                    a.views_by_day.forEach(d => {
+                        const h = Math.max(4, (d.views / maxViews) * 100);
+                        html += '<div title="' + d.date + ': ' + d.views + ' views" style="flex:1;height:' + h + '%;background:var(--accent);border-radius:2px 2px 0 0;min-width:4px;transition:height 0.3s;"></div>';
+                    });
+                    html += '</div>';
+                    html += '<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-secondary);margin-top:5px;">';
+                    html += '<span>' + a.views_by_day[0].date + '</span><span>' + a.views_by_day[a.views_by_day.length - 1].date + '</span></div>';
+                    html += '</div>';
+                }
+
+                // Top referrers
+                if (a.top_referrers.length > 0) {
+                    html += '<div class="card-box"><h3 style="font-size:16px;margin-bottom:15px;">Top Referrers</h3>';
+                    a.top_referrers.forEach(r => {
+                        html += '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border-color);font-size:13px;">';
+                        html += '<span style="color:var(--accent);">' + r.referrer + '</span><span style="color:var(--text-secondary);">' + r.count + ' views</span></div>';
+                    });
+                    html += '</div>';
+                }
+
+                container.innerHTML = html;
+            } catch (e) { toast('Failed to load analytics: ' + e.message, 'error'); }
         }
 
         /* ============ Settings ============ */
