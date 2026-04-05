@@ -183,6 +183,17 @@ CREATE TABLE IF NOT EXISTS game_views (
     created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS comments (
+    id          TEXT PRIMARY KEY,
+    devlog_id   TEXT NOT NULL REFERENCES devlogs(id) ON DELETE CASCADE,
+    user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    parent_id   TEXT DEFAULT '',
+    text        TEXT NOT NULL,
+    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_comments_devlog ON comments(devlog_id);
+
 CREATE TABLE IF NOT EXISTS user_achievements (
     user_id        TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     achievement_id TEXT NOT NULL,

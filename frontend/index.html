@@ -1127,11 +1127,16 @@
                     if (dlData.devlogs && dlData.devlogs.length > 0) {
                         html += '<div class="game-section"><h3>Devlogs</h3>';
                         dlData.devlogs.forEach(d => {
-                            html += '<div class="card-box" style="margin-bottom:10px;"><h4 style="font-size:15px;margin-bottom:8px;">' + d.title + '</h4>';
+                            html += '<div class="card-box" style="margin-bottom:15px;"><h4 style="font-size:15px;margin-bottom:8px;">' + d.title + '</h4>';
                             html += '<p style="color:var(--text-secondary);font-size:13px;line-height:1.5;">' + d.content + '</p>';
-                            html += '<p style="font-size:11px;color:var(--text-secondary);margin-top:8px;">' + d.username + ' · ' + d.created_at + '</p></div>';
+                            html += '<p style="font-size:11px;color:var(--text-secondary);margin-top:8px;">' + d.username + ' · ' + d.created_at + '</p>';
+                            // Comments section for this devlog
+                            html += '<div id="devlog-comments-' + d.id + '" style="margin-top:15px;padding-top:15px;border-top:1px solid var(--border-color);"></div>';
+                            html += '</div>';
                         });
                         html += '</div>';
+                        // Load comments for each devlog after render
+                        setTimeout(() => { dlData.devlogs.forEach(d => loadDevlogComments(d.id)); }, 100);
                     }
                 } catch {}
                 // Devlog write form (for game owner)
@@ -2057,6 +2062,75 @@
             } catch (e) {
                 container.innerHTML = '<div class="empty-state">Failed to load feed. Try following some developers first!</div>';
             }
+        }
+
+        /* ============ Devlog Comments ============ */
+        async function loadDevlogComments(devlogId) {
+            const container = document.getElementById('devlog-comments-' + devlogId);
+            if (!container) return;
+            try {
+                const data = await api('/devlogs/' + devlogId + '/comments');
+                let html = '<div style="font-size:12px;color:var(--text-secondary);margin-bottom:10px;">' + (data.total || 0) + ' comments</div>';
+                // Comment form
+                if (currentUser) {
+                    html += '<div style="display:flex;gap:8px;margin-bottom:12px;">';
+                    html += '<input type="text" class="form-input" id="comment-input-' + devlogId + '" placeholder="Write a comment..." style="flex:1;padding:8px 12px;font-size:13px;">';
+                    html += '<button class="btn-accent" style="padding:8px 16px;font-size:12px;width:auto;" onclick="postComment(\'' + devlogId + '\')">Post</button></div>';
+                }
+                // Comments list
+                if (data.comments && data.comments.length > 0) {
+                    data.comments.forEach(c => { html += renderComment(c, devlogId, 0); });
+                }
+                container.innerHTML = html;
+            } catch { container.innerHTML = ''; }
+        }
+
+        function renderComment(c, devlogId, depth) {
+            const indent = depth * 20;
+            const avatar = c.avatar_url || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + c.username;
+            let html = '<div style="margin-left:' + indent + 'px;padding:8px 0;border-bottom:1px solid var(--border-color);">';
+            html += '<div style="display:flex;gap:8px;align-items:flex-start;">';
+            html += '<img src="' + avatar + '" style="width:24px;height:24px;border-radius:50%;flex-shrink:0;margin-top:2px;">';
+            html += '<div style="flex:1;">';
+            html += '<div style="font-size:12px;"><span style="color:var(--accent);font-weight:bold;">' + c.username + '</span> <span style="color:var(--text-secondary);">· ' + c.created_at + '</span>';
+            if (currentUser && currentUser.id === c.user_id) html += ' <a style="color:var(--danger);cursor:pointer;font-size:11px;margin-left:8px;" onclick="deleteComment(\'' + c.id + '\',\'' + devlogId + '\')">delete</a>';
+            html += '</div>';
+            html += '<p style="font-size:13px;color:var(--text-secondary);margin-top:4px;line-height:1.4;">' + c.text + '</p>';
+            if (currentUser && depth < 2) html += '<a style="font-size:11px;color:var(--accent);cursor:pointer;margin-top:4px;display:inline-block;" onclick="showReplyBox(\'' + c.id + '\',\'' + devlogId + '\')">Reply</a>';
+            html += '<div id="reply-box-' + c.id + '"></div>';
+            html += '</div></div></div>';
+            // Render replies
+            if (c.replies && c.replies.length > 0) {
+                c.replies.forEach(r => { html += renderComment(r, devlogId, depth + 1); });
+            }
+            return html;
+        }
+
+        function showReplyBox(parentId, devlogId) {
+            const box = document.getElementById('reply-box-' + parentId);
+            if (!box || box.innerHTML) { if (box) box.innerHTML = ''; return; }
+            box.innerHTML = '<div style="display:flex;gap:8px;margin-top:8px;"><input type="text" class="form-input" id="reply-input-' + parentId + '" placeholder="Write a reply..." style="flex:1;padding:6px 10px;font-size:12px;"><button class="btn-accent" style="padding:6px 12px;font-size:11px;width:auto;" onclick="postComment(\'' + devlogId + '\',\'' + parentId + '\')">Reply</button></div>';
+            document.getElementById('reply-input-' + parentId)?.focus();
+        }
+
+        async function postComment(devlogId, parentId) {
+            const inputId = parentId ? 'reply-input-' + parentId : 'comment-input-' + devlogId;
+            const input = document.getElementById(inputId);
+            if (!input || !input.value.trim()) return;
+            try {
+                await api('/devlogs/' + devlogId + '/comments', {
+                    method: 'POST',
+                    body: JSON.stringify({ text: input.value.trim(), parent_id: parentId || '' })
+                });
+                loadDevlogComments(devlogId);
+            } catch (e) { toast(e.message, 'error'); }
+        }
+
+        async function deleteComment(commentId, devlogId) {
+            try {
+                await api('/comments/' + commentId, { method: 'DELETE' });
+                loadDevlogComments(devlogId);
+            } catch (e) { toast(e.message, 'error'); }
         }
 
         /* ============ Image Upload ============ */

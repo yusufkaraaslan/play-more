@@ -95,6 +95,11 @@ func New(frontendFS embed.FS) *gin.Engine {
 		api.POST("/games/:id/devlogs", middleware.AuthRequired(), handlers.CreateDevlog)
 		api.DELETE("/devlogs/:id", middleware.AuthRequired(), handlers.DeleteDevlog)
 
+		// Comments on devlogs
+		api.GET("/devlogs/:id/comments", handlers.ListComments)
+		api.POST("/devlogs/:id/comments", middleware.AuthRequired(), handlers.CreateComment)
+		api.DELETE("/comments/:id", middleware.AuthRequired(), handlers.DeleteComment)
+
 		// Follows
 		api.POST("/follow/:username", middleware.AuthRequired(), middleware.RateLimit(30, 3600), handlers.FollowDeveloper)
 		api.DELETE("/follow/:username", middleware.AuthRequired(), middleware.RateLimit(30, 3600), handlers.UnfollowDeveloper)
