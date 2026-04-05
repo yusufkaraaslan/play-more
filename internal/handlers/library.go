@@ -69,6 +69,7 @@ func AddToLibrary(c *gin.Context) {
 		return
 	}
 	models.LogActivity(user.ID, "library_add", gameID, "")
+	CheckAchievements(user.ID)
 	c.JSON(http.StatusOK, gin.H{"message": "added to library"})
 }
 

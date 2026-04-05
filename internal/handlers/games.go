@@ -137,6 +137,7 @@ func UploadGame(c *gin.Context) {
 	}
 
 	models.LogActivity(user.ID, "upload", game.ID, title)
+	CheckAchievements(user.ID)
 
 	c.JSON(http.StatusCreated, gin.H{"game": game})
 }

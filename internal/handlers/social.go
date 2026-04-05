@@ -30,6 +30,8 @@ func FollowDeveloper(c *gin.Context) {
 	}
 	storage.DB.Exec(`INSERT OR IGNORE INTO follows (follower_id, followed_id) VALUES (?, ?)`, user.ID, target.ID)
 	CreateNotification(target.ID, "follow", SanitizePlain(user.Username)+" started following you", "", user.Username)
+	CheckAchievements(user.ID)
+	CheckAchievements(target.ID) // target may unlock "popular"
 	c.JSON(http.StatusOK, gin.H{"message": "following " + target.Username})
 }
 

@@ -53,6 +53,7 @@ func CreateReview(c *gin.Context) {
 		CreateNotification(game.DeveloperID, "review", SanitizePlain(user.Username)+" reviewed your game \""+SanitizePlain(game.Title)+"\"", gameID, user.Username)
 	}
 
+	CheckAchievements(user.ID)
 	c.JSON(http.StatusCreated, gin.H{"review": review})
 }
 

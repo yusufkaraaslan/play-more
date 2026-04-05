@@ -954,6 +954,23 @@
                     html += '<button class="btn-accent" onclick="navigate(\'admin\')">Open</button></div>';
                 } catch {}
 
+                // Achievements
+                try {
+                    const achData = await api('/achievements/' + u.username);
+                    html += '<h2 class="section-title">Achievements (' + achData.unlocked + '/' + achData.total + ')</h2>';
+                    html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px;margin-bottom:20px;">';
+                    achData.achievements.forEach(a => {
+                        const locked = !a.unlocked_at;
+                        html += '<div class="card-box" style="margin-bottom:0;display:flex;gap:12px;align-items:center;' + (locked ? 'opacity:0.4;' : '') + '">';
+                        html += '<span style="font-size:28px;">' + a.icon + '</span>';
+                        html += '<div><div style="font-size:14px;font-weight:bold;">' + a.name + '</div>';
+                        html += '<div style="font-size:12px;color:var(--text-secondary);">' + a.description + '</div>';
+                        if (a.unlocked_at) html += '<div style="font-size:11px;color:var(--success);margin-top:2px;">Unlocked ' + a.unlocked_at + '</div>';
+                        html += '</div></div>';
+                    });
+                    html += '</div>';
+                } catch {}
+
                 html += '<h2 class="section-title">Recent Activity</h2>';
                 if (data.activity.length > 0) {
                     html += '<div class="card-box">';

@@ -75,6 +75,10 @@ func New(frontendFS embed.FS) *gin.Engine {
 		api.PUT("/developer", middleware.AuthRequired(), middleware.RateLimit(10, 300), handlers.UpdateDeveloperPage)
 		api.GET("/developer/:username/games", handlers.GetDeveloperGames)
 
+		// Achievements
+		api.GET("/achievements/:username", handlers.GetUserAchievements)
+		api.POST("/achievements/check", middleware.AuthRequired(), handlers.CheckMyAchievements)
+
 		// Analytics
 		api.POST("/games/:id/view", handlers.TrackView)
 		api.GET("/games/:id/analytics", middleware.AuthRequired(), handlers.GetGameAnalytics)

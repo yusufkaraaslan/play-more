@@ -104,5 +104,6 @@ func RecordPlaytime(c *gin.Context) {
 	}
 
 	models.LogActivity(user.ID, "played", input.GameID, "")
+	CheckAchievements(user.ID)
 	c.JSON(http.StatusOK, gin.H{"message": "playtime recorded"})
 }

@@ -83,6 +83,7 @@ func CreateDevlog(c *gin.Context) {
 	}
 
 	models.LogActivity(user.ID, "devlog", gameID, input.Title)
+	CheckAchievements(user.ID)
 	c.JSON(http.StatusCreated, gin.H{"id": id, "message": "devlog created"})
 }
 
