@@ -1523,48 +1523,94 @@
 
         async function showAnalytics(gameId) {
             try {
+                const gameData = await api('/games/' + gameId);
                 const data = await api('/games/' + gameId + '/analytics');
                 const a = data.analytics;
+                const g = gameData.game;
                 const container = document.getElementById('dashboard-content');
+                const playRate = a.total_views > 0 ? Math.round(a.total_plays / a.total_views * 100) : 0;
+                const addRate = a.total_views > 0 ? Math.round(a.library_adds / a.total_views * 100) : 0;
+
                 let html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">';
-                html += '<h2 class="section-title" style="margin-bottom:0;">Game Analytics</h2>';
+                html += '<div><h2 class="section-title" style="margin-bottom:4px;">Analytics: ' + g.title + '</h2>';
+                html += '<p style="color:var(--text-secondary);font-size:13px;">Performance overview for your game</p></div>';
                 html += '<button class="btn-secondary" onclick="loadDashboard()">Back to Dashboard</button></div>';
 
-                // Stats cards
-                html += '<div class="stats-grid" style="margin-bottom:20px;">';
-                html += statCard(a.total_views, 'Views');
-                html += statCard(a.unique_views, 'Unique');
-                html += statCard(a.total_plays, 'Plays');
+                // Overview stats (4 columns)
+                html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:15px;margin-bottom:20px;">';
+                html += statCard(a.total_views, 'Total Views');
+                html += statCard(a.unique_views, 'Unique Visitors');
+                html += statCard(a.total_plays, 'Total Plays');
                 html += statCard(a.review_count, 'Reviews');
                 html += '</div>';
-                html += '<div class="stats-grid" style="margin-bottom:20px;">';
-                html += statCard(a.library_adds, 'Library Adds');
-                html += statCard(a.wishlist_adds, 'Wishlist');
-                html += statCard(a.total_views > 0 ? Math.round(a.total_plays / a.total_views * 100) + '%' : '0%', 'Play Rate');
-                html += statCard(a.total_views > 0 ? Math.round(a.library_adds / a.total_views * 100) + '%' : '0%', 'Add Rate');
+
+                // Conversion funnel
+                html += '<div class="card-box" style="margin-bottom:20px;">';
+                html += '<h3 style="font-size:16px;margin-bottom:15px;">Conversion Funnel</h3>';
+                const funnel = [
+                    { label: 'Page Views', value: a.total_views, color: 'var(--accent)' },
+                    { label: 'Played', value: a.total_plays, color: 'var(--success)' },
+                    { label: 'Added to Library', value: a.library_adds, color: 'var(--warning)' },
+                    { label: 'Wishlisted', value: a.wishlist_adds, color: '#9b59b6' },
+                ];
+                const maxFunnel = Math.max(...funnel.map(f => f.value), 1);
+                funnel.forEach(f => {
+                    const pct = Math.max(2, (f.value / maxFunnel) * 100);
+                    const rate = a.total_views > 0 ? Math.round(f.value / a.total_views * 100) : 0;
+                    html += '<div style="margin-bottom:10px;">';
+                    html += '<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px;">';
+                    html += '<span>' + f.label + '</span><span style="color:var(--text-secondary);">' + f.value + (f.value !== a.total_views ? ' (' + rate + '%)' : '') + '</span></div>';
+                    html += '<div style="height:24px;background:rgba(255,255,255,0.05);border-radius:4px;overflow:hidden;">';
+                    html += '<div style="width:' + pct + '%;height:100%;background:' + f.color + ';border-radius:4px;transition:width 0.5s;display:flex;align-items:center;padding-left:8px;font-size:11px;color:white;font-weight:bold;">' + (pct > 15 ? f.value : '') + '</div>';
+                    html += '</div></div>';
+                });
                 html += '</div>';
 
-                // Views chart (CSS bars)
-                if (a.views_by_day.length > 0) {
-                    html += '<div class="card-box"><h3 style="font-size:16px;margin-bottom:15px;">Views (Last 30 Days)</h3>';
+                // Views chart (only show if >1 day of data)
+                if (a.views_by_day.length > 1) {
+                    html += '<div class="card-box" style="margin-bottom:20px;"><h3 style="font-size:16px;margin-bottom:15px;">Views (Last 30 Days)</h3>';
                     const maxViews = Math.max(...a.views_by_day.map(d => d.views), 1);
-                    html += '<div style="display:flex;align-items:flex-end;gap:3px;height:120px;">';
+                    html += '<div style="display:flex;align-items:flex-end;gap:2px;height:140px;">';
                     a.views_by_day.forEach(d => {
-                        const h = Math.max(4, (d.views / maxViews) * 100);
-                        html += '<div title="' + d.date + ': ' + d.views + ' views" style="flex:1;height:' + h + '%;background:var(--accent);border-radius:2px 2px 0 0;min-width:4px;transition:height 0.3s;"></div>';
+                        const h = Math.max(3, (d.views / maxViews) * 100);
+                        html += '<div title="' + d.date + ': ' + d.views + ' views" style="flex:1;height:' + h + '%;background:var(--accent);border-radius:2px 2px 0 0;min-width:4px;transition:height 0.3s;cursor:pointer;opacity:0.8;" onmouseenter="this.style.opacity=1" onmouseleave="this.style.opacity=0.8"></div>';
                     });
                     html += '</div>';
                     html += '<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-secondary);margin-top:5px;">';
                     html += '<span>' + a.views_by_day[0].date + '</span><span>' + a.views_by_day[a.views_by_day.length - 1].date + '</span></div>';
                     html += '</div>';
+                } else if (a.views_by_day.length === 1) {
+                    html += '<div class="card-box" style="margin-bottom:20px;text-align:center;padding:30px;">';
+                    html += '<p style="font-size:14px;color:var(--text-secondary);">Today: <strong style="color:var(--accent);font-size:24px;">' + a.views_by_day[0].views + '</strong> views</p>';
+                    html += '<p style="font-size:12px;color:var(--text-secondary);margin-top:8px;">Chart will appear after multiple days of data</p>';
+                    html += '</div>';
                 }
+
+                // Engagement summary
+                html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-bottom:20px;">';
+                // Play rate card
+                html += '<div class="card-box" style="text-align:center;margin-bottom:0;padding:25px;">';
+                html += '<div style="font-size:36px;font-weight:bold;color:' + (playRate > 30 ? 'var(--success)' : playRate > 10 ? 'var(--warning)' : 'var(--danger)') + ';">' + playRate + '%</div>';
+                html += '<div style="font-size:13px;color:var(--text-secondary);margin-top:4px;">View → Play Rate</div>';
+                html += '<div style="font-size:11px;color:var(--text-secondary);margin-top:8px;">' + (playRate > 30 ? 'Excellent!' : playRate > 10 ? 'Good' : 'Consider improving your game page') + '</div></div>';
+                // Add rate card
+                html += '<div class="card-box" style="text-align:center;margin-bottom:0;padding:25px;">';
+                html += '<div style="font-size:36px;font-weight:bold;color:' + (addRate > 20 ? 'var(--success)' : addRate > 5 ? 'var(--warning)' : 'var(--danger)') + ';">' + addRate + '%</div>';
+                html += '<div style="font-size:13px;color:var(--text-secondary);margin-top:4px;">View → Library Rate</div>';
+                html += '<div style="font-size:11px;color:var(--text-secondary);margin-top:8px;">' + (addRate > 20 ? 'Players love it!' : addRate > 5 ? 'Growing interest' : 'Try adding screenshots & description') + '</div></div>';
+                html += '</div>';
 
                 // Top referrers
                 if (a.top_referrers.length > 0) {
-                    html += '<div class="card-box"><h3 style="font-size:16px;margin-bottom:15px;">Top Referrers</h3>';
+                    html += '<div class="card-box"><h3 style="font-size:16px;margin-bottom:15px;">Traffic Sources</h3>';
+                    const maxRef = Math.max(...a.top_referrers.map(r => r.count), 1);
                     a.top_referrers.forEach(r => {
-                        html += '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border-color);font-size:13px;">';
-                        html += '<span style="color:var(--accent);">' + r.referrer + '</span><span style="color:var(--text-secondary);">' + r.count + ' views</span></div>';
+                        const pct = Math.round(r.count / maxRef * 100);
+                        html += '<div style="margin-bottom:8px;">';
+                        html += '<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:3px;">';
+                        html += '<span style="color:var(--accent);">' + r.referrer + '</span><span style="color:var(--text-secondary);">' + r.count + '</span></div>';
+                        html += '<div style="height:6px;background:rgba(255,255,255,0.05);border-radius:3px;overflow:hidden;">';
+                        html += '<div style="width:' + pct + '%;height:100%;background:var(--accent);border-radius:3px;"></div></div></div>';
                     });
                     html += '</div>';
                 }
