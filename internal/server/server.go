@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"embed"
 	"io/fs"
 	"net/http"
@@ -12,7 +13,7 @@ import (
 	"github.com/yusufkaraaslan/play-more/internal/storage"
 )
 
-func New(frontendFS embed.FS) *gin.Engine {
+func New(frontendFS embed.FS, goatCounterURL string) *gin.Engine {
 	r := gin.Default()
 
 	// Security headers
@@ -23,6 +24,9 @@ func New(frontendFS embed.FS) *gin.Engine {
 		c.Header("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; frame-src 'self'; media-src 'self' https://www.youtube.com")
 		c.Next()
 	})
+
+	// Site analytics tracking
+	r.Use(middleware.TrackPageView())
 
 	// CSRF protection for all state-changing requests
 	r.Use(middleware.CSRFProtect())
@@ -124,6 +128,7 @@ func New(frontendFS embed.FS) *gin.Engine {
 		admin.GET("/games", handlers.AdminListGames)
 		admin.DELETE("/games/:id", middleware.RateLimit(10, 3600), handlers.AdminDeleteGame)
 		admin.PUT("/games/:id/publish", handlers.AdminTogglePublish)
+		admin.GET("/analytics", handlers.AdminSiteAnalytics)
 	}
 
 	// Image uploads
@@ -161,6 +166,11 @@ func New(frontendFS embed.FS) *gin.Engine {
 			if err != nil {
 				c.String(http.StatusInternalServerError, "frontend not found")
 				return
+			}
+			// Inject GoatCounter script if configured
+			if goatCounterURL != "" {
+				snippet := []byte(`<script data-goatcounter="` + goatCounterURL + `/count" async src="` + goatCounterURL + `/count.js"></script></body>`)
+				data = bytes.Replace(data, []byte("</body>"), snippet, 1)
 			}
 			c.Data(http.StatusOK, "text/html; charset=utf-8", data)
 		})

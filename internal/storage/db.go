@@ -201,6 +201,21 @@ CREATE TABLE IF NOT EXISTS user_achievements (
     PRIMARY KEY (user_id, achievement_id)
 );
 
+CREATE TABLE IF NOT EXISTS page_views (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    path          TEXT NOT NULL,
+    method        TEXT NOT NULL,
+    ip_hash       TEXT DEFAULT '',
+    user_agent    TEXT DEFAULT '',
+    referrer      TEXT DEFAULT '',
+    user_id       TEXT DEFAULT '',
+    status_code   INTEGER DEFAULT 200,
+    response_ms   INTEGER DEFAULT 0,
+    created_at    DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_page_views_date ON page_views(created_at);
+CREATE INDEX IF NOT EXISTS idx_page_views_path ON page_views(path);
 CREATE INDEX IF NOT EXISTS idx_game_views_game ON game_views(game_id);
 CREATE INDEX IF NOT EXISTS idx_game_views_date ON game_views(game_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, read);

@@ -24,6 +24,7 @@ func main() {
 
 	port := flag.Int("port", 8080, "server port")
 	dataDir := flag.String("data", "data", "data directory path")
+	goatcounter := flag.String("goatcounter", "", "GoatCounter URL (e.g. https://mysite.goatcounter.com)")
 	flag.Parse()
 
 	// Initialize storage
@@ -35,11 +36,15 @@ func main() {
 	}
 
 	middleware.StartRateLimitCleanup()
+	middleware.StartAnalyticsWriter()
 
 	fmt.Printf("PlayMore server starting on http://localhost:%d\n", *port)
 	fmt.Printf("Data directory: %s\n", *dataDir)
+	if *goatcounter != "" {
+		fmt.Printf("GoatCounter: %s\n", *goatcounter)
+	}
 
-	r := server.New(frontendFS)
+	r := server.New(frontendFS, *goatcounter)
 	if err := r.Run(fmt.Sprintf(":%d", *port)); err != nil {
 		log.Fatal("Server failed:", err)
 	}
