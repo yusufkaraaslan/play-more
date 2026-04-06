@@ -665,7 +665,7 @@
                     '<button class="feed-tab" onclick="switchFeedTab(\'wishlist\',this)">Wishlist</button>' +
                     '<button class="feed-tab" onclick="switchFeedTab(\'following\',this)">Following</button>' +
                     '</div><div class="feed-list" id="feed-list"></div></div></div> ' +
-                    '<span class="user-info">Welcome, <strong>' + currentUser.username + '</strong></span> ' +
+                    '<span class="user-info">Welcome, <strong>' + escapeHtml(currentUser.username) + '</strong></span> ' +
                     '<button class="btn-secondary" onclick="logout()">Logout</button>';
             } else {
                 el.innerHTML = '<button class="btn-secondary" onclick="showAuth(\'login\')">Login</button> <button class="btn-accent" onclick="showAuth(\'register\')">Register</button>';
@@ -783,17 +783,17 @@
         }
 
         function gameCardHTML(g) {
-            const coverSrc = g.cover_path || 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="225"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="%232a475e"/><stop offset="100%" stop-color="%23171a21"/></linearGradient></defs><rect fill="url(%23g)" width="400" height="225"/><text x="200" y="120" text-anchor="middle" fill="%2366c0f4" font-family="Segoe UI" font-size="22" font-weight="bold">' + g.title + '</text></svg>');
+            const coverSrc = g.cover_path || 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="225"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="%232a475e"/><stop offset="100%" stop-color="%23171a21"/></linearGradient></defs><rect fill="url(%23g)" width="400" height="225"/><text x="200" y="120" text-anchor="middle" fill="%2366c0f4" font-family="Segoe UI" font-size="22" font-weight="bold">' + escapeHtml(g.title) + '</text></svg>');
             const rating = g.avg_rating > 0 ? '★ ' + g.avg_rating.toFixed(1) : '';
             const price = g.price === 0 ? 'Free' : '$' + g.price.toFixed(2);
             return '<div class="game-card" onclick="showGameDetail(\'' + g.id + '\')">' +
-                '<img src="' + coverSrc + '" alt="' + g.title + '">' +
+                '<img src="' + coverSrc + '" alt="' + escapeHtml(g.title) + '">' +
                 '<div class="game-card-overlay"><span class="game-card-play">VIEW GAME</span></div>' +
                 '<div class="game-card-info">' +
-                '<div class="game-card-title">' + g.title + '</div>' +
-                '<div class="game-card-meta">by ' + (g.developer_name || 'Unknown') + (rating ? ' · ' + rating : '') + '</div>' +
+                '<div class="game-card-title">' + escapeHtml(g.title) + '</div>' +
+                '<div class="game-card-meta">by ' + escapeHtml(g.developer_name || 'Unknown') + (rating ? ' · ' + rating : '') + '</div>' +
                 '<div class="game-card-footer">' +
-                '<span class="game-card-genre" onclick="event.stopPropagation();searchByTag(\'' + g.genre + '\')">' + g.genre + '</span>' +
+                '<span class="game-card-genre" onclick="event.stopPropagation();searchByTag(\'' + escapeHtml(g.genre) + '\')">' + escapeHtml(g.genre) + '</span>' +
                 (g.is_webgpu ? '<span class="webgpu-badge">WebGPU</span>' : '') +
                 '<span class="game-card-price">' + price + '</span>' +
                 '</div></div></div>';
@@ -817,13 +817,13 @@
         }
 
         function libraryCardHTML(g) {
-            const coverSrc = g.cover_path || 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="225"><rect fill="%231e1e2e" width="400" height="225"/><text x="200" y="120" text-anchor="middle" fill="%2366c0f4" font-size="20">' + g.title + '</text></svg>');
+            const coverSrc = g.cover_path || 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="225"><rect fill="%231e1e2e" width="400" height="225"/><text x="200" y="120" text-anchor="middle" fill="%2366c0f4" font-size="20">' + escapeHtml(g.title) + '</text></svg>');
             return '<div class="game-card" onclick="showGameDetail(\'' + g.id + '\')">' +
-                '<img src="' + coverSrc + '" alt="' + g.title + '">' +
+                '<img src="' + coverSrc + '" alt="' + escapeHtml(g.title) + '">' +
                 '<div class="game-card-overlay"><span class="game-card-play">VIEW</span></div>' +
                 '<div class="game-card-info">' +
-                '<div class="game-card-title">' + g.title + '</div>' +
-                '<div class="game-card-meta">' + g.genre + ' · ' + (g.play_count||0) + ' plays</div>' +
+                '<div class="game-card-title">' + escapeHtml(g.title) + '</div>' +
+                '<div class="game-card-meta">' + escapeHtml(g.genre) + ' · ' + (g.play_count||0) + ' plays</div>' +
                 '<div class="game-card-footer">' +
                 '<button class="btn-accent" style="padding:5px 15px;font-size:12px;width:auto;" onclick="event.stopPropagation();playGame(\'' + g.id + '\',\'' + g.entry_file + '\')">Play</button>' +
                 '<button class="btn-secondary" style="padding:5px 10px;font-size:11px;" onclick="event.stopPropagation();removeFromLib(\'' + g.id + '\')">Remove</button>' +
@@ -897,7 +897,13 @@
         }
 
         function showStatus(msg, type) {
-            document.getElementById('upload-status').innerHTML = msg ? '<div class="status-msg status-' + type + '">' + msg + '</div>' : '';
+            const el = document.getElementById('upload-status');
+            if (!msg) { el.innerHTML = ''; return; }
+            const div = document.createElement('div');
+            div.className = 'status-msg status-' + type;
+            div.textContent = msg;
+            el.innerHTML = '';
+            el.appendChild(div);
         }
 
         /* ============ Profile ============ */
@@ -918,12 +924,12 @@
 
                 html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">';
                 html += '<div class="dev-profile" style="margin-bottom:0;">';
-                html += '<img src="' + (u.avatar_url || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + u.username) + '" class="dev-avatar">';
+                html += '<img src="' + (u.avatar_url || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + encodeURIComponent(u.username)) + '" class="dev-avatar">';
                 const level = Math.max(1, Math.floor(s.games_owned + s.review_count + s.games_uploaded + s.hours_played / 10));
-                html += '<div><div class="dev-name">' + u.username + '</div>';
+                html += '<div><div class="dev-name">' + escapeHtml(u.username) + '</div>';
                 html += '<span class="level-badge">Level ' + level + '</span>';
-                html += '<div class="dev-meta" style="margin-top:6px;">' + (u.bio || 'No bio yet.') + '</div>';
-                if (u.links && u.links.length > 0) { html += '<div class="dev-links">'; u.links.forEach(l => html += '<a href="' + l.url + '" target="_blank" class="dev-link">' + l.label + '</a>'); html += '</div>'; }
+                html += '<div class="dev-meta" style="margin-top:6px;">' + escapeHtml(u.bio || 'No bio yet.') + '</div>';
+                if (u.links && u.links.length > 0) { html += '<div class="dev-links">'; u.links.forEach(l => html += '<a href="' + escapeHtml(l.url) + '" target="_blank" class="dev-link">' + escapeHtml(l.label) + '</a>'); html += '</div>'; }
                 html += '</div></div>';
                 html += '<div style="display:flex;gap:8px;"><button class="btn-secondary" onclick="profileEditMode=true;loadProfile();">Edit Profile</button>';
                 html += '<button class="btn-secondary" onclick="navigate(\'settings\')">Settings</button></div></div>';
@@ -956,16 +962,16 @@
 
                 // Achievements
                 try {
-                    const achData = await api('/achievements/' + u.username);
+                    const achData = await api('/achievements/' + encodeURIComponent(u.username));
                     html += '<h2 class="section-title">Achievements (' + achData.unlocked + '/' + achData.total + ')</h2>';
                     html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px;margin-bottom:20px;">';
                     achData.achievements.forEach(a => {
                         const locked = !a.unlocked_at;
                         html += '<div class="card-box" style="margin-bottom:0;display:flex;gap:12px;align-items:center;' + (locked ? 'opacity:0.4;' : '') + '">';
-                        html += '<span style="font-size:28px;">' + a.icon + '</span>';
-                        html += '<div><div style="font-size:14px;font-weight:bold;">' + a.name + '</div>';
-                        html += '<div style="font-size:12px;color:var(--text-secondary);">' + a.description + '</div>';
-                        if (a.unlocked_at) html += '<div style="font-size:11px;color:var(--success);margin-top:2px;">Unlocked ' + a.unlocked_at + '</div>';
+                        html += '<span style="font-size:28px;">' + escapeHtml(a.icon) + '</span>';
+                        html += '<div><div style="font-size:14px;font-weight:bold;">' + escapeHtml(a.name) + '</div>';
+                        html += '<div style="font-size:12px;color:var(--text-secondary);">' + escapeHtml(a.description) + '</div>';
+                        if (a.unlocked_at) html += '<div style="font-size:11px;color:var(--success);margin-top:2px;">Unlocked ' + escapeHtml(a.unlocked_at) + '</div>';
                         html += '</div></div>';
                     });
                     html += '</div>';
@@ -974,7 +980,7 @@
                 html += '<h2 class="section-title">Recent Activity</h2>';
                 if (data.activity.length > 0) {
                     html += '<div class="card-box">';
-                    data.activity.forEach(a => { html += '<div class="activity-item"><div class="activity-icon">' + actIcon(a.type) + '</div><div class="activity-text">' + actVerb(a.type) + ' <strong>' + a.game_title + '</strong><div style="font-size:11px;color:var(--text-secondary);margin-top:2px;">' + a.created_at + '</div></div></div>'; });
+                    data.activity.forEach(a => { html += '<div class="activity-item"><div class="activity-icon">' + actIcon(a.type) + '</div><div class="activity-text">' + actVerb(a.type) + ' <strong>' + escapeHtml(a.game_title) + '</strong><div style="font-size:11px;color:var(--text-secondary);margin-top:2px;">' + escapeHtml(a.created_at) + '</div></div></div>'; });
                     html += '</div>';
                 } else { html += '<div class="empty-state">No activity yet.</div>'; }
 
@@ -986,16 +992,16 @@
             let html = '<div class="dev-editor">';
             html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;"><h2 class="section-title" style="margin-bottom:0;">Edit Profile</h2>';
             html += '<button class="btn-secondary" onclick="profileEditMode=false;loadProfile();">Back to Profile</button></div>';
-            html += '<div class="form-group"><label class="form-label">Username</label><input type="text" class="form-input" id="edit-username" value="' + u.username + '"></div>';
-            html += '<div class="form-group"><label class="form-label">Bio</label><textarea class="form-textarea" id="edit-bio">' + (u.bio || '') + '</textarea></div>';
+            html += '<div class="form-group"><label class="form-label">Username</label><input type="text" class="form-input" id="edit-username" value="' + escapeHtml(u.username) + '"></div>';
+            html += '<div class="form-group"><label class="form-label">Bio</label><textarea class="form-textarea" id="edit-bio">' + escapeHtml(u.bio || '') + '</textarea></div>';
             html += '<div class="form-group"><label class="form-label">Avatar</label><div style="display:flex;gap:10px;align-items:center;">';
             html += '<input type="file" class="form-input" id="edit-avatar-file" accept="image/*" style="padding:8px;flex:1;" onchange="uploadImage(this,\'edit-avatar\')">';
-            html += '<input type="text" class="form-input" id="edit-avatar" value="' + (u.avatar_url || '') + '" placeholder="URL or upload" style="flex:1;">';
+            html += '<input type="text" class="form-input" id="edit-avatar" value="' + escapeHtml(u.avatar_url || '') + '" placeholder="URL or upload" style="flex:1;">';
             html += '</div></div>';
-            html += '<div class="form-row"><div class="form-group"><label class="form-label">Banner Image</label><input type="file" class="form-input" id="edit-banner-file" accept="image/*" style="padding:8px;margin-bottom:5px;" onchange="uploadImage(this,\'edit-banner\')"><input type="text" class="form-input" id="edit-banner" value="' + (u.banner_url || '') + '" placeholder="URL or upload above"></div>';
-            html += '<div class="form-group"><label class="form-label">Theme Color <span class="color-preview" id="edit-color-preview" style="background:' + (u.theme_color || '#66c0f4') + '"></span></label><input type="color" class="form-input" id="edit-theme-color" value="' + (u.theme_color || '#66c0f4') + '" style="height:40px;padding:4px;" oninput="document.getElementById(\'edit-color-preview\').style.background=this.value"></div></div>';
+            html += '<div class="form-row"><div class="form-group"><label class="form-label">Banner Image</label><input type="file" class="form-input" id="edit-banner-file" accept="image/*" style="padding:8px;margin-bottom:5px;" onchange="uploadImage(this,\'edit-banner\')"><input type="text" class="form-input" id="edit-banner" value="' + escapeHtml(u.banner_url || '') + '" placeholder="URL or upload above"></div>';
+            html += '<div class="form-group"><label class="form-label">Theme Color <span class="color-preview" id="edit-color-preview" style="background:' + escapeHtml(u.theme_color || '#66c0f4') + '"></span></label><input type="color" class="form-input" id="edit-theme-color" value="' + escapeHtml(u.theme_color || '#66c0f4') + '" style="height:40px;padding:4px;" oninput="document.getElementById(\'edit-color-preview\').style.background=this.value"></div></div>';
             html += '<div class="form-group"><label class="form-label">Links</label><div id="edit-links-list">';
-            (u.links || []).forEach((l, i) => { html += '<div class="form-row" style="margin-bottom:8px;"><div><input type="text" class="form-input" placeholder="Label" value="' + l.label + '" data-plink-label="' + i + '"></div><div><input type="text" class="form-input" placeholder="URL" value="' + l.url + '" data-plink-url="' + i + '"></div></div>'; });
+            (u.links || []).forEach((l, i) => { html += '<div class="form-row" style="margin-bottom:8px;"><div><input type="text" class="form-input" placeholder="Label" value="' + escapeHtml(l.label) + '" data-plink-label="' + i + '"></div><div><input type="text" class="form-input" placeholder="URL" value="' + escapeHtml(l.url) + '" data-plink-url="' + i + '"></div></div>'; });
             html += '</div><button class="btn-secondary" style="margin-top:8px;" onclick="addProfileLink()">+ Add Link</button></div>';
             html += '<button class="btn-primary" onclick="saveProfile()">Save Profile</button></div>';
             document.getElementById('profile-content').innerHTML = html;
@@ -1012,6 +1018,15 @@
         }
 
         function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+        function escapeHtml(text) {
+            if (text === null || text === undefined) return '';
+            return String(text)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
         function statCard(v, l) { return '<div class="stat-card"><div class="stat-value">' + esc(v) + '</div><div class="stat-label">' + esc(l) + '</div></div>'; }
         function actIcon(t) { return {played:'🎮',library_add:'📚',review:'✍️',upload:'📤'}[t]||'🎯'; }
         function actVerb(t) { return {played:'Played',library_add:'Added to library',review:'Reviewed',upload:'Uploaded'}[t]||t; }
@@ -1033,12 +1048,12 @@
 
                 let html = '<div class="game-detail">';
                 // Breadcrumbs
-                html += '<div class="breadcrumbs"><a onclick="navigate(\'store\')">All Games</a> &gt; <a onclick="navigate(\'store\')">' + genreCap + '</a> &gt; ' + game.title + '</div>';
+                html += '<div class="breadcrumbs"><a onclick="navigate(\'store\')">All Games</a> &gt; <a onclick="navigate(\'store\')">' + escapeHtml(genreCap) + '</a> &gt; ' + escapeHtml(game.title) + '</div>';
                 // Header
                 html += '<div class="game-header">';
                 if (coverSrc) html += '<img src="' + coverSrc + '" class="game-header-bg">';
-                html += '<div class="game-header-content"><h1>' + game.title + '</h1>';
-                html += '<div class="game-header-meta">by <a onclick="showDeveloper(\'' + game.developer_name + '\')">' + game.developer_name + '</a> · ' + genreCap;
+                html += '<div class="game-header-content"><h1>' + escapeHtml(game.title) + '</h1>';
+                html += '<div class="game-header-meta">by <a onclick="showDeveloper(\'' + escapeHtml(game.developer_name) + '\')">' + escapeHtml(game.developer_name) + '</a> · ' + escapeHtml(genreCap);
                 if (game.avg_rating > 0) html += ' · ★ ' + game.avg_rating.toFixed(1);
                 html += '</div></div></div>';
 
@@ -1064,15 +1079,15 @@
                 html += '</div>';
 
                 // About
-                html += '<div class="game-section"><h3>About This Game</h3><p style="color:var(--text-secondary);line-height:1.6;">' + (game.custom_about || game.description || 'No description.') + '</p>';
-                if (game.features && game.features.length > 0) { html += '<ul style="margin-top:15px;color:var(--text-secondary);padding-left:20px;">'; game.features.forEach(f => html += '<li style="margin-bottom:5px;">' + f + '</li>'); html += '</ul>'; }
+                html += '<div class="game-section"><h3>About This Game</h3><p style="color:var(--text-secondary);line-height:1.6;">' + escapeHtml(game.custom_about || game.description || 'No description.') + '</p>';
+                if (game.features && game.features.length > 0) { html += '<ul style="margin-top:15px;color:var(--text-secondary);padding-left:20px;">'; game.features.forEach(f => html += '<li style="margin-bottom:5px;">' + escapeHtml(f) + '</li>'); html += '</ul>'; }
                 html += '</div>';
 
                 // System Requirements
                 if (game.sys_req_min || game.sys_req_rec) {
                     html += '<div class="game-section"><h3>System Requirements</h3><div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">';
-                    html += '<div><h4 style="font-size:14px;margin-bottom:10px;">Minimum</h4><p style="color:var(--text-secondary);font-size:13px;white-space:pre-line;">' + (game.sys_req_min || 'Any modern browser') + '</p></div>';
-                    html += '<div><h4 style="font-size:14px;margin-bottom:10px;">Recommended</h4><p style="color:var(--text-secondary);font-size:13px;white-space:pre-line;">' + (game.sys_req_rec || 'Chrome 110+ / Firefox 115+') + '</p></div>';
+                    html += '<div><h4 style="font-size:14px;margin-bottom:10px;">Minimum</h4><p style="color:var(--text-secondary);font-size:13px;white-space:pre-line;">' + escapeHtml(game.sys_req_min || 'Any modern browser') + '</p></div>';
+                    html += '<div><h4 style="font-size:14px;margin-bottom:10px;">Recommended</h4><p style="color:var(--text-secondary);font-size:13px;white-space:pre-line;">' + escapeHtml(game.sys_req_rec || 'Chrome 110+ / Firefox 115+') + '</p></div>';
                     html += '</div></div>';
                 }
 
@@ -1103,13 +1118,13 @@
                     html += '<button class="btn-accent" onclick="submitGameReview()">Submit Review</button></div>';
                 }
                 allReviews.forEach(r => {
-                    const avatar = r.avatar_url || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + r.username;
+                    const avatar = r.avatar_url || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + encodeURIComponent(r.username);
                     html += '<div class="review-card"><div class="review-header"><div style="display:flex;align-items:center;gap:10px;">';
                     html += '<img src="' + avatar + '" style="width:32px;height:32px;border-radius:3px;">';
-                    html += '<span class="review-author">' + r.username + '</span></div>';
+                    html += '<span class="review-author">' + escapeHtml(r.username) + '</span></div>';
                     html += '<span class="review-stars">' + '★'.repeat(r.rating) + '☆'.repeat(5-r.rating) + '</span></div>';
-                    html += '<p class="review-text">' + r.text + '</p>';
-                    html += '<p style="font-size:11px;color:var(--text-secondary);margin-top:8px;">Posted: ' + (r.created_at || '') + '</p></div>';
+                    html += '<p class="review-text">' + escapeHtml(r.text) + '</p>';
+                    html += '<p style="font-size:11px;color:var(--text-secondary);margin-top:8px;">Posted: ' + escapeHtml(r.created_at || '') + '</p></div>';
                 });
                 if (allReviews.length === 0 && !currentUser) html += '<p style="color:var(--text-secondary);">No reviews yet. <a style="color:var(--accent);cursor:pointer;" onclick="showAuth(\'login\')">Login</a> to be the first!</p>';
                 html += '</div>';
@@ -1128,9 +1143,9 @@
                     if (dlData.devlogs && dlData.devlogs.length > 0) {
                         html += '<div class="game-section"><h3>Devlogs</h3>';
                         dlData.devlogs.forEach(d => {
-                            html += '<div class="card-box" style="margin-bottom:15px;"><h4 style="font-size:15px;margin-bottom:8px;">' + d.title + '</h4>';
-                            html += '<p style="color:var(--text-secondary);font-size:13px;line-height:1.5;">' + d.content + '</p>';
-                            html += '<p style="font-size:11px;color:var(--text-secondary);margin-top:8px;">' + d.username + ' · ' + d.created_at + '</p>';
+                            html += '<div class="card-box" style="margin-bottom:15px;"><h4 style="font-size:15px;margin-bottom:8px;">' + escapeHtml(d.title) + '</h4>';
+                            html += '<p style="color:var(--text-secondary);font-size:13px;line-height:1.5;">' + escapeHtml(d.content) + '</p>';
+                            html += '<p style="font-size:11px;color:var(--text-secondary);margin-top:8px;">' + escapeHtml(d.username) + ' · ' + escapeHtml(d.created_at) + '</p>';
                             // Comments section for this devlog
                             html += '<div id="devlog-comments-' + d.id + '" style="margin-top:15px;padding-top:15px;border-top:1px solid var(--border-color);"></div>';
                             html += '</div>';
@@ -1151,7 +1166,7 @@
                 html += '</div><div class="game-sidebar">';
 
                 // Purchase box
-                html += '<div class="purchase-box"><div class="purchase-title">' + game.title + '</div>';
+                html += '<div class="purchase-box"><div class="purchase-title">' + escapeHtml(game.title) + '</div>';
                 html += '<div class="purchase-price-row">';
                 if (game.discount > 0) { html += '<span class="purchase-discount">-' + game.discount + '%</span><span class="purchase-original" style="text-decoration:line-through;color:var(--text-secondary);font-size:13px;">$' + game.price.toFixed(2) + '</span>'; }
                 html += '<span class="purchase-final">' + (game.price === 0 ? 'Free to Play' : '$' + (game.price * (1 - game.discount/100)).toFixed(2)) + '</span></div>';
@@ -1165,12 +1180,12 @@
 
                 // Info box
                 html += '<div class="info-box">';
-                html += '<div class="info-row"><span class="info-label">Developer</span><span class="info-value"><a onclick="showDeveloper(\'' + game.developer_name + '\')">' + game.developer_name + '</a></span></div>';
-                html += '<div class="info-row"><span class="info-label">Genre</span><span class="info-value">' + genreCap + '</span></div>';
-                html += '<div class="info-row"><span class="info-label">Released</span><span class="info-value">' + (game.created_at || 'Unknown') + '</span></div>';
+                html += '<div class="info-row"><span class="info-label">Developer</span><span class="info-value"><a onclick="showDeveloper(\'' + escapeHtml(game.developer_name) + '\')">' + escapeHtml(game.developer_name) + '</a></span></div>';
+                html += '<div class="info-row"><span class="info-label">Genre</span><span class="info-value">' + escapeHtml(genreCap) + '</span></div>';
+                html += '<div class="info-row"><span class="info-label">Released</span><span class="info-value">' + escapeHtml(game.created_at || 'Unknown') + '</span></div>';
                 if (game.is_webgpu) html += '<div class="info-row"><span class="info-label">Graphics</span><span class="info-value" style="color:var(--success);">WebGPU Enabled</span></div>';
                 html += '</div>';
-                if (game.tags && game.tags.length > 0) { html += '<div class="tag-list">'; game.tags.forEach(t => html += '<span class="tag">' + t + '</span>'); html += '</div>'; }
+                if (game.tags && game.tags.length > 0) { html += '<div class="tag-list">'; game.tags.forEach(t => html += '<span class="tag">' + escapeHtml(t) + '</span>'); html += '</div>'; }
 
                 html += '</div></div></div>';
                 document.getElementById('game-detail-content').innerHTML = html;
@@ -1248,14 +1263,14 @@
 
                 let html = '<div class="dev-page">';
                 html += '<div class="dev-banner" style="' + (page?.banner_url ? '' : 'background:linear-gradient(135deg, var(--bg-secondary), ' + themeColor + '30);') + '">';
-                if (page?.banner_url) html += '<img src="' + page.banner_url + '">';
+                if (page?.banner_url) html += '<img src="' + escapeHtml(page.banner_url) + '">';
                 html += '</div>';
 
                 html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;">';
-                html += '<div class="dev-profile"><img src="' + (u.avatar_url || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + u.username) + '" class="dev-avatar">';
-                html += '<div><div class="dev-name">' + (page?.display_name || u.username) + '</div>';
-                html += '<div class="dev-meta">@' + u.username + ' · ' + stats.games_uploaded + ' games · ' + stats.hours_played.toFixed(0) + ' hours played</div>';
-                if (page?.links && page.links.length > 0) { html += '<div class="dev-links">'; page.links.forEach(l => html += '<a href="' + l.url + '" target="_blank" class="dev-link">' + l.label + '</a>'); html += '</div>'; }
+                html += '<div class="dev-profile"><img src="' + (u.avatar_url || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + encodeURIComponent(u.username)) + '" class="dev-avatar">';
+                html += '<div><div class="dev-name">' + escapeHtml(page?.display_name || u.username) + '</div>';
+                html += '<div class="dev-meta">@' + escapeHtml(u.username) + ' · ' + stats.games_uploaded + ' games · ' + stats.hours_played.toFixed(0) + ' hours played</div>';
+                if (page?.links && page.links.length > 0) { html += '<div class="dev-links">'; page.links.forEach(l => html += '<a href="' + escapeHtml(l.url) + '" target="_blank" class="dev-link">' + escapeHtml(l.label) + '</a>'); html += '</div>'; }
                 html += '</div></div>';
                 if (isOwnPage) {
                     html += '<button class="btn-secondary" onclick="navigate(\'deveditor\')">Edit Developer Page</button>';
@@ -1269,7 +1284,7 @@
                 }
                 html += '</div>';
 
-                if (page?.about) html += '<div class="dev-about">' + page.about + '</div>';
+                if (page?.about) html += '<div class="dev-about">' + escapeHtml(page.about) + '</div>';
 
                 html += '<h2 class="section-title">Published Games</h2>';
                 if (data.games && data.games.length > 0) { html += '<div class="game-grid">'; data.games.forEach(g => html += gameCardHTML(g)); html += '</div>'; }
@@ -1277,7 +1292,7 @@
 
                 if (data.activity && data.activity.length > 0) {
                     html += '<h2 class="section-title" style="margin-top:30px;">Recent Activity</h2><div class="card-box">';
-                    data.activity.forEach(a => { html += '<div class="activity-item"><div class="activity-icon">' + actIcon(a.type) + '</div><div class="activity-text">' + actVerb(a.type) + ' <strong>' + a.game_title + '</strong><div style="font-size:11px;color:var(--text-secondary);margin-top:2px;">' + a.created_at + '</div></div></div>'; });
+                    data.activity.forEach(a => { html += '<div class="activity-item"><div class="activity-icon">' + actIcon(a.type) + '</div><div class="activity-text">' + actVerb(a.type) + ' <strong>' + escapeHtml(a.game_title) + '</strong><div style="font-size:11px;color:var(--text-secondary);margin-top:2px;">' + escapeHtml(a.created_at) + '</div></div></div>'; });
                     html += '</div>';
                 }
                 html += '</div>';
@@ -1291,17 +1306,17 @@
         async function loadDevEditor() {
             if (!currentUser) { showAuth('login'); return; }
             let page = null;
-            try { const d = await api('/developer/' + currentUser.username); page = d.page; } catch {}
+            try { const d = await api('/developer/' + encodeURIComponent(currentUser.username)); page = d.page; } catch {}
             let html = '';
-            html += '<div class="form-group"><label class="form-label">Display Name</label><input type="text" class="form-input" id="dev-display-name" value="' + (page?.display_name || currentUser.username) + '"></div>';
-            html += '<div class="form-group"><label class="form-label">About (supports HTML)</label><textarea class="form-textarea" id="dev-about" style="min-height:150px;">' + (page?.about || '') + '</textarea></div>';
-            html += '<div class="form-row"><div class="form-group"><label class="form-label">Theme Color <span class="color-preview" id="dev-color-preview" style="background:' + (page?.theme_color || '#66c0f4') + '"></span></label><input type="color" class="form-input" id="dev-theme-color" value="' + (page?.theme_color || '#66c0f4') + '" style="height:40px;padding:4px;" oninput="document.getElementById(\'dev-color-preview\').style.background=this.value"></div>';
-            html += '<div class="form-group"><label class="form-label">Banner Image URL</label><input type="text" class="form-input" id="dev-banner" value="' + (page?.banner_url || '') + '" placeholder="https://..."></div></div>';
+            html += '<div class="form-group"><label class="form-label">Display Name</label><input type="text" class="form-input" id="dev-display-name" value="' + escapeHtml(page?.display_name || currentUser.username) + '"></div>';
+            html += '<div class="form-group"><label class="form-label">About (supports HTML)</label><textarea class="form-textarea" id="dev-about" style="min-height:150px;">' + escapeHtml(page?.about || '') + '</textarea></div>';
+            html += '<div class="form-row"><div class="form-group"><label class="form-label">Theme Color <span class="color-preview" id="dev-color-preview" style="background:' + escapeHtml(page?.theme_color || '#66c0f4') + '"></span></label><input type="color" class="form-input" id="dev-theme-color" value="' + escapeHtml(page?.theme_color || '#66c0f4') + '" style="height:40px;padding:4px;" oninput="document.getElementById(\'dev-color-preview\').style.background=this.value"></div>';
+            html += '<div class="form-group"><label class="form-label">Banner Image URL</label><input type="text" class="form-input" id="dev-banner" value="' + escapeHtml(page?.banner_url || '') + '" placeholder="https://..."></div></div>';
             html += '<div class="form-group"><label class="form-label">Links</label><div id="dev-links-list">';
-            (page?.links || []).forEach((l, i) => { html += '<div class="form-row" style="margin-bottom:8px;"><div><input type="text" class="form-input" placeholder="Label" value="' + l.label + '" data-link-label="' + i + '"></div><div><input type="text" class="form-input" placeholder="URL" value="' + l.url + '" data-link-url="' + i + '"></div></div>'; });
+            (page?.links || []).forEach((l, i) => { html += '<div class="form-row" style="margin-bottom:8px;"><div><input type="text" class="form-input" placeholder="Label" value="' + escapeHtml(l.label) + '" data-link-label="' + i + '"></div><div><input type="text" class="form-input" placeholder="URL" value="' + escapeHtml(l.url) + '" data-link-url="' + i + '"></div></div>'; });
             html += '</div><button class="btn-secondary" style="margin-top:8px;" onclick="addDevLink()">+ Add Link</button></div>';
             html += '<div style="display:flex;gap:10px;"><button class="btn-primary" style="width:auto;padding:12px 30px;" onclick="saveDevPage()">Save Developer Page</button>';
-            html += '<button class="btn-secondary" onclick="showDeveloper(\'' + currentUser.username + '\')">Preview</button></div>';
+            html += '<button class="btn-secondary" onclick="showDeveloper(\'' + escapeHtml(currentUser.username) + '\')">Preview</button></div>';
             document.getElementById('deveditor-content').innerHTML = html;
         }
 
@@ -1423,9 +1438,9 @@
                         const g = gd.game;
                         const coverSrc = g.cover_path || '';
                         html += '<div class="recent-card" onclick="showGameDetail(\'' + g.id + '\')">';
-                        if (coverSrc) html += '<img src="' + coverSrc + '">'; else html += '<div style="height:100px;background:var(--bg-secondary);"></div>';
-                        html += '<div class="recent-card-info"><div class="recent-card-title">' + g.title + '</div>';
-                        html += '<div class="recent-card-time">' + a.created_at + '</div></div></div>';
+                        if (coverSrc) html += '<img src="' + escapeHtml(coverSrc) + '">'; else html += '<div style="height:100px;background:var(--bg-secondary);"></div>';
+                        html += '<div class="recent-card-info"><div class="recent-card-title">' + escapeHtml(g.title) + '</div>';
+                        html += '<div class="recent-card-time">' + escapeHtml(a.created_at) + '</div></div></div>';
                     } catch {}
                 }
                 document.getElementById('recently-played-list').innerHTML = html;
@@ -1443,8 +1458,8 @@
                     const coverSrc = g.cover_path || '';
                     const final = (g.price * (1 - g.discount/100)).toFixed(2);
                     return '<div class="offer-card" onclick="showGameDetail(\'' + g.id + '\')">' +
-                        (coverSrc ? '<img src="' + coverSrc + '">' : '<div style="height:120px;background:var(--bg-secondary);"></div>') +
-                        '<div class="offer-content"><div class="offer-title">' + g.title + '</div>' +
+                        (coverSrc ? '<img src="' + escapeHtml(coverSrc) + '">' : '<div style="height:120px;background:var(--bg-secondary);"></div>') +
+                        '<div class="offer-content"><div class="offer-title">' + escapeHtml(g.title) + '</div>' +
                         '<div class="offer-price"><span class="purchase-discount">-' + g.discount + '%</span>' +
                         '<span class="purchase-original" style="text-decoration:line-through;color:var(--text-secondary);font-size:12px;">$' + g.price.toFixed(2) + '</span>' +
                         '<span style="color:var(--price);font-weight:bold;">$' + final + '</span></div></div></div>';
@@ -1463,8 +1478,8 @@
                     const coverSrc = g.cover_path || '';
                     const price = g.price === 0 ? 'Free' : '$' + g.price.toFixed(2);
                     return '<div class="game-card" onclick="showGameDetail(\'' + g.id + '\')">' +
-                        (coverSrc ? '<img src="' + coverSrc + '">' : '<div style="height:160px;background:var(--bg-secondary);"></div>') +
-                        '<div class="game-card-info"><div class="game-card-title">' + g.title + '</div>' +
+                        (coverSrc ? '<img src="' + escapeHtml(coverSrc) + '">' : '<div style="height:160px;background:var(--bg-secondary);"></div>') +
+                        '<div class="game-card-info"><div class="game-card-title">' + escapeHtml(g.title) + '</div>' +
                         '<div class="game-card-footer"><span class="game-card-price">' + price + '</span>' +
                         '<button class="btn-secondary" style="padding:5px 10px;font-size:11px;" onclick="event.stopPropagation();removeFromWish(\'' + g.id + '\')">Remove</button>' +
                         '</div></div></div>';
@@ -1485,13 +1500,13 @@
                 container.innerHTML = data.games.map(g => {
                     const coverSrc = g.cover_path || '';
                     return '<div class="dashboard-card">' +
-                        (coverSrc ? '<img src="' + coverSrc + '" style="width:180px;height:80px;object-fit:cover;border-radius:3px;cursor:pointer;" onclick="showGameDetail(\'' + g.id + '\')">' : '<div style="width:180px;height:80px;background:var(--bg-secondary);border-radius:3px;"></div>') +
-                        '<div><div class="game-card-title" style="cursor:pointer" onclick="showGameDetail(\'' + g.id + '\')">' + g.title + '</div>' +
-                        '<div class="dashboard-stats"><span>' + g.genre + '</span><span>★ ' + (g.avg_rating||0).toFixed(1) + '</span><span>' + (g.review_count||0) + ' reviews</span><span>' + (g.play_count||0) + ' plays</span></div></div>' +
+                        (coverSrc ? '<img src="' + escapeHtml(coverSrc) + '" style="width:180px;height:80px;object-fit:cover;border-radius:3px;cursor:pointer;" onclick="showGameDetail(\'' + g.id + '\')">' : '<div style="width:180px;height:80px;background:var(--bg-secondary);border-radius:3px;"></div>') +
+                        '<div><div class="game-card-title" style="cursor:pointer" onclick="showGameDetail(\'' + g.id + '\')">' + escapeHtml(g.title) + '</div>' +
+                        '<div class="dashboard-stats"><span>' + escapeHtml(g.genre) + '</span><span>★ ' + (g.avg_rating||0).toFixed(1) + '</span><span>' + (g.review_count||0) + ' reviews</span><span>' + (g.play_count||0) + ' plays</span></div></div>' +
                         '<div class="dashboard-actions"><button class="dash-btn dash-btn-edit" onclick="showGameDetail(\'' + g.id + '\')">View</button>' +
                         '<button class="dash-btn dash-btn-edit" onclick="showAnalytics(\'' + g.id + '\')">Analytics</button>' +
                         '<button class="dash-btn dash-btn-edit" onclick="editGame(\'' + g.id + '\')">Edit</button>' +
-                        '<button class="dash-btn dash-btn-delete" onclick="deleteGame(\'' + g.id + '\',\'' + g.title.replace(/'/g,"\\'") + '\')">Delete</button></div></div>';
+                        '<button class="dash-btn dash-btn-delete" onclick="deleteGame(\'' + g.id + '\',\'' + escapeHtml(g.title).replace(/'/g,"\\'") + '\')">Delete</button></div></div>';
                 }).join('');
             } catch (e) { console.error('Dashboard error:', e); }
         }
@@ -1507,16 +1522,16 @@
                 const data = await api('/games/' + id);
                 const g = data.game;
                 let html = '<div class="dev-editor">';
-                html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;"><h2 class="section-title" style="margin-bottom:0;">Edit: ' + g.title + '</h2>';
+                html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;"><h2 class="section-title" style="margin-bottom:0;">Edit: ' + escapeHtml(g.title) + '</h2>';
                 html += '<button class="btn-secondary" onclick="loadDashboard()">Back to Dashboard</button></div>';
-                html += '<div class="form-group"><label class="form-label">Title</label><input type="text" class="form-input" id="edit-game-title" value="' + g.title + '"></div>';
+                html += '<div class="form-group"><label class="form-label">Title</label><input type="text" class="form-input" id="edit-game-title" value="' + escapeHtml(g.title) + '"></div>';
                 html += '<div class="form-row"><div class="form-group"><label class="form-label">Genre</label><select class="form-select" id="edit-game-genre">';
                 ['action','adventure','rpg','strategy','puzzle','racing','horror','experimental'].forEach(gen => {
                     html += '<option value="' + gen + '"' + (gen === g.genre ? ' selected' : '') + '>' + gen.charAt(0).toUpperCase() + gen.slice(1) + '</option>';
                 });
                 html += '</select></div><div class="form-group"><label class="form-label">Price ($)</label><input type="number" class="form-input" id="edit-game-price" value="' + g.price + '" step="0.01"></div></div>';
-                html += '<div class="form-group"><label class="form-label">Tags (comma separated)</label><input type="text" class="form-input" id="edit-game-tags" value="' + (g.tags||[]).join(', ') + '"></div>';
-                html += '<div class="form-group"><label class="form-label">Description</label><textarea class="form-textarea" id="edit-game-desc">' + (g.description || '') + '</textarea></div>';
+                html += '<div class="form-group"><label class="form-label">Tags (comma separated)</label><input type="text" class="form-input" id="edit-game-tags" value="' + escapeHtml((g.tags||[]).join(', ')) + '"></div>';
+                html += '<div class="form-group"><label class="form-label">Description</label><textarea class="form-textarea" id="edit-game-desc">' + escapeHtml(g.description || '') + '</textarea></div>';
                 html += '<div class="form-group"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--text-secondary);"><input type="checkbox" id="edit-game-webgpu"' + (g.is_webgpu ? ' checked' : '') + ' style="accent-color:var(--accent);width:16px;height:16px;"> Uses WebGPU</label></div>';
                 html += '<button class="btn-primary" style="width:auto;padding:12px 30px;" onclick="saveGameEdit(\'' + id + '\')">Save Changes</button>';
                 html += '</div>';
@@ -1555,7 +1570,7 @@
                 const addRate = a.total_views > 0 ? Math.round(a.library_adds / a.total_views * 100) : 0;
 
                 let html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">';
-                html += '<div><h2 class="section-title" style="margin-bottom:4px;">Analytics: ' + g.title + '</h2>';
+                html += '<div><h2 class="section-title" style="margin-bottom:4px;">Analytics: ' + escapeHtml(g.title) + '</h2>';
                 html += '<p style="color:var(--text-secondary);font-size:13px;">Performance overview for your game</p></div>';
                 html += '<button class="btn-secondary" onclick="loadDashboard()">Back to Dashboard</button></div>';
 
@@ -1821,20 +1836,20 @@
                     const users = await api('/admin/users');
                     (users.users || []).forEach(u => {
                         html += '<div class="dashboard-card"><div></div><div>';
-                        html += '<div class="game-card-title">' + u.username + '</div>';
-                        html += '<div class="dashboard-stats"><span>' + u.email + '</span><span>' + u.game_count + ' games</span><span>' + u.review_count + ' reviews</span><span>' + u.created_at + '</span></div>';
+                        html += '<div class="game-card-title">' + escapeHtml(u.username) + '</div>';
+                        html += '<div class="dashboard-stats"><span>' + escapeHtml(u.email) + '</span><span>' + u.game_count + ' games</span><span>' + u.review_count + ' reviews</span><span>' + escapeHtml(u.created_at) + '</span></div>';
                         html += '</div><div class="dashboard-actions">';
-                        html += '<button class="dash-btn dash-btn-delete" onclick="adminDeleteUser(\'' + u.id + '\',\'' + u.username + '\')">Delete</button></div></div>';
+                        html += '<button class="dash-btn dash-btn-delete" onclick="adminDeleteUser(\'' + u.id + '\',\'' + escapeHtml(u.username).replace(/'/g, "\\'") + '\')">Delete</button></div></div>';
                     });
                 } else if (adminTab === 'games') {
                     const games = await api('/admin/games');
                     (games.games || []).forEach(g => {
                         html += '<div class="dashboard-card"><div></div><div>';
-                        html += '<div class="game-card-title">' + g.title + '</div>';
-                        html += '<div class="dashboard-stats"><span>by ' + g.developer + '</span><span>' + g.genre + '</span><span>' + g.review_count + ' reviews</span><span>' + (g.published ? 'Published' : 'Hidden') + '</span></div>';
+                        html += '<div class="game-card-title">' + escapeHtml(g.title) + '</div>';
+                        html += '<div class="dashboard-stats"><span>by ' + escapeHtml(g.developer) + '</span><span>' + escapeHtml(g.genre) + '</span><span>' + g.review_count + ' reviews</span><span>' + (g.published ? 'Published' : 'Hidden') + '</span></div>';
                         html += '</div><div class="dashboard-actions">';
                         html += '<button class="dash-btn dash-btn-edit" onclick="adminTogglePublish(\'' + g.id + '\')">' + (g.published ? 'Hide' : 'Publish') + '</button>';
-                        html += '<button class="dash-btn dash-btn-delete" onclick="adminDeleteGameA(\'' + g.id + '\',\'' + g.title.replace(/'/g, "\\'") + '\')">Delete</button></div></div>';
+                        html += '<button class="dash-btn dash-btn-delete" onclick="adminDeleteGameA(\'' + g.id + '\',\'' + escapeHtml(g.title).replace(/'/g, "\\'") + '\')">Delete</button></div></div>';
                     });
                 }
                 container.innerHTML = html;
@@ -2023,8 +2038,8 @@
                 list.innerHTML = data.notifications.map(n =>
                     '<div class="feed-item" style="' + (!n.read ? 'background:rgba(102,192,244,0.05);' : '') + '" onclick="' + (n.game_id ? "showGameDetail('" + n.game_id + "')" : '') + '">' +
                     '<div style="font-size:20px;width:50px;text-align:center;">' + (icons[n.type] || '🔔') + '</div>' +
-                    '<div class="feed-item-info"><div class="feed-item-title">' + n.message + '</div>' +
-                    '<div class="feed-item-meta">' + n.created_at + '</div></div></div>'
+                    '<div class="feed-item-info"><div class="feed-item-title">' + escapeHtml(n.message) + '</div>' +
+                    '<div class="feed-item-meta">' + escapeHtml(n.created_at) + '</div></div></div>'
                 ).join('');
             } catch { list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary);">Failed to load.</div>'; }
         }
@@ -2037,8 +2052,8 @@
                 list.innerHTML = data.activity.slice(0, 15).map(a =>
                     '<div class="feed-item" onclick="' + (a.game_id ? "showGameDetail('" + a.game_id + "')" : '') + '">' +
                     '<div style="font-size:20px;width:50px;text-align:center;">' + actIcon(a.type) + '</div>' +
-                    '<div class="feed-item-info"><div class="feed-item-title">' + actVerb(a.type) + ' <strong>' + a.game_title + '</strong></div>' +
-                    '<div class="feed-item-meta">' + a.created_at + '</div></div></div>'
+                    '<div class="feed-item-info"><div class="feed-item-title">' + actVerb(a.type) + ' <strong>' + escapeHtml(a.game_title) + '</strong></div>' +
+                    '<div class="feed-item-meta">' + escapeHtml(a.created_at) + '</div></div></div>'
                 ).join('');
             } catch { list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary);">Failed to load.</div>'; }
         }
@@ -2050,9 +2065,9 @@
                 if (!data.games || data.games.length === 0) { list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary);">No games in library.</div>'; return; }
                 list.innerHTML = data.games.slice(0, 15).map(g =>
                     '<div class="feed-item" onclick="showGameDetail(\'' + g.id + '\')">' +
-                    (g.cover_path ? '<img src="' + g.cover_path + '">' : '<div style="width:50px;height:35px;background:var(--bg-tertiary);border-radius:3px;"></div>') +
-                    '<div class="feed-item-info"><div class="feed-item-title">' + g.title + '</div>' +
-                    '<div class="feed-item-meta">' + g.genre + ' · ' + (g.play_count || 0) + ' plays</div></div></div>'
+                    (g.cover_path ? '<img src="' + escapeHtml(g.cover_path) + '">' : '<div style="width:50px;height:35px;background:var(--bg-tertiary);border-radius:3px;"></div>') +
+                    '<div class="feed-item-info"><div class="feed-item-title">' + escapeHtml(g.title) + '</div>' +
+                    '<div class="feed-item-meta">' + escapeHtml(g.genre) + ' · ' + (g.play_count || 0) + ' plays</div></div></div>'
                 ).join('');
             } catch { list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary);">Failed to load.</div>'; }
         }
@@ -2065,8 +2080,8 @@
                 list.innerHTML = data.games.map(g => {
                     const price = g.price === 0 ? 'Free' : '$' + g.price.toFixed(2);
                     return '<div class="feed-item" onclick="showGameDetail(\'' + g.id + '\')">' +
-                    (g.cover_path ? '<img src="' + g.cover_path + '">' : '<div style="width:50px;height:35px;background:var(--bg-tertiary);border-radius:3px;"></div>') +
-                    '<div class="feed-item-info"><div class="feed-item-title">' + g.title + '</div>' +
+                    (g.cover_path ? '<img src="' + escapeHtml(g.cover_path) + '">' : '<div style="width:50px;height:35px;background:var(--bg-tertiary);border-radius:3px;"></div>') +
+                    '<div class="feed-item-info"><div class="feed-item-title">' + escapeHtml(g.title) + '</div>' +
                     '<div class="feed-item-meta">' + price + '</div></div></div>';
                 }).join('');
             } catch { list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary);">Failed to load.</div>'; }
@@ -2078,10 +2093,10 @@
                 const data = await api('/following');
                 if (!data.following || data.following.length === 0) { list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary);">Not following anyone yet.</div>'; return; }
                 list.innerHTML = data.following.map(u =>
-                    '<div class="feed-item" onclick="showDeveloper(\'' + u.username + '\')">' +
-                    '<img src="' + (u.avatar_url || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + u.username) + '" style="width:35px;height:35px;border-radius:50%;object-fit:cover;">' +
-                    '<div class="feed-item-info"><div class="feed-item-title">' + u.username + '</div>' +
-                    '<div class="feed-item-meta">' + (u.bio || 'Developer') + '</div></div></div>'
+                    '<div class="feed-item" onclick="showDeveloper(\'' + escapeHtml(u.username) + '\')">' +
+                    '<img src="' + (u.avatar_url || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + encodeURIComponent(u.username)) + '" style="width:35px;height:35px;border-radius:50%;object-fit:cover;">' +
+                    '<div class="feed-item-info"><div class="feed-item-title">' + escapeHtml(u.username) + '</div>' +
+                    '<div class="feed-item-meta">' + escapeHtml(u.bio || 'Developer') + '</div></div></div>'
                 ).join('');
             } catch { list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary);">Failed to load.</div>'; }
         }
@@ -2205,15 +2220,15 @@
 
         function renderComment(c, devlogId, depth) {
             const indent = depth * 20;
-            const avatar = c.avatar_url || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + c.username;
+            const avatar = c.avatar_url || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + encodeURIComponent(c.username);
             let html = '<div style="margin-left:' + indent + 'px;padding:8px 0;border-bottom:1px solid var(--border-color);">';
             html += '<div style="display:flex;gap:8px;align-items:flex-start;">';
             html += '<img src="' + avatar + '" style="width:24px;height:24px;border-radius:50%;flex-shrink:0;margin-top:2px;">';
             html += '<div style="flex:1;">';
-            html += '<div style="font-size:12px;"><span style="color:var(--accent);font-weight:bold;">' + c.username + '</span> <span style="color:var(--text-secondary);">· ' + c.created_at + '</span>';
+            html += '<div style="font-size:12px;"><span style="color:var(--accent);font-weight:bold;">' + escapeHtml(c.username) + '</span> <span style="color:var(--text-secondary);">· ' + escapeHtml(c.created_at) + '</span>';
             if (currentUser && currentUser.id === c.user_id) html += ' <a style="color:var(--danger);cursor:pointer;font-size:11px;margin-left:8px;" onclick="deleteComment(\'' + c.id + '\',\'' + devlogId + '\')">delete</a>';
             html += '</div>';
-            html += '<p style="font-size:13px;color:var(--text-secondary);margin-top:4px;line-height:1.4;">' + c.text + '</p>';
+            html += '<p style="font-size:13px;color:var(--text-secondary);margin-top:4px;line-height:1.4;">' + escapeHtml(c.text) + '</p>';
             if (currentUser && depth < 2) html += '<a style="font-size:11px;color:var(--accent);cursor:pointer;margin-top:4px;display:inline-block;" onclick="showReplyBox(\'' + c.id + '\',\'' + devlogId + '\')">Reply</a>';
             html += '<div id="reply-box-' + c.id + '"></div>';
             html += '</div></div></div>';
@@ -2286,9 +2301,9 @@
                 results.innerHTML = data.games.map(g => {
                     const coverSrc = g.cover_path || '';
                     return '<div class="search-result" onclick="document.getElementById(\'global-search-results\').classList.remove(\'open\');document.getElementById(\'global-search-input\').value=\'\';showGameDetail(\'' + g.id + '\')">' +
-                        (coverSrc ? '<img src="' + coverSrc + '">' : '<div style="width:60px;height:35px;background:var(--bg-tertiary);border-radius:3px;"></div>') +
-                        '<div><div class="search-result-title">' + g.title + '</div>' +
-                        '<div class="search-result-meta">' + g.genre + ' · by ' + (g.developer_name || 'Unknown') + '</div></div></div>';
+                        (coverSrc ? '<img src="' + escapeHtml(coverSrc) + '">' : '<div style="width:60px;height:35px;background:var(--bg-tertiary);border-radius:3px;"></div>') +
+                        '<div><div class="search-result-title">' + escapeHtml(g.title) + '</div>' +
+                        '<div class="search-result-meta">' + escapeHtml(g.genre) + ' · by ' + escapeHtml(g.developer_name || 'Unknown') + '</div></div></div>';
                 }).join('');
                 results.classList.add('open');
             } catch { results.classList.remove('open'); }
@@ -2336,7 +2351,10 @@
 
         /* ============ Init ============ */
         document.addEventListener('DOMContentLoaded', async () => {
-            console.log('PlayMore v2 initialized');
+            // Only log in development
+            if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+                console.log('PlayMore v2 initialized');
+            }
             initParticles();
             checkGPU();
             await checkAuth();

@@ -30,7 +30,8 @@ func isAdmin(c *gin.Context) bool {
 func AdminRequired() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if !isAdmin(c) {
-			c.JSON(http.StatusForbidden, gin.H{"error": "admin access required"})
+			// Return 404 to hide admin endpoint existence
+			c.JSON(http.StatusNotFound, gin.H{"error": "Not found"})
 			c.Abort()
 			return
 		}

@@ -1,0 +1,17 @@
+# Security Contact Information for PlayMore
+# ==========================================
+
+# Our security policy
+Policy: https://playmore.world/security-policy
+
+# How to contact us about security issues
+Contact: mailto:security@playmore.world
+
+# Alternative contact (if email fails)
+Contact: https://playmore.world/contact
+
+# Preferred languages for communication
+Preferred-Languages: en
+
+# Canonical URL of this file
+Canonical: https://playmore.world/.well-known/security.txt

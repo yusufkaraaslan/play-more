@@ -17,12 +17,44 @@ import (
 func New(frontendFS embed.FS, goatCounterURL string) *gin.Engine {
 	r := gin.Default()
 
+	// HTTPS redirect middleware (before security headers)
+	r.Use(func(c *gin.Context) {
+		if c.Request.Header.Get("X-Forwarded-Proto") == "http" {
+			target := "https://" + c.Request.Host + c.Request.URL.Path
+			if len(c.Request.URL.RawQuery) > 0 {
+				target += "?" + c.Request.URL.RawQuery
+			}
+			c.Redirect(http.StatusMovedPermanently, target)
+			c.Abort()
+			return
+		}
+		c.Next()
+	})
+
 	// Security headers
 	r.Use(func(c *gin.Context) {
 		c.Header("X-Content-Type-Options", "nosniff")
 		c.Header("X-Frame-Options", "SAMEORIGIN")
 		c.Header("Referrer-Policy", "strict-origin-when-cross-origin")
 		c.Header("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; frame-src 'self'; media-src 'self' https://www.youtube.com")
+		c.Header("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload")
+		c.Header("Permissions-Policy", "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=(), interest-cohort=()")
+		c.Next()
+	})
+
+	// Cache-Control headers middleware
+	r.Use(func(c *gin.Context) {
+		path := c.Request.URL.Path
+		// API routes: no-store, no-cache, must-revalidate
+		if len(path) >= 4 && path[:4] == "/api" {
+			c.Header("Cache-Control", "no-store, no-cache, must-revalidate")
+		} else if len(path) >= 8 && path[:8] == "/assets/" {
+			// Static assets: let browser cache (default behavior, no Cache-Control header)
+			c.Header("Cache-Control", "public, max-age=31536000, immutable")
+		} else {
+			// HTML pages and other routes: no-cache
+			c.Header("Cache-Control", "no-cache")
+		}
 		c.Next()
 	})
 
@@ -151,6 +183,12 @@ func New(frontendFS embed.FS, goatCounterURL string) *gin.Engine {
 	frontendSub, err := fs.Sub(frontendFS, "frontend")
 	if err == nil {
 		r.StaticFS("/assets", http.FS(frontendSub))
+
+		// Serve .well-known directory for security.txt
+		wellKnownSub, err := fs.Sub(frontendFS, "frontend/.well-known")
+		if err == nil {
+			r.StaticFS("/.well-known", http.FS(wellKnownSub))
+		}
 
 		// SPA fallback: serve index.html for all non-API, non-play routes
 		r.NoRoute(func(c *gin.Context) {

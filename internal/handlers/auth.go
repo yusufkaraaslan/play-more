@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"log"
 	"net/http"
 	"strings"
 
@@ -18,7 +19,8 @@ type registerInput struct {
 func Register(c *gin.Context) {
 	var input registerInput
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		log.Printf("Validation error in Register: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input. Please check all fields and try again."})
 		return
 	}
 
@@ -28,7 +30,8 @@ func Register(c *gin.Context) {
 	user, err := models.CreateUser(input.Username, input.Email, input.Password)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE") {
-			c.JSON(http.StatusConflict, gin.H{"error": "username or email already taken"})
+			// Return generic error to prevent user enumeration
+			c.JSON(http.StatusConflict, gin.H{"error": "Registration failed. Please try again with different information."})
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create user"})
@@ -54,7 +57,8 @@ type loginInput struct {
 func Login(c *gin.Context) {
 	var input loginInput
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		log.Printf("Validation error in Login: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input. Please check all fields and try again."})
 		return
 	}
 

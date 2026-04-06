@@ -168,7 +168,8 @@ func UpdateGame(c *gin.Context) {
 		IsWebGPU    bool     `json:"is_webgpu"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		log.Printf("Validation error in UpdateGame: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input. Please check all fields and try again."})
 		return
 	}
 
