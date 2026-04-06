@@ -269,6 +269,16 @@
         .gpu-badge { padding: 5px 12px; font-size: 11px; border-radius: 3px; text-transform: uppercase; }
         .gpu-badge-ok { background: var(--discount-bg); color: var(--success); }
         .gpu-badge-no { background: #3d3d3d; color: var(--text-secondary); }
+        .webgpu-warning { background: rgba(210,169,96,0.15); border: 1px solid var(--warning); border-radius: 8px; padding: 15px; margin-bottom: 15px; }
+        .webgpu-warning h4 { color: var(--warning); font-size: 14px; margin-bottom: 8px; }
+        .webgpu-warning p { color: var(--text-secondary); font-size: 13px; line-height: 1.5; }
+        .webgpu-instructions { display: none; margin-top: 12px; padding: 12px; background: rgba(0,0,0,0.2); border-radius: 4px; font-size: 13px; color: var(--text-secondary); line-height: 1.6; }
+        .webgpu-instructions.open { display: block; }
+        .webgpu-instructions code { background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 3px; font-family: monospace; color: var(--accent); }
+        .sysinfo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .sysinfo-item { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border-color); font-size: 13px; }
+        .sysinfo-label { color: var(--text-secondary); }
+        .sysinfo-value { color: var(--text-primary); font-weight: bold; }
 
         /* Upload Progress */
         .upload-progress { display: none; height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; margin-bottom: 15px; overflow: hidden; }
@@ -1166,6 +1176,17 @@
                 html += '</div><div class="game-sidebar">';
 
                 // Purchase box
+                // WebGPU compatibility warning
+                if (game.is_webgpu && gpuCapability !== 'webgpu') {
+                    html += '<div class="webgpu-warning">';
+                    html += '<h4>⚠️ This game requires WebGPU</h4>';
+                    html += '<p>Your browser doesn\'t support WebGPU yet. The game may not work correctly.</p>';
+                    html += '<div style="display:flex;gap:8px;margin-top:10px;">';
+                    html += '<button class="btn-secondary" style="font-size:12px;padding:6px 14px;" onclick="document.getElementById(\'webgpu-help\').classList.toggle(\'open\')">How to enable</button>';
+                    html += '</div>';
+                    html += '<div class="webgpu-instructions" id="webgpu-help">' + getWebGPUInstructions() + '</div>';
+                    html += '</div>';
+                }
                 html += '<div class="purchase-box"><div class="purchase-title">' + escapeHtml(game.title) + '</div>';
                 html += '<div class="purchase-price-row">';
                 if (game.discount > 0) { html += '<span class="purchase-discount">-' + game.discount + '%</span><span class="purchase-original" style="text-decoration:line-through;color:var(--text-secondary);font-size:13px;">$' + game.price.toFixed(2) + '</span>'; }
@@ -1329,6 +1350,19 @@
 
         /* ============ Game Player ============ */
         function playGame(gameId, entryFile) {
+            // Check WebGPU compatibility for WebGPU games
+            const gameData = currentGameData;
+            if (gameData && gameData.id === gameId && gameData.is_webgpu && gpuCapability !== 'webgpu') {
+                showModal('WebGPU Not Available',
+                    'This game uses WebGPU which isn\'t available in your browser. It may not load or display correctly.',
+                    () => { closeModal(); launchGame(gameId, entryFile); }
+                );
+                return;
+            }
+            launchGame(gameId, entryFile);
+        }
+
+        function launchGame(gameId, entryFile) {
             const player = document.getElementById('game-player');
             document.getElementById('player-title').textContent = 'Loading...';
             document.getElementById('player-frame').src = '/play/' + gameId + '/' + (entryFile || 'index.html');
@@ -1412,13 +1446,61 @@
         function closeModal() { document.getElementById('modal').classList.remove('active'); }
 
         /* ============ WebGPU/WebGL2 Detection ============ */
+        let gpuCapability = 'checking'; // 'webgpu', 'webgl2', 'none'
+        let gpuAdapterName = '';
+        let hasWebGL2 = false;
+
         async function checkGPU() {
             const badge = document.getElementById('gpu-badge');
             if (navigator.gpu) {
-                try { const a = await navigator.gpu.requestAdapter(); if (a) { badge.textContent='WebGPU: Enabled'; badge.className='gpu-badge gpu-badge-ok'; return; } } catch {}
+                try {
+                    const a = await navigator.gpu.requestAdapter();
+                    if (a) {
+                        gpuCapability = 'webgpu';
+                        gpuAdapterName = a.info?.device || a.info?.description || 'Unknown';
+                        badge.textContent = 'WebGPU: Enabled';
+                        badge.className = 'gpu-badge gpu-badge-ok';
+                        // Also check WebGL2
+                        try { hasWebGL2 = !!document.createElement('canvas').getContext('webgl2'); } catch {}
+                        return;
+                    }
+                } catch {}
             }
-            try { if (document.createElement('canvas').getContext('webgl2')) { badge.textContent='WebGL2: Enabled'; badge.className='gpu-badge gpu-badge-ok'; return; } } catch {}
-            badge.textContent='GPU: Not Available'; badge.className='gpu-badge gpu-badge-no';
+            try {
+                if (document.createElement('canvas').getContext('webgl2')) {
+                    gpuCapability = 'webgl2';
+                    hasWebGL2 = true;
+                    badge.textContent = 'WebGL2: Enabled';
+                    badge.className = 'gpu-badge gpu-badge-ok';
+                    return;
+                }
+            } catch {}
+            gpuCapability = 'none';
+            badge.textContent = 'GPU: Not Available';
+            badge.className = 'gpu-badge gpu-badge-no';
+        }
+
+        function detectBrowser() {
+            const ua = navigator.userAgent;
+            if (ua.includes('Edg/')) return 'edge';
+            if (ua.includes('OPR/') || ua.includes('Opera')) return 'opera';
+            if (ua.includes('Chrome') && !ua.includes('Edg/')) return 'chrome';
+            if (ua.includes('Firefox')) return 'firefox';
+            if (ua.includes('Safari') && !ua.includes('Chrome')) return 'safari';
+            return 'other';
+        }
+
+        function getWebGPUInstructions() {
+            const browser = detectBrowser();
+            const instructions = {
+                firefox: '<strong>Firefox / Zen Browser:</strong><ol style="margin:8px 0 0 20px;"><li>Type <code>about:config</code> in the address bar</li><li>Click "Accept the Risk and Continue"</li><li>Search for <code>dom.webgpu.enabled</code></li><li>Click the toggle to set it to <code>true</code></li><li>Restart your browser</li></ol>',
+                chrome: '<strong>Chrome:</strong><p>WebGPU should be enabled by default in Chrome 113+. If not:</p><ol style="margin:8px 0 0 20px;"><li>Type <code>chrome://flags/#enable-unsafe-webgpu</code> in the address bar</li><li>Set "Unsafe WebGPU Support" to <strong>Enabled</strong></li><li>Click "Relaunch"</li></ol>',
+                edge: '<strong>Edge:</strong><p>WebGPU should be enabled by default in Edge 113+. If not:</p><ol style="margin:8px 0 0 20px;"><li>Type <code>edge://flags/#enable-unsafe-webgpu</code> in the address bar</li><li>Set "Unsafe WebGPU Support" to <strong>Enabled</strong></li><li>Click "Relaunch"</li></ol>',
+                safari: '<strong>Safari:</strong><ol style="margin:8px 0 0 20px;"><li>Go to Safari → Settings → Feature Flags</li><li>Enable <strong>WebGPU</strong></li><li>Restart Safari</li></ol>',
+                opera: '<strong>Opera:</strong><ol style="margin:8px 0 0 20px;"><li>Type <code>opera://flags/#enable-unsafe-webgpu</code> in the address bar</li><li>Set "Unsafe WebGPU Support" to <strong>Enabled</strong></li><li>Click "Relaunch"</li></ol>',
+                other: '<p>Please use a modern browser that supports WebGPU:</p><ul style="margin:8px 0 0 20px;"><li>Chrome 113+ (recommended)</li><li>Firefox 130+ (enable in about:config)</li><li>Safari 18+</li><li>Edge 113+</li></ul>'
+            };
+            return instructions[browser] || instructions.other;
         }
 
         /* ============ Recently Played ============ */
@@ -1659,8 +1741,22 @@
 
         /* ============ Settings ============ */
         function loadSettings() {
+            const browserName = {firefox:'Firefox/Zen',chrome:'Chrome',edge:'Edge',safari:'Safari',opera:'Opera',other:'Unknown'}[detectBrowser()] || 'Unknown';
+            const gpuStatus = gpuCapability === 'webgpu' ? '<span style="color:var(--success);">Supported</span>' : gpuCapability === 'webgl2' ? '<span style="color:var(--warning);">WebGL2 only</span>' : '<span style="color:var(--danger);">Not Available</span>';
+            const webgl2Status = hasWebGL2 ? '<span style="color:var(--success);">Supported</span>' : '<span style="color:var(--danger);">Not Available</span>';
+
             document.getElementById('settings-content').innerHTML =
                 '<div style="max-width:600px;">' +
+                '<div class="card-box">' +
+                '<h3 style="font-size:16px;margin-bottom:10px;">System Info</h3>' +
+                '<div class="sysinfo-item"><span class="sysinfo-label">WebGPU</span><span class="sysinfo-value">' + gpuStatus + '</span></div>' +
+                '<div class="sysinfo-item"><span class="sysinfo-label">WebGL2</span><span class="sysinfo-value">' + webgl2Status + '</span></div>' +
+                (gpuAdapterName ? '<div class="sysinfo-item"><span class="sysinfo-label">GPU</span><span class="sysinfo-value">' + esc(gpuAdapterName) + '</span></div>' : '') +
+                '<div class="sysinfo-item"><span class="sysinfo-label">Browser</span><span class="sysinfo-value">' + browserName + '</span></div>' +
+                '<div class="sysinfo-item"><span class="sysinfo-label">Screen</span><span class="sysinfo-value">' + screen.width + 'x' + screen.height + '</span></div>' +
+                '<div class="sysinfo-item"><span class="sysinfo-label">Platform</span><span class="sysinfo-value">' + esc(navigator.platform) + '</span></div>' +
+                (gpuCapability !== 'webgpu' ? '<div style="margin-top:12px;padding:12px;background:rgba(210,169,96,0.1);border-radius:4px;font-size:12px;color:var(--warning);">WebGPU is not enabled. Some games may not work. <a style="color:var(--accent);cursor:pointer;" onclick="document.getElementById(\'settings-webgpu-help\').classList.toggle(\'open\')">How to enable</a><div class="webgpu-instructions" id="settings-webgpu-help">' + getWebGPUInstructions() + '</div></div>' : '') +
+                '</div>' +
                 '<div class="card-box">' +
                 '<h3 style="font-size:16px;margin-bottom:10px;">Change Password</h3>' +
                 '<div class="form-group"><label class="form-label">Current Password</label><input type="password" class="form-input" id="settings-current-pw"></div>' +
