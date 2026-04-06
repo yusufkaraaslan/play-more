@@ -36,7 +36,11 @@ func New(frontendFS embed.FS, goatCounterURL string) *gin.Engine {
 		c.Header("X-Content-Type-Options", "nosniff")
 		c.Header("X-Frame-Options", "SAMEORIGIN")
 		c.Header("Referrer-Policy", "strict-origin-when-cross-origin")
-		c.Header("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; frame-src 'self'; media-src 'self' https://www.youtube.com")
+		csp := "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; frame-src 'self'; media-src 'self' https://www.youtube.com"
+		if goatCounterURL != "" {
+			csp = "default-src 'self'; script-src 'self' 'unsafe-inline' https://gc.zgo.at; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://gc.zgo.at; connect-src 'self' https://*.goatcounter.com; frame-src 'self'; media-src 'self' https://www.youtube.com"
+		}
+		c.Header("Content-Security-Policy", csp)
 		if c.Request.Header.Get("X-Forwarded-Proto") == "https" || c.Request.TLS != nil {
 			c.Header("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload")
 		}
