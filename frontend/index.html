@@ -1843,80 +1843,110 @@
             }
         }
 
+        function barChart(items, maxVal, colorFn) {
+            if (!items.length) return '<p style="color:var(--text-secondary);font-size:13px;">No data yet</p>';
+            const mx = maxVal || Math.max(...items.map(i => i.count || i.views || 0), 1);
+            return items.map(i => {
+                const val = i.count || i.views || 0;
+                const pct = Math.round(val / mx * 100);
+                const color = colorFn ? colorFn(i) : 'var(--accent)';
+                return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:13px;">' +
+                    '<span style="width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(i.name || i.path || '') + '</span>' +
+                    '<div style="flex:1;height:8px;background:rgba(255,255,255,0.05);border-radius:4px;"><div style="width:' + pct + '%;height:100%;background:' + color + ';border-radius:4px;"></div></div>' +
+                    '<span style="width:40px;text-align:right;color:var(--text-secondary);">' + val + '</span></div>';
+            }).join('');
+        }
+
         async function renderAdminAnalytics() {
-            const data = (await api('/admin/analytics')).analytics;
+            const d = (await api('/admin/analytics')).analytics;
             let html = '';
-            // Period stats
-            html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:15px;margin-bottom:20px;">';
-            html += '<div class="card-box" style="text-align:center;margin-bottom:0;"><div style="font-size:28px;font-weight:bold;color:var(--accent);">' + data.today.views + '</div><div style="font-size:12px;color:var(--text-secondary);">Today (' + data.today.unique + ' unique)</div></div>';
-            html += '<div class="card-box" style="text-align:center;margin-bottom:0;"><div style="font-size:28px;font-weight:bold;color:var(--accent);">' + data.week.views + '</div><div style="font-size:12px;color:var(--text-secondary);">This Week (' + data.week.unique + ' unique)</div></div>';
-            html += '<div class="card-box" style="text-align:center;margin-bottom:0;"><div style="font-size:28px;font-weight:bold;color:var(--accent);">' + data.month.views + '</div><div style="font-size:12px;color:var(--text-secondary);">This Month (' + data.month.unique + ' unique)</div></div>';
+
+            // Real-time + growth
+            const weekGrowth = d.last_week.views > 0 ? Math.round((d.week.views - d.last_week.views) / d.last_week.views * 100) : 0;
+            html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:15px;margin-bottom:20px;">';
+            html += '<div class="card-box" style="text-align:center;margin-bottom:0;"><div style="font-size:20px;font-weight:bold;color:var(--success);">' + d.realtime_active + '</div><div style="font-size:11px;color:var(--text-secondary);">Active Now</div></div>';
+            html += '<div class="card-box" style="text-align:center;margin-bottom:0;"><div style="font-size:20px;font-weight:bold;color:var(--accent);">' + d.today.views + '</div><div style="font-size:11px;color:var(--text-secondary);">Today (' + d.today.unique + ' unique)</div></div>';
+            html += '<div class="card-box" style="text-align:center;margin-bottom:0;"><div style="font-size:20px;font-weight:bold;color:var(--accent);">' + d.week.views + '</div><div style="font-size:11px;color:var(--text-secondary);">This Week (' + (weekGrowth >= 0 ? '+' : '') + weekGrowth + '%)</div></div>';
+            html += '<div class="card-box" style="text-align:center;margin-bottom:0;"><div style="font-size:20px;font-weight:bold;color:var(--accent);">' + d.month.views + '</div><div style="font-size:11px;color:var(--text-secondary);">This Month (' + d.month.unique + ' unique)</div></div>';
             html += '</div>';
 
-            // Performance cards
-            html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-bottom:20px;">';
-            html += '<div class="card-box" style="text-align:center;margin-bottom:0;"><div style="font-size:24px;font-weight:bold;color:' + (data.error_rate < 2 ? 'var(--success)' : data.error_rate < 10 ? 'var(--warning)' : 'var(--danger)') + ';">' + data.error_rate.toFixed(1) + '%</div><div style="font-size:12px;color:var(--text-secondary);">Error Rate (24h)</div></div>';
-            html += '<div class="card-box" style="text-align:center;margin-bottom:0;"><div style="font-size:24px;font-weight:bold;color:' + (data.avg_response_ms < 100 ? 'var(--success)' : data.avg_response_ms < 500 ? 'var(--warning)' : 'var(--danger)') + ';">' + data.avg_response_ms + 'ms</div><div style="font-size:12px;color:var(--text-secondary);">Avg Response (24h)</div></div>';
+            // Performance + session metrics
+            html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:15px;margin-bottom:20px;">';
+            html += '<div class="card-box" style="text-align:center;margin-bottom:0;"><div style="font-size:18px;font-weight:bold;color:' + (d.error_rate < 2 ? 'var(--success)' : d.error_rate < 10 ? 'var(--warning)' : 'var(--danger)') + ';">' + d.error_rate.toFixed(1) + '%</div><div style="font-size:11px;color:var(--text-secondary);">Error Rate</div></div>';
+            html += '<div class="card-box" style="text-align:center;margin-bottom:0;"><div style="font-size:18px;font-weight:bold;color:' + (d.bounce_rate < 40 ? 'var(--success)' : d.bounce_rate < 70 ? 'var(--warning)' : 'var(--danger)') + ';">' + d.bounce_rate.toFixed(0) + '%</div><div style="font-size:11px;color:var(--text-secondary);">Bounce Rate</div></div>';
+            html += '<div class="card-box" style="text-align:center;margin-bottom:0;"><div style="font-size:18px;font-weight:bold;color:var(--accent);">' + d.avg_pages_per_session.toFixed(1) + '</div><div style="font-size:11px;color:var(--text-secondary);">Pages/Session</div></div>';
+            html += '<div class="card-box" style="text-align:center;margin-bottom:0;"><div style="font-size:18px;font-weight:bold;color:var(--accent);">' + Math.round(d.avg_session_duration_sec) + 's</div><div style="font-size:11px;color:var(--text-secondary);">Avg Session</div></div>';
             html += '</div>';
 
             // Hourly chart
-            if (data.hourly.length > 0) {
-                html += '<div class="card-box" style="margin-bottom:20px;"><h3 style="font-size:16px;margin-bottom:15px;">Traffic (Last 24 Hours)</h3>';
-                const maxH = Math.max(...data.hourly.map(h => h.views), 1);
-                html += '<div style="display:flex;align-items:flex-end;gap:2px;height:120px;">';
-                data.hourly.forEach(h => {
-                    const pct = Math.max(3, (h.views / maxH) * 100);
-                    const hour = h.hour.split(' ')[1] || h.hour;
-                    html += '<div title="' + h.hour + ': ' + h.views + '" style="flex:1;height:' + pct + '%;background:var(--accent);border-radius:2px 2px 0 0;min-width:8px;opacity:0.8;cursor:pointer;" onmouseenter="this.style.opacity=1" onmouseleave="this.style.opacity=0.8"></div>';
-                });
-                html += '</div>';
-                if (data.hourly.length > 1) {
-                    html += '<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-secondary);margin-top:5px;">';
-                    html += '<span>' + (data.hourly[0].hour.split(' ')[1] || '') + '</span><span>' + (data.hourly[data.hourly.length-1].hour.split(' ')[1] || '') + '</span></div>';
-                }
-                html += '</div>';
+            if (d.hourly.length > 0) {
+                html += '<div class="card-box" style="margin-bottom:20px;"><h3 style="font-size:14px;margin-bottom:12px;">Traffic (Last 24 Hours)</h3>';
+                const maxH = Math.max(...d.hourly.map(h => h.views), 1);
+                html += '<div style="display:flex;align-items:flex-end;gap:2px;height:100px;">';
+                d.hourly.forEach(h => { html += '<div title="' + esc(h.hour) + ': ' + h.views + '" style="flex:1;height:' + Math.max(3, h.views/maxH*100) + '%;background:var(--accent);border-radius:2px 2px 0 0;min-width:6px;opacity:0.8;cursor:pointer;" onmouseenter="this.style.opacity=1" onmouseleave="this.style.opacity=0.8"></div>'; });
+                html += '</div></div>';
             }
 
-            // Two columns: pages + browsers/referrers
-            html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;">';
+            // 3 columns: pages | devices+OS | browsers+referrers
+            html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:15px;margin-bottom:20px;">';
 
             // Popular pages
-            html += '<div class="card-box" style="margin-bottom:0;"><h3 style="font-size:16px;margin-bottom:15px;">Popular Pages</h3>';
-            if (data.popular_pages.length > 0) {
-                const maxP = data.popular_pages[0].views;
-                data.popular_pages.forEach(p => {
-                    const pct = Math.round(p.views / maxP * 100);
-                    html += '<div style="margin-bottom:6px;"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:2px;"><span style="color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px;">' + esc(p.path) + '</span><span style="color:var(--text-secondary);">' + p.views + '</span></div>';
-                    html += '<div style="height:4px;background:rgba(255,255,255,0.05);border-radius:2px;"><div style="width:' + pct + '%;height:100%;background:var(--accent);border-radius:2px;"></div></div></div>';
-                });
-            } else { html += '<p style="color:var(--text-secondary);font-size:13px;">No data yet</p>'; }
-            html += '</div>';
+            html += '<div class="card-box" style="margin-bottom:0;"><h3 style="font-size:14px;margin-bottom:12px;">Popular Pages</h3>';
+            html += barChart(d.popular_pages.map(p => ({name: p.name, count: p.count})), 0) + '</div>';
 
-            // Right column: browsers + referrers
+            // Devices + OS
             html += '<div>';
-            // Browsers
-            html += '<div class="card-box"><h3 style="font-size:16px;margin-bottom:15px;">Browsers</h3>';
-            if (data.browsers.length > 0) {
-                const maxB = Math.max(...data.browsers.map(b => b.count));
-                data.browsers.sort((a,b) => b.count - a.count);
-                data.browsers.forEach(b => {
-                    const pct = Math.round(b.count / maxB * 100);
-                    html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:13px;">';
-                    html += '<span style="width:60px;">' + b.name + '</span>';
-                    html += '<div style="flex:1;height:8px;background:rgba(255,255,255,0.05);border-radius:4px;"><div style="width:' + pct + '%;height:100%;background:var(--accent);border-radius:4px;"></div></div>';
-                    html += '<span style="width:40px;text-align:right;color:var(--text-secondary);">' + b.count + '</span></div>';
-                });
-            } else { html += '<p style="color:var(--text-secondary);font-size:13px;">No data yet</p>'; }
+            html += '<div class="card-box"><h3 style="font-size:14px;margin-bottom:12px;">Devices</h3>' + barChart(d.devices, 0) + '</div>';
+            html += '<div class="card-box"><h3 style="font-size:14px;margin-bottom:12px;">Operating Systems</h3>' + barChart(d.oses, 0) + '</div>';
             html += '</div>';
 
-            // Referrers
-            if (data.referrers.length > 0) {
-                html += '<div class="card-box"><h3 style="font-size:16px;margin-bottom:15px;">Referrers</h3>';
-                data.referrers.forEach(r => {
-                    html += '<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:13px;border-bottom:1px solid var(--border-color);">';
-                    html += '<span style="color:var(--accent);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px;">' + esc(r.referrer) + '</span><span style="color:var(--text-secondary);">' + r.count + '</span></div>';
-                });
+            // Browsers + referrers + WebGPU + new/returning
+            html += '<div>';
+            html += '<div class="card-box"><h3 style="font-size:14px;margin-bottom:12px;">Browsers</h3>' + barChart(d.browsers, 0) + '</div>';
+            if (d.referrers.length > 0) {
+                html += '<div class="card-box"><h3 style="font-size:14px;margin-bottom:12px;">Referrers</h3>';
+                d.referrers.forEach(r => { html += '<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px;border-bottom:1px solid var(--border-color);"><span style="color:var(--accent);">' + esc(r.name) + '</span><span style="color:var(--text-secondary);">' + r.count + '</span></div>'; });
                 html += '</div>';
+            }
+            html += '</div></div>';
+
+            // User + gameplay stats
+            html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-bottom:20px;">';
+
+            // Users
+            html += '<div class="card-box" style="margin-bottom:0;"><h3 style="font-size:14px;margin-bottom:12px;">Users</h3>';
+            html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px;">';
+            html += '<div style="text-align:center;"><div style="font-size:20px;font-weight:bold;color:var(--accent);">' + d.total_users + '</div><div style="font-size:10px;color:var(--text-secondary);">Total</div></div>';
+            html += '<div style="text-align:center;"><div style="font-size:20px;font-weight:bold;color:var(--success);">' + d.new_users_today + '</div><div style="font-size:10px;color:var(--text-secondary);">New Today</div></div>';
+            html += '<div style="text-align:center;"><div style="font-size:20px;font-weight:bold;color:var(--accent);">' + d.active_users_day + '</div><div style="font-size:10px;color:var(--text-secondary);">Active (24h)</div></div>';
+            html += '</div>';
+            // New vs returning
+            const nvr = d.new_vs_returning;
+            if (nvr.length >= 2 && (nvr[0].count + nvr[1].count) > 0) {
+                const total = nvr[0].count + nvr[1].count;
+                html += '<div style="display:flex;height:12px;border-radius:6px;overflow:hidden;margin-bottom:8px;">';
+                html += '<div style="width:' + (nvr[0].count/total*100) + '%;background:var(--success);" title="New: ' + nvr[0].count + '"></div>';
+                html += '<div style="width:' + (nvr[1].count/total*100) + '%;background:var(--accent);" title="Returning: ' + nvr[1].count + '"></div></div>';
+                html += '<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-secondary);"><span>New: ' + nvr[0].count + '</span><span>Returning: ' + nvr[1].count + '</span></div>';
+            }
+            // WebGPU
+            const wg = d.webgpu_support;
+            if (wg.length >= 2 && (wg[0].count + wg[1].count) > 0) {
+                const total = wg[0].count + wg[1].count;
+                const pct = Math.round(wg[0].count / total * 100);
+                html += '<div style="margin-top:12px;font-size:12px;"><span style="color:var(--success);">WebGPU: ' + pct + '%</span> of visitors</div>';
+            }
+            html += '</div>';
+
+            // Gameplay
+            html += '<div class="card-box" style="margin-bottom:0;"><h3 style="font-size:14px;margin-bottom:12px;">Gameplay</h3>';
+            html += '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:12px;">';
+            html += '<div style="text-align:center;"><div style="font-size:20px;font-weight:bold;color:var(--accent);">' + d.total_play_sessions + '</div><div style="font-size:10px;color:var(--text-secondary);">Play Sessions</div></div>';
+            html += '<div style="text-align:center;"><div style="font-size:20px;font-weight:bold;color:var(--accent);">' + Math.round(d.avg_play_duration_sec) + 's</div><div style="font-size:10px;color:var(--text-secondary);">Avg Duration</div></div>';
+            html += '</div>';
+            if (d.most_played_games.length > 0) {
+                html += '<h4 style="font-size:12px;margin-bottom:8px;color:var(--text-secondary);">Most Played</h4>';
+                html += barChart(d.most_played_games, 0, () => 'var(--success)');
             }
             html += '</div></div>';
 
@@ -2311,6 +2341,11 @@
             checkGPU();
             await checkAuth();
             checkNotifCount();
+            // Report client info (screen res + WebGPU)
+            setTimeout(async () => {
+                const hasGPU = !!(navigator.gpu && await navigator.gpu.requestAdapter().catch(() => null));
+                api('/analytics/client', { method: 'POST', body: JSON.stringify({ screen_res: screen.width + 'x' + screen.height, has_webgpu: hasGPU }) }).catch(() => {});
+            }, 2000);
             initUpload();
             // Handle initial hash route or default to store
             if (location.hash && location.hash.length > 1) {

@@ -211,6 +211,11 @@ CREATE TABLE IF NOT EXISTS page_views (
     user_id       TEXT DEFAULT '',
     status_code   INTEGER DEFAULT 200,
     response_ms   INTEGER DEFAULT 0,
+    device_type   TEXT DEFAULT '',
+    os            TEXT DEFAULT '',
+    session_id    TEXT DEFAULT '',
+    screen_res    TEXT DEFAULT '',
+    has_webgpu    INTEGER DEFAULT -1,
     created_at    DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 

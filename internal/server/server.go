@@ -86,6 +86,7 @@ func New(frontendFS embed.FS, goatCounterURL string) *gin.Engine {
 
 		// Analytics
 		api.POST("/games/:id/view", handlers.TrackView)
+		api.POST("/analytics/client", handlers.TrackClientInfo)
 		api.GET("/games/:id/analytics", middleware.AuthRequired(), handlers.GetGameAnalytics)
 
 		// Notifications

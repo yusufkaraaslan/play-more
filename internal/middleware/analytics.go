@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -22,11 +23,42 @@ type pageView struct {
 	UserID     string
 	StatusCode int
 	ResponseMs int64
+	DeviceType string
+	OS         string
+	SessionID  string
 	CreatedAt  time.Time
 }
 
 var viewChan = make(chan pageView, 1000)
 var analyticsCancel context.CancelFunc
+
+// Session tracking: ip_hash → (session_id, last_seen)
+var sessions = struct {
+	sync.Mutex
+	m map[string]sessionEntry
+}{m: make(map[string]sessionEntry)}
+
+type sessionEntry struct {
+	ID       string
+	LastSeen time.Time
+}
+
+const sessionTimeout = 30 * time.Minute
+
+func getSessionID(ipHash string) string {
+	sessions.Lock()
+	defer sessions.Unlock()
+	now := time.Now()
+	if s, ok := sessions.m[ipHash]; ok && now.Sub(s.LastSeen) < sessionTimeout {
+		s.LastSeen = now
+		sessions.m[ipHash] = s
+		return s.ID
+	}
+	// New session
+	id := fmt.Sprintf("%x", sha256.Sum256([]byte(ipHash+now.String())))[:12]
+	sessions.m[ipHash] = sessionEntry{ID: id, LastSeen: now}
+	return id
+}
 
 // TrackPageView logs every request to the page_views table asynchronously.
 func TrackPageView() gin.HandlerFunc {
@@ -47,17 +79,14 @@ func TrackPageView() gin.HandlerFunc {
 		c.Next()
 		elapsed := time.Since(start).Milliseconds()
 
-		// Hash IP
 		ip := c.ClientIP()
 		ipHash := fmt.Sprintf("%x", sha256.Sum256([]byte(ip+"playmore-salt")))[:16]
 
-		// Truncate user agent
 		ua := c.Request.UserAgent()
 		if len(ua) > 200 {
 			ua = ua[:200]
 		}
 
-		// Get user ID from context only — no DB fallback (fix #8)
 		userID := ""
 		if val, exists := c.Get(UserKey); exists {
 			if user, ok := val.(*models.User); ok {
@@ -65,13 +94,14 @@ func TrackPageView() gin.HandlerFunc {
 			}
 		}
 
-		// Referrer
 		ref := c.Request.Referer()
 		if len(ref) > 500 {
 			ref = ref[:500]
 		}
 
-		// Send to async writer (non-blocking)
+		deviceType, osName := parseUA(ua)
+		sessionID := getSessionID(ipHash)
+
 		select {
 		case viewChan <- pageView{
 			Path:       path,
@@ -82,26 +112,58 @@ func TrackPageView() gin.HandlerFunc {
 			UserID:     userID,
 			StatusCode: c.Writer.Status(),
 			ResponseMs: elapsed,
+			DeviceType: deviceType,
+			OS:         osName,
+			SessionID:  sessionID,
 			CreatedAt:  time.Now(),
 		}:
 		default:
-			// Channel full, drop the view
 		}
 	}
 }
 
-// StartAnalyticsWriter starts the background goroutine that batch-writes
-// page views to the database and cleans up old data.
+func parseUA(ua string) (deviceType, osName string) {
+	lower := strings.ToLower(ua)
+
+	// Device type
+	switch {
+	case strings.Contains(lower, "mobile") || strings.Contains(lower, "android") && !strings.Contains(lower, "tablet"):
+		deviceType = "Mobile"
+	case strings.Contains(lower, "tablet") || strings.Contains(lower, "ipad"):
+		deviceType = "Tablet"
+	default:
+		deviceType = "Desktop"
+	}
+
+	// OS
+	switch {
+	case strings.Contains(lower, "windows"):
+		osName = "Windows"
+	case strings.Contains(lower, "mac os") || strings.Contains(lower, "macos"):
+		osName = "macOS"
+	case strings.Contains(lower, "android"):
+		osName = "Android"
+	case strings.Contains(lower, "iphone") || strings.Contains(lower, "ipad") || strings.Contains(lower, "ios"):
+		osName = "iOS"
+	case strings.Contains(lower, "linux"):
+		osName = "Linux"
+	case strings.Contains(lower, "chromeos") || strings.Contains(lower, "cros"):
+		osName = "ChromeOS"
+	default:
+		osName = "Other"
+	}
+	return
+}
+
+// StartAnalyticsWriter starts background goroutines for batch writing and cleanup.
 func StartAnalyticsWriter() {
 	ctx, cancel := context.WithCancel(context.Background())
 	analyticsCancel = cancel
 
-	// Batch writer
 	go func() {
 		batch := make([]pageView, 0, 50)
 		ticker := time.NewTicker(5 * time.Second)
 		defer ticker.Stop()
-
 		for {
 			select {
 			case pv := <-viewChan:
@@ -116,7 +178,6 @@ func StartAnalyticsWriter() {
 					batch = batch[:0]
 				}
 			case <-ctx.Done():
-				// Flush remaining on shutdown
 				if len(batch) > 0 {
 					flushBatch(batch)
 				}
@@ -125,12 +186,21 @@ func StartAnalyticsWriter() {
 		}
 	}()
 
-	// Cleanup: delete page_views older than 90 days
+	// Cleanup old data + expired sessions
 	go func() {
 		for {
 			select {
-			case <-time.After(24 * time.Hour):
+			case <-time.After(1 * time.Hour):
 				storage.DB.Exec(`DELETE FROM page_views WHERE created_at < datetime('now', '-90 days')`)
+				// Clean expired sessions from memory
+				sessions.Lock()
+				now := time.Now()
+				for k, v := range sessions.m {
+					if now.Sub(v.LastSeen) > sessionTimeout*2 {
+						delete(sessions.m, k)
+					}
+				}
+				sessions.Unlock()
 			case <-ctx.Done():
 				return
 			}
@@ -138,7 +208,6 @@ func StartAnalyticsWriter() {
 	}()
 }
 
-// StopAnalyticsWriter flushes pending data and stops goroutines.
 func StopAnalyticsWriter() {
 	if analyticsCancel != nil {
 		analyticsCancel()
@@ -150,16 +219,16 @@ func flushBatch(batch []pageView) {
 	if err != nil {
 		return
 	}
-	defer tx.Rollback() // no-op after successful commit
+	defer tx.Rollback()
 
-	stmt, err := tx.Prepare(`INSERT INTO page_views (path, method, ip_hash, user_agent, referrer, user_id, status_code, response_ms, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+	stmt, err := tx.Prepare(`INSERT INTO page_views (path, method, ip_hash, user_agent, referrer, user_id, status_code, response_ms, device_type, os, session_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return
 	}
 	defer stmt.Close()
 
 	for _, pv := range batch {
-		if _, err := stmt.Exec(pv.Path, pv.Method, pv.IPHash, pv.UserAgent, pv.Referrer, pv.UserID, pv.StatusCode, pv.ResponseMs, pv.CreatedAt); err != nil {
+		if _, err := stmt.Exec(pv.Path, pv.Method, pv.IPHash, pv.UserAgent, pv.Referrer, pv.UserID, pv.StatusCode, pv.ResponseMs, pv.DeviceType, pv.OS, pv.SessionID, pv.CreatedAt); err != nil {
 			log.Printf("analytics insert error: %v", err)
 		}
 	}

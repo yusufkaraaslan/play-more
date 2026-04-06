@@ -32,6 +32,33 @@ func TrackView(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
+// TrackClientInfo records screen resolution and WebGPU capability.
+func TrackClientInfo(c *gin.Context) {
+	var input struct {
+		ScreenRes string `json:"screen_res"`
+		HasWebGPU bool   `json:"has_webgpu"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	ip := c.ClientIP()
+	ipHash := fmt.Sprintf("%x", sha256.Sum256([]byte(ip+"playmore-salt")))[:16]
+
+	webgpu := 0
+	if input.HasWebGPU {
+		webgpu = 1
+	}
+
+	// Update the most recent page_view for this IP with client info
+	storage.DB.Exec(
+		`UPDATE page_views SET screen_res = ?, has_webgpu = ? WHERE id = (SELECT id FROM page_views WHERE ip_hash = ? ORDER BY created_at DESC LIMIT 1)`,
+		input.ScreenRes, webgpu, ipHash,
+	)
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
 type AnalyticsData struct {
 	TotalViews   int            `json:"total_views"`
 	UniqueViews  int            `json:"unique_views"`
