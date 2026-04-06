@@ -37,7 +37,9 @@ func New(frontendFS embed.FS, goatCounterURL string) *gin.Engine {
 		c.Header("X-Frame-Options", "SAMEORIGIN")
 		c.Header("Referrer-Policy", "strict-origin-when-cross-origin")
 		c.Header("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; frame-src 'self'; media-src 'self' https://www.youtube.com")
-		c.Header("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload")
+		if c.Request.Header.Get("X-Forwarded-Proto") == "https" || c.Request.TLS != nil {
+			c.Header("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload")
+		}
 		c.Header("Permissions-Policy", "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=(), interest-cohort=()")
 		c.Next()
 	})

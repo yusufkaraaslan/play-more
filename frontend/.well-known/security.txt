@@ -13,5 +13,8 @@ Contact: https://playmore.world/contact
 # Preferred languages for communication
 Preferred-Languages: en
 
+# Expiry date (RFC 9116 required field)
+Expires: 2027-04-06T00:00:00.000Z
+
 # Canonical URL of this file
 Canonical: https://playmore.world/.well-known/security.txt

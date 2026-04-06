@@ -924,7 +924,7 @@
 
                 html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">';
                 html += '<div class="dev-profile" style="margin-bottom:0;">';
-                html += '<img src="' + (u.avatar_url || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + encodeURIComponent(u.username)) + '" class="dev-avatar">';
+                html += '<img src="' + esc(u.avatar_url || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + encodeURIComponent(u.username)) + '" class="dev-avatar">';
                 const level = Math.max(1, Math.floor(s.games_owned + s.review_count + s.games_uploaded + s.hours_played / 10));
                 html += '<div><div class="dev-name">' + escapeHtml(u.username) + '</div>';
                 html += '<span class="level-badge">Level ' + level + '</span>';
@@ -1051,7 +1051,7 @@
                 html += '<div class="breadcrumbs"><a onclick="navigate(\'store\')">All Games</a> &gt; <a onclick="navigate(\'store\')">' + escapeHtml(genreCap) + '</a> &gt; ' + escapeHtml(game.title) + '</div>';
                 // Header
                 html += '<div class="game-header">';
-                if (coverSrc) html += '<img src="' + coverSrc + '" class="game-header-bg">';
+                if (coverSrc) html += '<img src="' + esc(coverSrc) + '" class="game-header-bg">';
                 html += '<div class="game-header-content"><h1>' + escapeHtml(game.title) + '</h1>';
                 html += '<div class="game-header-meta">by <a onclick="showDeveloper(\'' + escapeHtml(game.developer_name) + '\')">' + escapeHtml(game.developer_name) + '</a> · ' + escapeHtml(genreCap);
                 if (game.avg_rating > 0) html += ' · ★ ' + game.avg_rating.toFixed(1);
@@ -1062,9 +1062,9 @@
                 // Media carousel with video support
                 html += '<div class="game-media"><div class="game-media-main" id="media-main">';
                 if (game.video_url) {
-                    html += '<iframe src="' + game.video_url + '" style="width:100%;height:100%;border:none;" allowfullscreen></iframe>';
+                    html += '<iframe src="' + esc(game.video_url) + '" style="width:100%;height:100%;border:none;" allowfullscreen></iframe>';
                 } else if (game.screenshots && game.screenshots.length > 0) {
-                    html += '<img src="' + game.screenshots[0] + '" id="media-main-img">';
+                    html += '<img src="' + esc(game.screenshots[0]) + '" id="media-main-img">';
                 } else if (coverSrc) {
                     html += '<img src="' + coverSrc + '" id="media-main-img">';
                 }
@@ -1072,8 +1072,8 @@
                 // Thumbnails
                 if ((game.screenshots && game.screenshots.length > 0) || game.video_url) {
                     html += '<div class="game-media-thumbs">';
-                    if (game.video_url) html += '<div class="game-media-thumb' + (game.video_url ? ' active' : '') + '" style="display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);font-size:12px;color:var(--text-secondary);min-width:120px;" onclick="setMediaVideo(\'' + game.video_url + '\',this)">▶ Video</div>';
-                    if (game.screenshots) game.screenshots.forEach((s, i) => html += '<img src="' + s + '" class="game-media-thumb' + (!game.video_url && i===0 ? ' active' : '') + '" onclick="setMediaImg(\'' + s + '\',this)">');
+                    if (game.video_url) html += '<div class="game-media-thumb' + (game.video_url ? ' active' : '') + '" style="display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);font-size:12px;color:var(--text-secondary);min-width:120px;" onclick="setMediaVideo(\'' + esc(game.video_url) + '\',this)">▶ Video</div>';
+                    if (game.screenshots) game.screenshots.forEach((s, i) => html += '<img src="' + esc(s) + '" class="game-media-thumb' + (!game.video_url && i===0 ? ' active' : '') + '" onclick="setMediaImg(\'' + esc(s) + '\',this)">');
                     html += '</div>';
                 }
                 html += '</div>';
@@ -1118,7 +1118,7 @@
                     html += '<button class="btn-accent" onclick="submitGameReview()">Submit Review</button></div>';
                 }
                 allReviews.forEach(r => {
-                    const avatar = r.avatar_url || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + encodeURIComponent(r.username);
+                    const avatar = esc(r.avatar_url || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + encodeURIComponent(r.username));
                     html += '<div class="review-card"><div class="review-header"><div style="display:flex;align-items:center;gap:10px;">';
                     html += '<img src="' + avatar + '" style="width:32px;height:32px;border-radius:3px;">';
                     html += '<span class="review-author">' + escapeHtml(r.username) + '</span></div>';
@@ -1267,7 +1267,7 @@
                 html += '</div>';
 
                 html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;">';
-                html += '<div class="dev-profile"><img src="' + (u.avatar_url || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + encodeURIComponent(u.username)) + '" class="dev-avatar">';
+                html += '<div class="dev-profile"><img src="' + esc(u.avatar_url || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + encodeURIComponent(u.username)) + '" class="dev-avatar">';
                 html += '<div><div class="dev-name">' + escapeHtml(page?.display_name || u.username) + '</div>';
                 html += '<div class="dev-meta">@' + escapeHtml(u.username) + ' · ' + stats.games_uploaded + ' games · ' + stats.hours_played.toFixed(0) + ' hours played</div>';
                 if (page?.links && page.links.length > 0) { html += '<div class="dev-links">'; page.links.forEach(l => html += '<a href="' + escapeHtml(l.url) + '" target="_blank" class="dev-link">' + escapeHtml(l.label) + '</a>'); html += '</div>'; }
@@ -1284,7 +1284,7 @@
                 }
                 html += '</div>';
 
-                if (page?.about) html += '<div class="dev-about">' + escapeHtml(page.about) + '</div>';
+                if (page?.about) html += '<div class="dev-about">' + page.about + '</div>'; // Server-sanitized HTML via SanitizeHTML()
 
                 html += '<h2 class="section-title">Published Games</h2>';
                 if (data.games && data.games.length > 0) { html += '<div class="game-grid">'; data.games.forEach(g => html += gameCardHTML(g)); html += '</div>'; }
@@ -2094,7 +2094,7 @@
                 if (!data.following || data.following.length === 0) { list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary);">Not following anyone yet.</div>'; return; }
                 list.innerHTML = data.following.map(u =>
                     '<div class="feed-item" onclick="showDeveloper(\'' + escapeHtml(u.username) + '\')">' +
-                    '<img src="' + (u.avatar_url || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + encodeURIComponent(u.username)) + '" style="width:35px;height:35px;border-radius:50%;object-fit:cover;">' +
+                    '<img src="' + esc(u.avatar_url || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + encodeURIComponent(u.username)) + '" style="width:35px;height:35px;border-radius:50%;object-fit:cover;">' +
                     '<div class="feed-item-info"><div class="feed-item-title">' + escapeHtml(u.username) + '</div>' +
                     '<div class="feed-item-meta">' + escapeHtml(u.bio || 'Developer') + '</div></div></div>'
                 ).join('');
@@ -2162,33 +2162,30 @@
 
                 let html = '';
                 items.forEach(item => {
-                    html += '<div class="card-box" style="display:flex;gap:15px;align-items:flex-start;cursor:pointer;margin-bottom:10px;" onclick="' + (item.game_id ? "showGameDetail('" + item.game_id + "')" : '') + '">';
-                    // Cover or avatar
+                    html += '<div class="card-box" style="display:flex;gap:15px;align-items:flex-start;cursor:pointer;margin-bottom:10px;" onclick="' + (item.game_id ? "showGameDetail('" + esc(item.game_id) + "')" : '') + '">';
                     if (item.cover_path) {
-                        html += '<img src="' + item.cover_path + '" style="width:80px;height:50px;object-fit:cover;border-radius:4px;flex-shrink:0;">';
+                        html += '<img src="' + esc(item.cover_path) + '" style="width:80px;height:50px;object-fit:cover;border-radius:4px;flex-shrink:0;">';
                     } else {
                         html += '<div style="width:50px;height:50px;background:var(--bg-tertiary);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;">' + (feedIcons[item.type] || '🎯') + '</div>';
                     }
                     html += '<div style="flex:1;">';
-                    // Type badge + title
                     html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">';
-                    html += '<span style="font-size:11px;padding:2px 8px;background:rgba(102,192,244,0.15);color:var(--accent);border-radius:2px;">' + (feedLabels[item.type] || item.type) + '</span>';
-                    if (item.username) html += '<span style="font-size:12px;color:var(--text-secondary);">by <a style="color:var(--accent);cursor:pointer;" onclick="event.stopPropagation();showDeveloper(\'' + item.username + '\')">' + item.username + '</a></span>';
+                    html += '<span style="font-size:11px;padding:2px 8px;background:rgba(102,192,244,0.15);color:var(--accent);border-radius:2px;">' + esc(feedLabels[item.type] || item.type) + '</span>';
+                    if (item.username) html += '<span style="font-size:12px;color:var(--text-secondary);">by <a style="color:var(--accent);cursor:pointer;" onclick="event.stopPropagation();showDeveloper(\'' + esc(item.username) + '\')">' + esc(item.username) + '</a></span>';
                     html += '</div>';
-                    // Content
                     if (item.type === 'devlog') {
-                        html += '<div style="font-size:15px;font-weight:bold;margin-bottom:4px;">' + item.title + '</div>';
-                        html += '<div style="font-size:13px;color:var(--text-secondary);line-height:1.4;">' + (item.detail || '').substring(0, 200) + (item.detail && item.detail.length > 200 ? '...' : '') + '</div>';
+                        html += '<div style="font-size:15px;font-weight:bold;margin-bottom:4px;">' + esc(item.title) + '</div>';
+                        html += '<div style="font-size:13px;color:var(--text-secondary);line-height:1.4;">' + esc((item.detail || '').substring(0, 200)) + '</div>';
                     } else if (item.type === 'new_game') {
-                        html += '<div style="font-size:15px;font-weight:bold;margin-bottom:4px;">' + item.game_title + '</div>';
-                        html += '<div style="font-size:13px;color:var(--text-secondary);">' + (item.detail || '').substring(0, 150) + '</div>';
+                        html += '<div style="font-size:15px;font-weight:bold;margin-bottom:4px;">' + esc(item.game_title) + '</div>';
+                        html += '<div style="font-size:13px;color:var(--text-secondary);">' + esc((item.detail || '').substring(0, 150)) + '</div>';
                     } else if (item.type === 'review') {
-                        html += '<div style="font-size:14px;margin-bottom:4px;">' + item.game_title + '</div>';
-                        html += '<div style="font-size:13px;color:var(--text-secondary);font-style:italic;">"' + (item.title || '').substring(0, 150) + '"</div>';
+                        html += '<div style="font-size:14px;margin-bottom:4px;">' + esc(item.game_title) + '</div>';
+                        html += '<div style="font-size:13px;color:var(--text-secondary);font-style:italic;">"' + esc((item.title || '').substring(0, 150)) + '"</div>';
                     } else {
-                        html += '<div style="font-size:14px;">' + (item.game_title || item.title || '') + '</div>';
+                        html += '<div style="font-size:14px;">' + esc(item.game_title || item.title || '') + '</div>';
                     }
-                    html += '<div style="font-size:11px;color:var(--text-secondary);margin-top:6px;">' + item.created_at + '</div>';
+                    html += '<div style="font-size:11px;color:var(--text-secondary);margin-top:6px;">' + esc(item.created_at) + '</div>';
                     html += '</div></div>';
                 });
                 container.innerHTML = html;
@@ -2220,7 +2217,7 @@
 
         function renderComment(c, devlogId, depth) {
             const indent = depth * 20;
-            const avatar = c.avatar_url || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + encodeURIComponent(c.username);
+            const avatar = esc(c.avatar_url || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + encodeURIComponent(c.username));
             let html = '<div style="margin-left:' + indent + 'px;padding:8px 0;border-bottom:1px solid var(--border-color);">';
             html += '<div style="display:flex;gap:8px;align-items:flex-start;">';
             html += '<img src="' + avatar + '" style="width:24px;height:24px;border-radius:50%;flex-shrink:0;margin-top:2px;">';
