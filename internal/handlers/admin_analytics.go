@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"net/http"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/yusufkaraaslan/play-more/internal/storage"
@@ -91,24 +90,30 @@ func AdminSiteAnalytics(c *gin.Context) {
 		data.Hourly = []HourlyStat{}
 	}
 
-	// Browsers (last 30 days) - parsed from user_agent
+	// Browsers (last 30 days) - grouped in SQL to avoid loading all UAs
 	rows3, err := storage.DB.Query(
-		`SELECT user_agent, COUNT(*) as cnt FROM page_views
+		`SELECT
+			CASE
+				WHEN LOWER(user_agent) LIKE '%firefox%' THEN 'Firefox'
+				WHEN LOWER(user_agent) LIKE '%edg/%' OR LOWER(user_agent) LIKE '%edge/%' THEN 'Edge'
+				WHEN LOWER(user_agent) LIKE '%opr/%' OR LOWER(user_agent) LIKE '%opera%' THEN 'Opera'
+				WHEN LOWER(user_agent) LIKE '%chrome%' OR LOWER(user_agent) LIKE '%chromium%' THEN 'Chrome'
+				WHEN LOWER(user_agent) LIKE '%safari%' THEN 'Safari'
+				WHEN LOWER(user_agent) LIKE '%curl%' THEN 'curl'
+				WHEN LOWER(user_agent) LIKE '%bot%' OR LOWER(user_agent) LIKE '%crawl%' THEN 'Bot'
+				ELSE 'Other'
+			END as browser,
+			COUNT(*) as cnt
+		 FROM page_views
 		 WHERE created_at >= datetime('now', '-30 days') AND user_agent != ''
-		 GROUP BY user_agent`,
+		 GROUP BY browser ORDER BY cnt DESC`,
 	)
 	if err == nil {
 		defer rows3.Close()
-		browserCounts := map[string]int{}
 		for rows3.Next() {
-			var ua string
-			var cnt int
-			rows3.Scan(&ua, &cnt)
-			browser := parseBrowser(ua)
-			browserCounts[browser] += cnt
-		}
-		for name, count := range browserCounts {
-			data.Browsers = append(data.Browsers, BrowserStat{Name: name, Count: count})
+			var b BrowserStat
+			rows3.Scan(&b.Name, &b.Count)
+			data.Browsers = append(data.Browsers, b)
 		}
 	}
 	if data.Browsers == nil {
@@ -147,24 +152,3 @@ func AdminSiteAnalytics(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"analytics": data})
 }
 
-func parseBrowser(ua string) string {
-	ua = strings.ToLower(ua)
-	switch {
-	case strings.Contains(ua, "edg/") || strings.Contains(ua, "edge/"):
-		return "Edge"
-	case strings.Contains(ua, "opr/") || strings.Contains(ua, "opera"):
-		return "Opera"
-	case strings.Contains(ua, "chrome") || strings.Contains(ua, "chromium"):
-		return "Chrome"
-	case strings.Contains(ua, "firefox") || strings.Contains(ua, "gecko/"):
-		return "Firefox"
-	case strings.Contains(ua, "safari") && !strings.Contains(ua, "chrome"):
-		return "Safari"
-	case strings.Contains(ua, "curl"):
-		return "curl"
-	case strings.Contains(ua, "bot") || strings.Contains(ua, "crawl"):
-		return "Bot"
-	default:
-		return "Other"
-	}
-}

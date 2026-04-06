@@ -1011,7 +1011,8 @@
             } catch (e) { toast('Failed to save: ' + e.message, 'error'); }
         }
 
-        function statCard(v, l) { return '<div class="stat-card"><div class="stat-value">' + v + '</div><div class="stat-label">' + l + '</div></div>'; }
+        function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+        function statCard(v, l) { return '<div class="stat-card"><div class="stat-value">' + esc(v) + '</div><div class="stat-label">' + esc(l) + '</div></div>'; }
         function actIcon(t) { return {played:'🎮',library_add:'📚',review:'✍️',upload:'📤'}[t]||'🎯'; }
         function actVerb(t) { return {played:'Played',library_add:'Added to library',review:'Reviewed',upload:'Uploaded'}[t]||t; }
 
@@ -1630,7 +1631,7 @@
                         const pct = Math.round(r.count / maxRef * 100);
                         html += '<div style="margin-bottom:8px;">';
                         html += '<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:3px;">';
-                        html += '<span style="color:var(--accent);">' + r.referrer + '</span><span style="color:var(--text-secondary);">' + r.count + '</span></div>';
+                        html += '<span style="color:var(--accent);">' + esc(r.referrer) + '</span><span style="color:var(--text-secondary);">' + r.count + '</span></div>';
                         html += '<div style="height:6px;background:rgba(255,255,255,0.05);border-radius:3px;overflow:hidden;">';
                         html += '<div style="width:' + pct + '%;height:100%;background:var(--accent);border-radius:3px;"></div></div></div>';
                     });
@@ -1885,7 +1886,7 @@
                 const maxP = data.popular_pages[0].views;
                 data.popular_pages.forEach(p => {
                     const pct = Math.round(p.views / maxP * 100);
-                    html += '<div style="margin-bottom:6px;"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:2px;"><span style="color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px;">' + p.path + '</span><span style="color:var(--text-secondary);">' + p.views + '</span></div>';
+                    html += '<div style="margin-bottom:6px;"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:2px;"><span style="color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px;">' + esc(p.path) + '</span><span style="color:var(--text-secondary);">' + p.views + '</span></div>';
                     html += '<div style="height:4px;background:rgba(255,255,255,0.05);border-radius:2px;"><div style="width:' + pct + '%;height:100%;background:var(--accent);border-radius:2px;"></div></div></div>';
                 });
             } else { html += '<p style="color:var(--text-secondary);font-size:13px;">No data yet</p>'; }
@@ -1913,7 +1914,7 @@
                 html += '<div class="card-box"><h3 style="font-size:16px;margin-bottom:15px;">Referrers</h3>';
                 data.referrers.forEach(r => {
                     html += '<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:13px;border-bottom:1px solid var(--border-color);">';
-                    html += '<span style="color:var(--accent);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px;">' + r.referrer + '</span><span style="color:var(--text-secondary);">' + r.count + '</span></div>';
+                    html += '<span style="color:var(--accent);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px;">' + esc(r.referrer) + '</span><span style="color:var(--text-secondary);">' + r.count + '</span></div>';
                 });
                 html += '</div>';
             }

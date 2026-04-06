@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"embed"
+	"html"
 	"io/fs"
 	"net/http"
 	"path/filepath"
@@ -169,7 +170,8 @@ func New(frontendFS embed.FS, goatCounterURL string) *gin.Engine {
 			}
 			// Inject GoatCounter script if configured
 			if goatCounterURL != "" {
-				snippet := []byte(`<script data-goatcounter="` + goatCounterURL + `/count" async src="` + goatCounterURL + `/count.js"></script></body>`)
+				escaped := html.EscapeString(goatCounterURL)
+				snippet := []byte(`<script data-goatcounter="` + escaped + `/count" async src="` + escaped + `/count.js"></script></body>`)
 				data = bytes.Replace(data, []byte("</body>"), snippet, 1)
 			}
 			c.Data(http.StatusOK, "text/html; charset=utf-8", data)

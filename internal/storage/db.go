@@ -216,6 +216,8 @@ CREATE TABLE IF NOT EXISTS page_views (
 
 CREATE INDEX IF NOT EXISTS idx_page_views_date ON page_views(created_at);
 CREATE INDEX IF NOT EXISTS idx_page_views_path ON page_views(path);
+CREATE INDEX IF NOT EXISTS idx_page_views_date_path ON page_views(created_at, path);
+CREATE INDEX IF NOT EXISTS idx_page_views_date_status ON page_views(created_at, status_code);
 CREATE INDEX IF NOT EXISTS idx_game_views_game ON game_views(game_id);
 CREATE INDEX IF NOT EXISTS idx_game_views_date ON game_views(game_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, read);
