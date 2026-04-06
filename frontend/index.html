@@ -934,7 +934,7 @@
 
                 html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">';
                 html += '<div class="dev-profile" style="margin-bottom:0;">';
-                html += '<img src="' + esc(u.avatar_url || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + encodeURIComponent(u.username)) + '" class="dev-avatar">';
+                html += '<img src="' + (u.avatar_url ? esc(u.avatar_url) : 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + encodeURIComponent(u.username)) + '" class="dev-avatar">';
                 const level = Math.max(1, Math.floor(s.games_owned + s.review_count + s.games_uploaded + s.hours_played / 10));
                 html += '<div><div class="dev-name">' + escapeHtml(u.username) + '</div>';
                 html += '<span class="level-badge">Level ' + level + '</span>';
@@ -1128,7 +1128,7 @@
                     html += '<button class="btn-accent" onclick="submitGameReview()">Submit Review</button></div>';
                 }
                 allReviews.forEach(r => {
-                    const avatar = esc(r.avatar_url || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + encodeURIComponent(r.username));
+                    const avatar = r.avatar_url ? esc(r.avatar_url) : 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + encodeURIComponent(r.username);
                     html += '<div class="review-card"><div class="review-header"><div style="display:flex;align-items:center;gap:10px;">';
                     html += '<img src="' + avatar + '" style="width:32px;height:32px;border-radius:3px;">';
                     html += '<span class="review-author">' + escapeHtml(r.username) + '</span></div>';
@@ -1288,7 +1288,7 @@
                 html += '</div>';
 
                 html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;">';
-                html += '<div class="dev-profile"><img src="' + esc(u.avatar_url || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + encodeURIComponent(u.username)) + '" class="dev-avatar">';
+                html += '<div class="dev-profile"><img src="' + (u.avatar_url ? esc(u.avatar_url) : 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + encodeURIComponent(u.username)) + '" class="dev-avatar">';
                 html += '<div><div class="dev-name">' + escapeHtml(page?.display_name || u.username) + '</div>';
                 html += '<div class="dev-meta">@' + escapeHtml(u.username) + ' · ' + stats.games_uploaded + ' games · ' + stats.hours_played.toFixed(0) + ' hours played</div>';
                 if (page?.links && page.links.length > 0) { html += '<div class="dev-links">'; page.links.forEach(l => html += '<a href="' + escapeHtml(l.url) + '" target="_blank" class="dev-link">' + escapeHtml(l.label) + '</a>'); html += '</div>'; }
@@ -2190,7 +2190,7 @@
                 if (!data.following || data.following.length === 0) { list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary);">Not following anyone yet.</div>'; return; }
                 list.innerHTML = data.following.map(u =>
                     '<div class="feed-item" onclick="showDeveloper(\'' + escapeHtml(u.username) + '\')">' +
-                    '<img src="' + esc(u.avatar_url || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + encodeURIComponent(u.username)) + '" style="width:35px;height:35px;border-radius:50%;object-fit:cover;">' +
+                    '<img src="' + (u.avatar_url ? esc(u.avatar_url) : 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + encodeURIComponent(u.username)) + '" style="width:35px;height:35px;border-radius:50%;object-fit:cover;">' +
                     '<div class="feed-item-info"><div class="feed-item-title">' + escapeHtml(u.username) + '</div>' +
                     '<div class="feed-item-meta">' + escapeHtml(u.bio || 'Developer') + '</div></div></div>'
                 ).join('');
@@ -2313,7 +2313,7 @@
 
         function renderComment(c, devlogId, depth) {
             const indent = depth * 20;
-            const avatar = esc(c.avatar_url || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + encodeURIComponent(c.username));
+            const avatar = c.avatar_url ? esc(c.avatar_url) : 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + encodeURIComponent(c.username);
             let html = '<div style="margin-left:' + indent + 'px;padding:8px 0;border-bottom:1px solid var(--border-color);">';
             html += '<div style="display:flex;gap:8px;align-items:flex-start;">';
             html += '<img src="' + avatar + '" style="width:24px;height:24px;border-radius:50%;flex-shrink:0;margin-top:2px;">';
