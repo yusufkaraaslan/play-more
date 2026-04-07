@@ -36,9 +36,9 @@ func New(frontendFS embed.FS, goatCounterURL string) *gin.Engine {
 		c.Header("X-Content-Type-Options", "nosniff")
 		c.Header("X-Frame-Options", "SAMEORIGIN")
 		c.Header("Referrer-Policy", "strict-origin-when-cross-origin")
-		csp := "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://api.dicebear.com; connect-src 'self'; frame-src 'self'; media-src 'self' https://www.youtube.com; font-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com"
+		csp := "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https://api.dicebear.com; connect-src 'self'; frame-src 'self'; media-src 'self' https://www.youtube.com; font-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com"
 		if goatCounterURL != "" {
-			csp = "default-src 'self'; script-src 'self' 'unsafe-inline' https://gc.zgo.at https://*.goatcounter.com https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://api.dicebear.com https://gc.zgo.at; connect-src 'self' https://*.goatcounter.com https://cloudflareinsights.com; frame-src 'self'; media-src 'self' https://www.youtube.com; font-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com"
+			csp = "default-src 'self'; script-src 'self' 'unsafe-inline' https://gc.zgo.at https://*.goatcounter.com https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https://api.dicebear.com https://gc.zgo.at; connect-src 'self' https://*.goatcounter.com https://cloudflareinsights.com; frame-src 'self'; media-src 'self' https://www.youtube.com; font-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com"
 		}
 		c.Header("Content-Security-Policy", csp)
 		if c.Request.Header.Get("X-Forwarded-Proto") == "https" || c.Request.TLS != nil {
