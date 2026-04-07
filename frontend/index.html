@@ -1339,7 +1339,7 @@
                 html += '</div>';
 
                 // Render sections based on page layout
-                const layout = page?.page_layout || [
+                const layout = (page?.page_layout?.length > 0) ? page.page_layout : [
                     {type:'about',enabled:true},{type:'featured',enabled:true},
                     {type:'games',enabled:true},{type:'links',enabled:true},{type:'devlogs',enabled:true}
                 ];
@@ -1445,7 +1445,7 @@
             }
 
             // Page Layout
-            const layout = page?.page_layout || [
+            const layout = (page?.page_layout?.length > 0) ? page.page_layout : [
                 {type:'about',enabled:true,title:'About'},{type:'featured',enabled:true,title:'Featured Games'},
                 {type:'games',enabled:true,title:'All Games'},{type:'links',enabled:true,title:'Links'},{type:'devlogs',enabled:true,title:'Devlogs'}
             ];
