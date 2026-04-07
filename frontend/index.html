@@ -1351,27 +1351,42 @@
                     if (!section.enabled) continue;
                     if (section.type === 'spacer') {
                         html += '<div style="height:' + (section.height || 40) + 'px;"></div>';
-                    } else if (section.type === 'about' && page?.about) {
-                        html += '<div class="dev-about">' + renderMarkdown(page.about) + '</div>';
-                    } else if (section.type === 'featured' && featuredGames.length > 0) {
+                    } else if (section.type === 'about') {
+                        if (page?.about) {
+                            html += '<div class="dev-about">' + renderMarkdown(page.about) + '</div>';
+                        } else if (isOwnPage) {
+                            html += '<div class="dev-about" style="opacity:0.5;font-style:italic;">No about text yet. Edit your page to add one.</div>';
+                        }
+                    } else if (section.type === 'featured') {
                         html += '<h2 class="section-title">' + esc(section.title || 'Featured') + '</h2>';
-                        html += '<div class="game-grid">';
-                        featuredGames.forEach(g => html += gameCardHTML(g));
-                        html += '</div>';
+                        if (featuredGames.length > 0) {
+                            html += '<div class="game-grid">';
+                            featuredGames.forEach(g => html += gameCardHTML(g));
+                            html += '</div>';
+                        } else if (isOwnPage) {
+                            html += '<div class="empty-state" style="padding:20px;">Select featured games in the editor.</div>';
+                        }
                     } else if (section.type === 'games') {
                         const gamesToShow = featuredGames.length > 0 ? otherGames : (data.games || []);
+                        html += '<h2 class="section-title">' + esc(section.title || 'Games') + '</h2>';
                         if (gamesToShow.length > 0) {
-                            html += '<h2 class="section-title">' + esc(section.title || 'Games') + '</h2>';
                             html += '<div class="game-grid">';
                             gamesToShow.forEach(g => html += gameCardHTML(g));
                             html += '</div>';
+                        } else {
+                            html += '<div class="empty-state" style="padding:20px;">No games published yet.</div>';
                         }
-                    } else if (section.type === 'links' && page?.links?.length > 0) {
+                    } else if (section.type === 'links') {
                         html += '<h2 class="section-title">' + esc(section.title || 'Links') + '</h2>';
-                        html += '<div class="dev-links" style="margin-bottom:20px;">';
-                        page.links.forEach(l => html += '<a href="' + esc(l.url) + '" target="_blank" class="dev-link">' + esc(l.label) + '</a>');
-                        html += '</div>';
+                        if (page?.links?.length > 0) {
+                            html += '<div class="dev-links" style="margin-bottom:20px;">';
+                            page.links.forEach(l => html += '<a href="' + esc(l.url) + '" target="_blank" class="dev-link">' + esc(l.label) + '</a>');
+                            html += '</div>';
+                        } else if (isOwnPage) {
+                            html += '<div class="empty-state" style="padding:20px;">No links added yet.</div>';
+                        }
                     } else if (section.type === 'devlogs') {
+                        html += '<h2 class="section-title">' + esc(section.title || 'Devlogs') + '</h2>';
                         try {
                             const dlData = await api('/developer/' + username + '/games');
                             // Devlogs rendered if any game has them — handled elsewhere
