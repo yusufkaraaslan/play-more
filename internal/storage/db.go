@@ -33,8 +33,25 @@ func InitDB(dataDir string) error {
 }
 
 func migrate() error {
-	_, err := DB.Exec(schema)
-	return err
+	if _, err := DB.Exec(schema); err != nil {
+		return err
+	}
+	// Add columns that may be missing from older databases
+	migrations := []string{
+		`ALTER TABLE developer_pages ADD COLUMN theme_preset TEXT DEFAULT 'steam-dark'`,
+		`ALTER TABLE developer_pages ADD COLUMN font_heading TEXT DEFAULT ''`,
+		`ALTER TABLE developer_pages ADD COLUMN font_body TEXT DEFAULT ''`,
+		`ALTER TABLE developer_pages ADD COLUMN featured_games TEXT DEFAULT '[]'`,
+		`ALTER TABLE page_views ADD COLUMN device_type TEXT DEFAULT ''`,
+		`ALTER TABLE page_views ADD COLUMN os TEXT DEFAULT ''`,
+		`ALTER TABLE page_views ADD COLUMN session_id TEXT DEFAULT ''`,
+		`ALTER TABLE page_views ADD COLUMN screen_res TEXT DEFAULT ''`,
+		`ALTER TABLE page_views ADD COLUMN has_webgpu INTEGER DEFAULT -1`,
+	}
+	for _, m := range migrations {
+		DB.Exec(m) // ignore errors (column already exists)
+	}
+	return nil
 }
 
 const schema = `
