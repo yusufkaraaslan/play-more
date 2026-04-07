@@ -39,11 +39,15 @@ func GetDeveloperPage(c *gin.Context) {
 }
 
 type devPageInput struct {
-	DisplayName string                `json:"display_name"`
-	BannerURL   string                `json:"banner_url"`
-	ThemeColor  string                `json:"theme_color"`
-	About       string                `json:"about"`
-	Links       []models.DeveloperLink `json:"links"`
+	DisplayName   string                 `json:"display_name"`
+	BannerURL     string                 `json:"banner_url"`
+	ThemeColor    string                 `json:"theme_color"`
+	ThemePreset   string                 `json:"theme_preset"`
+	About         string                 `json:"about"`
+	FontHeading   string                 `json:"font_heading"`
+	FontBody      string                 `json:"font_body"`
+	Links         []models.DeveloperLink `json:"links"`
+	FeaturedGames []string               `json:"featured_games"`
 }
 
 func UpdateDeveloperPage(c *gin.Context) {
@@ -63,15 +67,19 @@ func UpdateDeveloperPage(c *gin.Context) {
 	if input.Links == nil {
 		input.Links = []models.DeveloperLink{}
 	}
+	if input.FeaturedGames == nil {
+		input.FeaturedGames = []string{}
+	}
 
-	// Sanitize and limit about field
+	// Sanitize and limit about field (markdown, max 2000 chars)
 	input.About = SanitizePlain(input.About)
-	if len(input.About) > 1000 {
-		input.About = input.About[:1000]
+	if len(input.About) > 2000 {
+		input.About = input.About[:2000]
 	}
 
 	if err := models.UpsertDeveloperPage(
-		user.ID, input.DisplayName, input.BannerURL, input.ThemeColor, input.About, input.Links,
+		user.ID, input.DisplayName, input.BannerURL, input.ThemeColor, input.ThemePreset,
+		input.About, input.FontHeading, input.FontBody, input.Links, input.FeaturedGames,
 	); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update page"})
 		return

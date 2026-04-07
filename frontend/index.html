@@ -611,6 +611,38 @@
     </div>
 
     <script>
+        /* ============ Dev Page Presets ============ */
+        const themePresets = {
+            'steam-dark': { name: 'Steam Dark', bg: '#1b2838', accent: '#66c0f4', text: '#c7d5e0', card: 'rgba(0,0,0,0.3)' },
+            'neon-cyber': { name: 'Neon Cyberpunk', bg: '#0a0a1a', accent: '#ff00ff', text: '#e0e0ff', card: 'rgba(255,0,255,0.08)' },
+            'retro-terminal': { name: 'Retro Terminal', bg: '#0a0a0a', accent: '#00ff41', text: '#00ff41', card: 'rgba(0,255,65,0.05)' },
+            'ocean-blue': { name: 'Ocean Blue', bg: '#0d1b2a', accent: '#48cae4', text: '#caf0f8', card: 'rgba(72,202,228,0.08)' },
+            'sunset-warm': { name: 'Sunset Warm', bg: '#1a1110', accent: '#ff6b35', text: '#ffe0cc', card: 'rgba(255,107,53,0.08)' },
+            'forest': { name: 'Forest', bg: '#0a1a0a', accent: '#4ade80', text: '#d1fae5', card: 'rgba(74,222,128,0.06)' },
+            'minimal-light': { name: 'Minimal Light', bg: '#f5f5f5', accent: '#2563eb', text: '#1a1a2e', card: 'rgba(0,0,0,0.05)' },
+            'royal-purple': { name: 'Royal Purple', bg: '#13031a', accent: '#a855f7', text: '#e9d5ff', card: 'rgba(168,85,247,0.08)' },
+        };
+        const fontOptions = [
+            '', 'Inter', 'Roboto', 'Open Sans', 'Lato', 'Montserrat', 'Poppins', 'Raleway',
+            'Oswald', 'Playfair Display', 'Merriweather', 'Source Code Pro', 'Fira Code',
+            'Space Grotesk', 'JetBrains Mono', 'Press Start 2P', 'VT323'
+        ];
+
+        // Simple markdown→HTML (bold, italic, links, headings, lists)
+        function renderMarkdown(md) {
+            if (!md) return '';
+            return esc(md)
+                .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+                .replace(/^## (.+)$/gm, '<h2 style="font-size:18px;margin:15px 0 8px;">$1</h2>')
+                .replace(/^# (.+)$/gm, '<h1 style="font-size:22px;margin:15px 0 8px;">$1</h1>')
+                .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\*(.+?)\*/g, '<em>$1</em>')
+                .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" target="_blank" style="color:inherit;opacity:0.8;">$1</a>')
+                .replace(/^- (.+)$/gm, '<li>$1</li>')
+                .replace(/(<li>.*<\/li>)/s, '<ul style="padding-left:20px;">$1</ul>')
+                .replace(/\n/g, '<br>');
+        }
+
         /* ============ Theme ============ */
         function applyTheme() {
             const saved = localStorage.getItem('playmore_theme') || 'dark';
@@ -1289,10 +1321,23 @@
             try {
                 const data = await api('/developer/' + username);
                 const u = data.user; const page = data.page; const stats = data.stats;
-                const themeColor = page?.theme_color || 'var(--accent)';
+                const preset = themePresets[page?.theme_preset] || themePresets['steam-dark'];
+                const themeColor = page?.theme_color || preset.accent;
                 const isOwnPage = currentUser && currentUser.username === u.username;
+                // Load custom fonts
+                const fh = page?.font_heading || '';
+                const fb = page?.font_body || '';
+                if (fh || fb) {
+                    const families = [fh, fb].filter(f => f).map(f => f.replace(/ /g, '+')).join('&family=');
+                    if (families) {
+                        const link = document.createElement('link');
+                        link.rel = 'stylesheet';
+                        link.href = 'https://fonts.googleapis.com/css2?family=' + families + '&display=swap';
+                        document.head.appendChild(link);
+                    }
+                }
 
-                let html = '<div class="dev-page">';
+                let html = '<div class="dev-page" style="--dp-bg:' + preset.bg + ';--dp-accent:' + themeColor + ';--dp-text:' + preset.text + ';--dp-card:' + preset.card + ';' + (fh ? 'font-family:' + fh + ',sans-serif;' : '') + '">';
                 html += '<div class="dev-banner" style="' + (page?.banner_url ? '' : 'background:linear-gradient(135deg, var(--bg-secondary), ' + themeColor + '30);') + '">';
                 if (page?.banner_url) html += '<img src="' + escapeHtml(page.banner_url) + '">';
                 html += '</div>';
@@ -1317,7 +1362,7 @@
 
                 if (page?.about) {
                     const aboutText = page.about.length > 1000 ? page.about.substring(0, 1000) + '...' : page.about;
-                    html += '<div class="dev-about">' + esc(aboutText) + '</div>';
+                    html += '<div class="dev-about">' + renderMarkdown(page.about) + '</div>';
                 }
 
                 html += '<h2 class="section-title">Published Games</h2>';
@@ -1334,17 +1379,65 @@
         /* ============ Developer Editor ============ */
         async function loadDevEditor() {
             if (!currentUser) { showAuth('login'); return; }
-            let page = null;
-            try { const d = await api('/developer/' + encodeURIComponent(currentUser.username)); page = d.page; } catch {}
+            let page = null; let myGames = [];
+            try { const d = await api('/developer/' + encodeURIComponent(currentUser.username)); page = d.page; myGames = d.games || []; } catch {}
             let html = '';
+
+            // Display name
             html += '<div class="form-group"><label class="form-label">Display Name</label><input type="text" class="form-input" id="dev-display-name" value="' + escapeHtml(page?.display_name || currentUser.username) + '"></div>';
-            html += '<div class="form-group"><label class="form-label">About (max 1000 chars)</label><textarea class="form-textarea" id="dev-about" style="min-height:150px;" maxlength="1000">' + escapeHtml(page?.about || '') + '</textarea></div>';
-            html += '<div class="form-row"><div class="form-group"><label class="form-label">Theme Color <span class="color-preview" id="dev-color-preview" style="background:' + escapeHtml(page?.theme_color || '#66c0f4') + '"></span></label><input type="color" class="form-input" id="dev-theme-color" value="' + escapeHtml(page?.theme_color || '#66c0f4') + '" style="height:40px;padding:4px;" oninput="document.getElementById(\'dev-color-preview\').style.background=this.value"></div>';
-            html += '<div class="form-group"><label class="form-label">Banner Image URL</label><input type="text" class="form-input" id="dev-banner" value="' + escapeHtml(page?.banner_url || '') + '" placeholder="https://..."></div></div>';
+
+            // About (markdown with live preview)
+            html += '<div class="form-group"><label class="form-label">About (markdown, max 2000 chars)</label>';
+            html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;">';
+            html += '<textarea class="form-textarea" id="dev-about" style="min-height:200px;font-family:monospace;font-size:13px;" maxlength="2000" oninput="document.getElementById(\'dev-about-preview\').innerHTML=renderMarkdown(this.value)">' + escapeHtml(page?.about || '') + '</textarea>';
+            html += '<div id="dev-about-preview" class="card-box" style="min-height:200px;font-size:13px;line-height:1.6;color:var(--text-secondary);margin-bottom:0;overflow-y:auto;">' + renderMarkdown(page?.about || '') + '</div>';
+            html += '</div><p style="font-size:11px;color:var(--text-secondary);margin-top:5px;">Supports: **bold**, *italic*, [links](url), # headings, - lists</p></div>';
+
+            // Theme preset
+            html += '<div class="form-group"><label class="form-label">Theme Preset</label>';
+            html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">';
+            Object.entries(themePresets).forEach(([key, t]) => {
+                const sel = (page?.theme_preset || 'steam-dark') === key;
+                html += '<div onclick="document.querySelectorAll(\'.theme-pick\').forEach(e=>e.style.borderColor=\'var(--border-color)\');this.style.borderColor=\'' + t.accent + '\';document.getElementById(\'dev-theme-preset\').value=\'' + key + '\';document.getElementById(\'dev-theme-color\').value=\'' + t.accent + '\';" class="theme-pick" style="padding:12px;border-radius:6px;background:' + t.bg + ';border:2px solid ' + (sel ? t.accent : 'var(--border-color)') + ';cursor:pointer;text-align:center;">';
+                html += '<div style="color:' + t.accent + ';font-size:14px;font-weight:bold;">Aa</div>';
+                html += '<div style="color:' + t.text + ';font-size:11px;margin-top:4px;">' + t.name + '</div></div>';
+            });
+            html += '</div><input type="hidden" id="dev-theme-preset" value="' + escapeHtml(page?.theme_preset || 'steam-dark') + '"></div>';
+
+            // Custom accent color
+            html += '<div class="form-row"><div class="form-group"><label class="form-label">Accent Color <span class="color-preview" id="dev-color-preview" style="background:' + escapeHtml(page?.theme_color || '#66c0f4') + '"></span></label><input type="color" class="form-input" id="dev-theme-color" value="' + escapeHtml(page?.theme_color || '#66c0f4') + '" style="height:40px;padding:4px;" oninput="document.getElementById(\'dev-color-preview\').style.background=this.value"></div>';
+
+            // Banner
+            html += '<div class="form-group"><label class="form-label">Banner Image</label><input type="file" class="form-input" style="padding:8px;margin-bottom:5px;" accept="image/*" onchange="uploadImage(this,\'dev-banner\')"><input type="text" class="form-input" id="dev-banner" value="' + escapeHtml(page?.banner_url || '') + '" placeholder="URL or upload above"></div></div>';
+
+            // Fonts
+            html += '<div class="form-row"><div class="form-group"><label class="form-label">Heading Font</label><select class="form-select" id="dev-font-heading">';
+            fontOptions.forEach(f => { html += '<option value="' + f + '"' + (f === (page?.font_heading || '') ? ' selected' : '') + '>' + (f || 'Default') + '</option>'; });
+            html += '</select></div><div class="form-group"><label class="form-label">Body Font</label><select class="form-select" id="dev-font-body">';
+            fontOptions.forEach(f => { html += '<option value="' + f + '"' + (f === (page?.font_body || '') ? ' selected' : '') + '>' + (f || 'Default') + '</option>'; });
+            html += '</select></div></div>';
+
+            // Featured games
+            if (myGames.length > 0) {
+                const featured = page?.featured_games || [];
+                html += '<div class="form-group"><label class="form-label">Featured Games (select up to 6)</label>';
+                html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">';
+                myGames.forEach(g => {
+                    const isFeat = featured.includes(g.id);
+                    html += '<label style="display:flex;gap:8px;align-items:center;padding:8px;background:' + (isFeat ? 'rgba(102,192,244,0.15)' : 'rgba(0,0,0,0.2)') + ';border-radius:4px;cursor:pointer;font-size:13px;border:1px solid ' + (isFeat ? 'var(--accent)' : 'var(--border-color)') + ';">';
+                    html += '<input type="checkbox" data-featured-game="' + g.id + '"' + (isFeat ? ' checked' : '') + ' style="accent-color:var(--accent);">';
+                    html += esc(g.title) + '</label>';
+                });
+                html += '</div></div>';
+            }
+
+            // Links
             html += '<div class="form-group"><label class="form-label">Links</label><div id="dev-links-list">';
             (page?.links || []).forEach((l, i) => { html += '<div class="form-row" style="margin-bottom:8px;"><div><input type="text" class="form-input" placeholder="Label" value="' + escapeHtml(l.label) + '" data-link-label="' + i + '"></div><div><input type="text" class="form-input" placeholder="URL" value="' + escapeHtml(l.url) + '" data-link-url="' + i + '"></div></div>'; });
             html += '</div><button class="btn-secondary" style="margin-top:8px;" onclick="addDevLink()">+ Add Link</button></div>';
-            html += '<div style="display:flex;gap:10px;"><button class="btn-primary" style="width:auto;padding:12px 30px;" onclick="saveDevPage()">Save Developer Page</button>';
+
+            // Save / Preview
+            html += '<div style="display:flex;gap:10px;margin-top:10px;"><button class="btn-primary" style="width:auto;padding:12px 30px;" onclick="saveDevPage()">Save Developer Page</button>';
             html += '<button class="btn-secondary" onclick="showDeveloper(\'' + escapeHtml(currentUser.username) + '\')">Preview</button></div>';
             document.getElementById('deveditor-content').innerHTML = html;
         }
@@ -1353,7 +1446,20 @@
 
         async function saveDevPage() {
             const links = []; document.querySelectorAll('[data-link-label]').forEach(el => { const u=document.querySelector('[data-link-url="'+el.dataset.linkLabel+'"]'); if(el.value&&u?.value) links.push({label:el.value,url:u.value}); });
-            try { await api('/developer', { method:'PUT', body:JSON.stringify({ display_name:document.getElementById('dev-display-name').value, about:document.getElementById('dev-about').value, theme_color:document.getElementById('dev-theme-color').value, banner_url:document.getElementById('dev-banner').value, links }) }); toast('Developer page saved!', 'success'); } catch (e) { toast('Failed to save: ' + e.message, 'error'); }
+            const featured = []; document.querySelectorAll('[data-featured-game]:checked').forEach(el => featured.push(el.dataset.featuredGame));
+            try {
+                await api('/developer', { method:'PUT', body:JSON.stringify({
+                    display_name: document.getElementById('dev-display-name').value,
+                    about: document.getElementById('dev-about').value,
+                    theme_color: document.getElementById('dev-theme-color').value,
+                    theme_preset: document.getElementById('dev-theme-preset').value,
+                    banner_url: document.getElementById('dev-banner').value,
+                    font_heading: document.getElementById('dev-font-heading').value,
+                    font_body: document.getElementById('dev-font-body').value,
+                    links, featured_games: featured
+                }) });
+                toast('Developer page saved!', 'success');
+            } catch (e) { toast('Failed to save: ' + e.message, 'error'); }
         }
 
         /* ============ Game Player ============ */

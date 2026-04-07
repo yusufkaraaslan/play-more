@@ -128,15 +128,19 @@ CREATE TABLE IF NOT EXISTS activity (
 );
 
 CREATE TABLE IF NOT EXISTS developer_pages (
-    user_id      TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-    display_name TEXT DEFAULT '',
-    banner_url   TEXT DEFAULT '',
-    theme_color  TEXT DEFAULT '#66c0f4',
-    custom_css   TEXT DEFAULT '',
-    links        TEXT DEFAULT '[]',
-    about        TEXT DEFAULT '',
-    created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at   DATETIME DEFAULT CURRENT_TIMESTAMP
+    user_id        TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    display_name   TEXT DEFAULT '',
+    banner_url     TEXT DEFAULT '',
+    theme_color    TEXT DEFAULT '#66c0f4',
+    theme_preset   TEXT DEFAULT 'steam-dark',
+    custom_css     TEXT DEFAULT '',
+    links          TEXT DEFAULT '[]',
+    about          TEXT DEFAULT '',
+    font_heading   TEXT DEFAULT '',
+    font_body      TEXT DEFAULT '',
+    featured_games TEXT DEFAULT '[]',
+    created_at     DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at     DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS devlogs (
