@@ -216,7 +216,7 @@ func New(frontendFS embed.FS, goatCounterURL string) *gin.Engine {
 			// Inject GoatCounter script if configured
 			if goatCounterURL != "" {
 				escaped := html.EscapeString(goatCounterURL)
-				snippet := []byte(`<script data-goatcounter="` + escaped + `/count" async src="` + escaped + `/count.js"></script></body>`)
+				snippet := []byte(`<script data-goatcounter="` + escaped + `/count" async src="//gc.zgo.at/count.js"></script></body>`)
 				data = bytes.Replace(data, []byte("</body>"), snippet, 1)
 			}
 			c.Data(http.StatusOK, "text/html; charset=utf-8", data)
