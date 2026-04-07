@@ -971,11 +971,23 @@
             try {
                 const data = await api('/profile/' + currentUser.username);
                 const u = data.user; const s = data.stats;
-                const themeColor = u.theme_color || 'var(--accent)';
+                // Load developer page for theme settings
+                let devPage = null;
+                try { const dd = await api('/developer/' + u.username); devPage = dd.page; } catch {}
+                const preset = themePresets[(devPage?.theme_preset) || 'steam-dark'] || themePresets['steam-dark'];
+                const themeColor = devPage?.theme_color || u.theme_color || preset.accent;
+                const fh = devPage?.font_heading || '';
+
                 if (profileEditMode) { renderProfileEditor(u); return; }
 
-                let html = '';
-                html += '<div class="dev-banner" style="' + (u.banner_url ? '' : 'background:linear-gradient(135deg, var(--bg-secondary), ' + themeColor + '30);') + '">';
+                // Load custom fonts
+                if (fh || devPage?.font_body) {
+                    const families = [fh, devPage?.font_body].filter(f => f).map(f => f.replace(/ /g, '+')).join('&family=');
+                    if (families) { const link = document.createElement('link'); link.rel='stylesheet'; link.href='https://fonts.googleapis.com/css2?family='+families+'&display=swap'; document.head.appendChild(link); }
+                }
+
+                let html = '<div class="dev-page" style="--dp-bg:' + preset.bg + ';--dp-accent:' + themeColor + ';--dp-text:' + preset.text + ';--dp-card:' + preset.card + ';background:' + preset.bg + ';padding:20px;border-radius:12px;margin:-20px;margin-bottom:0;' + (fh ? 'font-family:' + fh + ',sans-serif;' : '') + '">';
+                html += '<div class="dev-banner" style="' + (u.banner_url ? '' : 'background:linear-gradient(135deg, ' + preset.bg + ', ' + themeColor + '30);') + '">';
                 if (u.banner_url) html += '<img src="' + u.banner_url + '">';
                 html += '</div>';
 
@@ -1041,6 +1053,7 @@
                     html += '</div>';
                 } else { html += '<div class="empty-state">No activity yet.</div>'; }
 
+                html += '</div>'; // close dev-page themed container
                 document.getElementById('profile-content').innerHTML = html;
             } catch (e) { console.error('Failed to load profile:', e); }
         }
