@@ -1315,7 +1315,10 @@
                 }
                 html += '</div>';
 
-                if (page?.about) html += '<div class="dev-about">' + page.about + '</div>'; // Server-sanitized HTML via SanitizeHTML()
+                if (page?.about) {
+                    const aboutText = page.about.length > 1000 ? page.about.substring(0, 1000) + '...' : page.about;
+                    html += '<div class="dev-about">' + esc(aboutText) + '</div>';
+                }
 
                 html += '<h2 class="section-title">Published Games</h2>';
                 if (data.games && data.games.length > 0) { html += '<div class="game-grid">'; data.games.forEach(g => html += gameCardHTML(g)); html += '</div>'; }
@@ -1335,7 +1338,7 @@
             try { const d = await api('/developer/' + encodeURIComponent(currentUser.username)); page = d.page; } catch {}
             let html = '';
             html += '<div class="form-group"><label class="form-label">Display Name</label><input type="text" class="form-input" id="dev-display-name" value="' + escapeHtml(page?.display_name || currentUser.username) + '"></div>';
-            html += '<div class="form-group"><label class="form-label">About (supports HTML)</label><textarea class="form-textarea" id="dev-about" style="min-height:150px;">' + escapeHtml(page?.about || '') + '</textarea></div>';
+            html += '<div class="form-group"><label class="form-label">About (max 1000 chars)</label><textarea class="form-textarea" id="dev-about" style="min-height:150px;" maxlength="1000">' + escapeHtml(page?.about || '') + '</textarea></div>';
             html += '<div class="form-row"><div class="form-group"><label class="form-label">Theme Color <span class="color-preview" id="dev-color-preview" style="background:' + escapeHtml(page?.theme_color || '#66c0f4') + '"></span></label><input type="color" class="form-input" id="dev-theme-color" value="' + escapeHtml(page?.theme_color || '#66c0f4') + '" style="height:40px;padding:4px;" oninput="document.getElementById(\'dev-color-preview\').style.background=this.value"></div>';
             html += '<div class="form-group"><label class="form-label">Banner Image URL</label><input type="text" class="form-input" id="dev-banner" value="' + escapeHtml(page?.banner_url || '') + '" placeholder="https://..."></div></div>';
             html += '<div class="form-group"><label class="form-label">Links</label><div id="dev-links-list">';

@@ -64,8 +64,11 @@ func UpdateDeveloperPage(c *gin.Context) {
 		input.Links = []models.DeveloperLink{}
 	}
 
-	// Sanitize HTML in about field to prevent XSS
-	input.About = SanitizeHTML(input.About)
+	// Sanitize and limit about field
+	input.About = SanitizePlain(input.About)
+	if len(input.About) > 1000 {
+		input.About = input.About[:1000]
+	}
 
 	if err := models.UpsertDeveloperPage(
 		user.ID, input.DisplayName, input.BannerURL, input.ThemeColor, input.About, input.Links,
