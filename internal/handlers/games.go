@@ -248,6 +248,8 @@ func ServeGameFiles(c *gin.Context) {
 		return
 	}
 
+	// Games get a permissive CSP — they may load scripts from any CDN
+	c.Header("Content-Security-Policy", "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; img-src * data: blob:; media-src * data: blob:; font-src * data:; connect-src *")
 	c.Header("X-Frame-Options", "SAMEORIGIN")
 	c.File(fullPath)
 }
