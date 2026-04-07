@@ -964,33 +964,14 @@
         }
 
         /* ============ Profile ============ */
-        let profileEditMode = false;
-
         async function loadProfile() {
             if (!currentUser) { document.getElementById('profile-content').innerHTML = '<div class="empty-state">Please <a onclick="showAuth(\'login\')">login</a> to see your profile.</div>'; return; }
             try {
                 const data = await api('/profile/' + currentUser.username);
                 const u = data.user; const s = data.stats;
-                // Load developer page for theme settings
-                let devPage = null;
-                try { const dd = await api('/developer/' + u.username); devPage = dd.page; } catch {}
-                const preset = themePresets[(devPage?.theme_preset) || 'steam-dark'] || themePresets['steam-dark'];
-                const themeColor = devPage?.theme_color || u.theme_color || preset.accent;
-                const fh = devPage?.font_heading || '';
+                let html = '';
 
-                if (profileEditMode) { renderProfileEditor(u); return; }
-
-                // Load custom fonts
-                if (fh || devPage?.font_body) {
-                    const families = [fh, devPage?.font_body].filter(f => f).map(f => f.replace(/ /g, '+')).join('&family=');
-                    if (families) { const link = document.createElement('link'); link.rel='stylesheet'; link.href='https://fonts.googleapis.com/css2?family='+families+'&display=swap'; document.head.appendChild(link); }
-                }
-
-                let html = '<div class="dev-page" style="--dp-bg:' + preset.bg + ';--dp-accent:' + themeColor + ';--dp-text:' + preset.text + ';--dp-card:' + preset.card + ';background:' + preset.bg + ';padding:20px;border-radius:12px;margin:-20px;margin-bottom:0;' + (fh ? 'font-family:' + fh + ',sans-serif;' : '') + '">';
-                html += '<div class="dev-banner" style="' + (u.banner_url ? '' : 'background:linear-gradient(135deg, ' + preset.bg + ', ' + themeColor + '30);') + '">';
-                if (u.banner_url) html += '<img src="' + u.banner_url + '">';
-                html += '</div>';
-
+                // Profile header
                 html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">';
                 html += '<div class="dev-profile" style="margin-bottom:0;">';
                 html += '<img src="' + avatarUrl(u) + '" class="dev-avatar">';
@@ -998,36 +979,35 @@
                 html += '<div><div class="dev-name">' + escapeHtml(u.username) + '</div>';
                 html += '<span class="level-badge">Level ' + level + '</span>';
                 html += '<div class="dev-meta" style="margin-top:6px;">' + escapeHtml(u.bio || 'No bio yet.') + '</div>';
-                if (u.links && u.links.length > 0) { html += '<div class="dev-links">'; u.links.forEach(l => html += '<a href="' + escapeHtml(l.url) + '" target="_blank" class="dev-link">' + escapeHtml(l.label) + '</a>'); html += '</div>'; }
                 html += '</div></div>';
-                html += '<div style="display:flex;gap:8px;"><button class="btn-secondary" onclick="profileEditMode=true;loadProfile();">Edit Profile</button>';
-                html += '<button class="btn-secondary" onclick="navigate(\'settings\')">Settings</button></div></div>';
+                html += '<button class="btn-secondary" onclick="navigate(\'settings\')">Settings</button></div>';
 
+                // Stats
                 html += '<div class="stats-grid">';
                 html += statCard(s.games_owned, 'Games') + statCard(s.hours_played.toFixed(1), 'Hours');
                 html += statCard(s.review_count, 'Reviews') + statCard(s.games_uploaded, 'Uploads') + '</div>';
 
                 // Quick links
-                html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-bottom:20px;">';
+                html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:15px;margin-bottom:20px;">';
                 html += '<div class="card-box" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0;">';
-                html += '<div><h3 style="font-size:16px;margin-bottom:4px;">Developer Page</h3>';
-                html += '<p style="color:var(--text-secondary);font-size:13px;">Your public game storefront</p></div>';
+                html += '<div><h3 style="font-size:16px;margin-bottom:4px;">Public Page</h3>';
+                html += '<p style="color:var(--text-secondary);font-size:13px;">Your storefront</p></div>';
                 html += '<div style="display:flex;gap:8px;">';
-                html += '<button class="btn-secondary" onclick="showDeveloper(\'' + u.username + '\')">View</button>';
+                html += '<button class="btn-secondary" onclick="showDeveloper(\'' + escapeHtml(u.username) + '\')">View</button>';
                 html += '<button class="btn-accent" onclick="navigate(\'deveditor\')">Edit</button></div></div>';
                 html += '<div class="card-box" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0;">';
-                html += '<div><h3 style="font-size:16px;margin-bottom:4px;">Game Dashboard</h3>';
-                html += '<p style="color:var(--text-secondary);font-size:13px;">Manage your uploaded games</p></div>';
-                html += '<button class="btn-accent" onclick="navigate(\'dashboard\')">Open</button></div></div>';
-
-                // Admin link (check via API)
+                html += '<div><h3 style="font-size:16px;margin-bottom:4px;">Dashboard</h3>';
+                html += '<p style="color:var(--text-secondary);font-size:13px;">Manage games</p></div>';
+                html += '<button class="btn-accent" onclick="navigate(\'dashboard\')">Open</button></div>';
+                // Admin (if applicable)
                 try {
                     await api('/admin/stats');
-                    html += '<div class="card-box" style="display:flex;align-items:center;justify-content:space-between;">';
-                    html += '<div><h3 style="font-size:16px;margin-bottom:4px;">Admin Panel</h3>';
-                    html += '<p style="color:var(--text-secondary);font-size:13px;">Moderate users and games</p></div>';
+                    html += '<div class="card-box" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0;">';
+                    html += '<div><h3 style="font-size:16px;margin-bottom:4px;">Admin</h3>';
+                    html += '<p style="color:var(--text-secondary);font-size:13px;">Moderate</p></div>';
                     html += '<button class="btn-accent" onclick="navigate(\'admin\')">Open</button></div>';
                 } catch {}
+                html += '</div>';
 
                 // Achievements
                 try {
@@ -1053,39 +1033,12 @@
                     html += '</div>';
                 } else { html += '<div class="empty-state">No activity yet.</div>'; }
 
-                html += '</div>'; // close dev-page themed container
                 document.getElementById('profile-content').innerHTML = html;
             } catch (e) { console.error('Failed to load profile:', e); }
         }
 
-        function renderProfileEditor(u) {
-            let html = '<div class="dev-editor">';
-            html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;"><h2 class="section-title" style="margin-bottom:0;">Edit Profile</h2>';
-            html += '<button class="btn-secondary" onclick="profileEditMode=false;loadProfile();">Back to Profile</button></div>';
-            html += '<div class="form-group"><label class="form-label">Username</label><input type="text" class="form-input" id="edit-username" value="' + escapeHtml(u.username) + '"></div>';
-            html += '<div class="form-group"><label class="form-label">Bio</label><textarea class="form-textarea" id="edit-bio">' + escapeHtml(u.bio || '') + '</textarea></div>';
-            html += '<div class="form-group"><label class="form-label">Avatar</label><div style="display:flex;gap:10px;align-items:center;">';
-            html += '<input type="file" class="form-input" id="edit-avatar-file" accept="image/*" style="padding:8px;flex:1;" onchange="uploadImage(this,\'edit-avatar\')">';
-            html += '<input type="text" class="form-input" id="edit-avatar" value="' + escapeHtml(u.avatar_url || '') + '" placeholder="URL or upload" style="flex:1;">';
-            html += '</div></div>';
-            html += '<div class="form-row"><div class="form-group"><label class="form-label">Banner Image</label><input type="file" class="form-input" id="edit-banner-file" accept="image/*" style="padding:8px;margin-bottom:5px;" onchange="uploadImage(this,\'edit-banner\')"><input type="text" class="form-input" id="edit-banner" value="' + escapeHtml(u.banner_url || '') + '" placeholder="URL or upload above"></div>';
-            html += '<div class="form-group"><label class="form-label">Theme Color <span class="color-preview" id="edit-color-preview" style="background:' + escapeHtml(u.theme_color || '#66c0f4') + '"></span></label><input type="color" class="form-input" id="edit-theme-color" value="' + escapeHtml(u.theme_color || '#66c0f4') + '" style="height:40px;padding:4px;" oninput="document.getElementById(\'edit-color-preview\').style.background=this.value"></div></div>';
-            html += '<div class="form-group"><label class="form-label">Links</label><div id="edit-links-list">';
-            (u.links || []).forEach((l, i) => { html += '<div class="form-row" style="margin-bottom:8px;"><div><input type="text" class="form-input" placeholder="Label" value="' + escapeHtml(l.label) + '" data-plink-label="' + i + '"></div><div><input type="text" class="form-input" placeholder="URL" value="' + escapeHtml(l.url) + '" data-plink-url="' + i + '"></div></div>'; });
-            html += '</div><button class="btn-secondary" style="margin-top:8px;" onclick="addProfileLink()">+ Add Link</button></div>';
-            html += '<button class="btn-primary" onclick="saveProfile()">Save Profile</button></div>';
-            document.getElementById('profile-content').innerHTML = html;
-        }
-
-        function addProfileLink() { const l=document.getElementById('edit-links-list'); const i=l.children.length; const d=document.createElement('div'); d.className='form-row'; d.style.marginBottom='8px'; d.innerHTML='<div><input type="text" class="form-input" placeholder="Label" data-plink-label="'+i+'"></div><div><input type="text" class="form-input" placeholder="URL" data-plink-url="'+i+'"></div>'; l.appendChild(d); }
-
-        async function saveProfile() {
-            const links = []; document.querySelectorAll('[data-plink-label]').forEach(el => { const u=document.querySelector('[data-plink-url="'+el.dataset.plinkLabel+'"]'); if(el.value&&u?.value) links.push({label:el.value,url:u.value}); });
-            try {
-                await api('/profile', { method:'PUT', body:JSON.stringify({ username:document.getElementById('edit-username').value, bio:document.getElementById('edit-bio').value, avatar_url:document.getElementById('edit-avatar').value, banner_url:document.getElementById('edit-banner').value, theme_color:document.getElementById('edit-theme-color').value, links }) });
-                profileEditMode = false; await checkAuth(); loadProfile(); toast('Profile saved!', 'success');
-            } catch (e) { toast('Failed to save: ' + e.message, 'error'); }
-        }
+        // Profile editing is done via Developer Page editor (navigate('deveditor'))
+        // and Settings page (navigate('settings')) — no separate profile editor needed
 
         function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
         function avatarUrl(u) {
