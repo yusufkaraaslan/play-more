@@ -42,6 +42,7 @@ func migrate() error {
 		`ALTER TABLE developer_pages ADD COLUMN font_heading TEXT DEFAULT ''`,
 		`ALTER TABLE developer_pages ADD COLUMN font_body TEXT DEFAULT ''`,
 		`ALTER TABLE developer_pages ADD COLUMN featured_games TEXT DEFAULT '[]'`,
+		`ALTER TABLE developer_pages ADD COLUMN page_layout TEXT DEFAULT '[]'`,
 		`ALTER TABLE page_views ADD COLUMN device_type TEXT DEFAULT ''`,
 		`ALTER TABLE page_views ADD COLUMN os TEXT DEFAULT ''`,
 		`ALTER TABLE page_views ADD COLUMN session_id TEXT DEFAULT ''`,
@@ -156,6 +157,7 @@ CREATE TABLE IF NOT EXISTS developer_pages (
     font_heading   TEXT DEFAULT '',
     font_body      TEXT DEFAULT '',
     featured_games TEXT DEFAULT '[]',
+    page_layout    TEXT DEFAULT '[]',
     created_at     DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at     DATETIME DEFAULT CURRENT_TIMESTAMP
 );

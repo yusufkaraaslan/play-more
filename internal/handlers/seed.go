@@ -59,7 +59,7 @@ func SeedData(c *gin.Context) {
 	// Create developer page
 	models.UpsertDeveloperPage(user.ID, "PlayMore Studios", "", "#66c0f4", "steam-dark",
 		"Welcome to **PlayMore Studios**! We create demo games to showcase the platform.\n\n- High-quality web games\n- WebGPU support\n- Open source",
-		"", "", []models.DeveloperLink{{Label: "GitHub", URL: "https://github.com/yusufkaraaslan/play-more"}}, []string{},
+		"", "", []models.DeveloperLink{{Label: "GitHub", URL: "https://github.com/yusufkaraaslan/play-more"}}, []string{}, nil,
 	)
 
 	games := []seedGame{

@@ -1338,14 +1338,49 @@
                 }
                 html += '</div>';
 
-                if (page?.about) {
-                    const aboutText = page.about.length > 1000 ? page.about.substring(0, 1000) + '...' : page.about;
-                    html += '<div class="dev-about">' + renderMarkdown(page.about) + '</div>';
-                }
+                // Render sections based on page layout
+                const layout = page?.page_layout || [
+                    {type:'about',enabled:true},{type:'featured',enabled:true},
+                    {type:'games',enabled:true},{type:'links',enabled:true},{type:'devlogs',enabled:true}
+                ];
+                const featuredIds = page?.featured_games || [];
+                const featuredGames = featuredIds.map(id => (data.games||[]).find(g => g.id === id)).filter(g => g);
+                const otherGames = (data.games||[]).filter(g => !featuredIds.includes(g.id));
 
-                html += '<h2 class="section-title">Published Games</h2>';
-                if (data.games && data.games.length > 0) { html += '<div class="game-grid">'; data.games.forEach(g => html += gameCardHTML(g)); html += '</div>'; }
-                else html += '<div class="empty-state">No published games yet.</div>';
+                for (const section of layout) {
+                    if (!section.enabled) continue;
+                    if (section.type === 'spacer') {
+                        html += '<div style="height:' + (section.height || 40) + 'px;"></div>';
+                    } else if (section.type === 'about' && page?.about) {
+                        html += '<div class="dev-about">' + renderMarkdown(page.about) + '</div>';
+                    } else if (section.type === 'featured' && featuredGames.length > 0) {
+                        html += '<h2 class="section-title">' + esc(section.title || 'Featured') + '</h2>';
+                        html += '<div class="game-grid">';
+                        featuredGames.forEach(g => html += gameCardHTML(g));
+                        html += '</div>';
+                    } else if (section.type === 'games') {
+                        const gamesToShow = featuredGames.length > 0 ? otherGames : (data.games || []);
+                        if (gamesToShow.length > 0) {
+                            html += '<h2 class="section-title">' + esc(section.title || 'Games') + '</h2>';
+                            html += '<div class="game-grid">';
+                            gamesToShow.forEach(g => html += gameCardHTML(g));
+                            html += '</div>';
+                        }
+                    } else if (section.type === 'links' && page?.links?.length > 0) {
+                        html += '<h2 class="section-title">' + esc(section.title || 'Links') + '</h2>';
+                        html += '<div class="dev-links" style="margin-bottom:20px;">';
+                        page.links.forEach(l => html += '<a href="' + esc(l.url) + '" target="_blank" class="dev-link">' + esc(l.label) + '</a>');
+                        html += '</div>';
+                    } else if (section.type === 'devlogs') {
+                        try {
+                            const dlData = await api('/developer/' + username + '/games');
+                            // Devlogs rendered if any game has them — handled elsewhere
+                        } catch {}
+                    } else if (section.type === 'custom' && section.content) {
+                        if (section.title) html += '<h2 class="section-title">' + esc(section.title) + '</h2>';
+                        html += '<div class="dev-about">' + renderMarkdown(section.content) + '</div>';
+                    }
+                }
 
                 html += '</div>';
                 document.getElementById('developer-content').innerHTML = html;
@@ -1409,6 +1444,33 @@
                 html += '</div></div>';
             }
 
+            // Page Layout
+            const layout = page?.page_layout || [
+                {type:'about',enabled:true,title:'About'},{type:'featured',enabled:true,title:'Featured Games'},
+                {type:'games',enabled:true,title:'All Games'},{type:'links',enabled:true,title:'Links'},{type:'devlogs',enabled:true,title:'Devlogs'}
+            ];
+            html += '<div class="form-group"><label class="form-label">Page Layout (drag sections to reorder)</label>';
+            html += '<div id="dev-layout-list" style="display:flex;flex-direction:column;gap:6px;">';
+            layout.forEach((sec, i) => {
+                const icons = {about:'📝',featured:'⭐',games:'🎮',links:'🔗',devlogs:'📖',spacer:'↕️',custom:'📄',gallery:'🖼️'};
+                html += '<div class="card-box" style="margin-bottom:0;padding:10px 15px;display:flex;align-items:center;gap:10px;" data-layout-idx="' + i + '">';
+                html += '<span style="font-size:16px;">' + (icons[sec.type] || '📦') + '</span>';
+                html += '<input type="text" class="form-input" style="flex:1;padding:6px 10px;font-size:13px;" value="' + escapeHtml(sec.title || sec.type) + '" data-layout-title="' + i + '">';
+                html += '<label style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text-secondary);white-space:nowrap;"><input type="checkbox" data-layout-enabled="' + i + '"' + (sec.enabled ? ' checked' : '') + ' style="accent-color:var(--accent);"> Show</label>';
+                if (sec.type === 'spacer') html += '<input type="number" style="width:60px;padding:4px;background:rgba(0,0,0,0.3);border:1px solid var(--border-color);border-radius:3px;color:var(--text-primary);font-size:12px;" value="' + (sec.height || 40) + '" data-layout-height="' + i + '" placeholder="px">';
+                if (sec.type === 'custom') html += '<input type="text" class="form-input" style="flex:1;padding:6px 10px;font-size:12px;" value="' + escapeHtml(sec.content || '') + '" data-layout-content="' + i + '" placeholder="Markdown content">';
+                html += '<button class="btn-secondary" style="padding:4px 8px;font-size:11px;" onclick="moveLayoutSection(' + i + ',-1)">↑</button>';
+                html += '<button class="btn-secondary" style="padding:4px 8px;font-size:11px;" onclick="moveLayoutSection(' + i + ',1)">↓</button>';
+                html += '<button class="btn-secondary" style="padding:4px 8px;font-size:11px;color:var(--danger);" onclick="removeLayoutSection(' + i + ')">×</button>';
+                html += '</div>';
+            });
+            html += '</div>';
+            html += '<div style="display:flex;gap:8px;margin-top:8px;">';
+            html += '<button class="btn-secondary" style="font-size:12px;" onclick="addLayoutSection(\'spacer\')">+ Spacer</button>';
+            html += '<button class="btn-secondary" style="font-size:12px;" onclick="addLayoutSection(\'custom\')">+ Custom Section</button>';
+            html += '<button class="btn-secondary" style="font-size:12px;" onclick="addLayoutSection(\'gallery\')">+ Gallery</button>';
+            html += '</div></div>';
+
             // Links
             html += '<div class="form-group"><label class="form-label">Links</label><div id="dev-links-list">';
             (page?.links || []).forEach((l, i) => { html += '<div class="form-row" style="margin-bottom:8px;"><div><input type="text" class="form-input" placeholder="Label" value="' + escapeHtml(l.label) + '" data-link-label="' + i + '"></div><div><input type="text" class="form-input" placeholder="URL" value="' + escapeHtml(l.url) + '" data-link-url="' + i + '"></div></div>'; });
@@ -1422,6 +1484,66 @@
 
         function addDevLink() { const l=document.getElementById('dev-links-list'); const i=l.children.length; const d=document.createElement('div'); d.className='form-row'; d.style.marginBottom='8px'; d.innerHTML='<div><input type="text" class="form-input" placeholder="Label" data-link-label="'+i+'"></div><div><input type="text" class="form-input" placeholder="URL" data-link-url="'+i+'"></div>'; l.appendChild(d); }
 
+        // Layout section management
+        function getLayoutFromDOM() {
+            const sections = [];
+            document.querySelectorAll('[data-layout-idx]').forEach(el => {
+                const i = el.dataset.layoutIdx;
+                const titleEl = el.querySelector('[data-layout-title="'+i+'"]');
+                const enabledEl = el.querySelector('[data-layout-enabled="'+i+'"]');
+                const heightEl = el.querySelector('[data-layout-height="'+i+'"]');
+                const contentEl = el.querySelector('[data-layout-content="'+i+'"]');
+                const type = el.querySelector('span')?.textContent;
+                const typeMap = {'📝':'about','⭐':'featured','🎮':'games','🔗':'links','📖':'devlogs','↕️':'spacer','📄':'custom','🖼️':'gallery'};
+                sections.push({
+                    type: Object.entries(typeMap).find(([icon]) => type?.includes(icon))?.[1] || 'custom',
+                    enabled: enabledEl?.checked || false,
+                    title: titleEl?.value || '',
+                    height: heightEl ? parseInt(heightEl.value) || 40 : 0,
+                    content: contentEl?.value || ''
+                });
+            });
+            return sections;
+        }
+
+        function moveLayoutSection(idx, dir) {
+            const list = document.getElementById('dev-layout-list');
+            const items = Array.from(list.children);
+            const newIdx = idx + dir;
+            if (newIdx < 0 || newIdx >= items.length) return;
+            if (dir === -1) list.insertBefore(items[idx], items[newIdx]);
+            else list.insertBefore(items[newIdx], items[idx]);
+            // Re-index
+            list.querySelectorAll('[data-layout-idx]').forEach((el, i) => el.dataset.layoutIdx = i);
+        }
+
+        function removeLayoutSection(idx) {
+            const list = document.getElementById('dev-layout-list');
+            list.children[idx]?.remove();
+            list.querySelectorAll('[data-layout-idx]').forEach((el, i) => el.dataset.layoutIdx = i);
+        }
+
+        function addLayoutSection(type) {
+            const list = document.getElementById('dev-layout-list');
+            const i = list.children.length;
+            const icons = {spacer:'↕️',custom:'📄',gallery:'🖼️'};
+            const titles = {spacer:'Spacer',custom:'Custom Section',gallery:'Gallery'};
+            const d = document.createElement('div');
+            d.className = 'card-box';
+            d.style.cssText = 'margin-bottom:0;padding:10px 15px;display:flex;align-items:center;gap:10px;';
+            d.dataset.layoutIdx = i;
+            let inner = '<span style="font-size:16px;">' + icons[type] + '</span>';
+            inner += '<input type="text" class="form-input" style="flex:1;padding:6px 10px;font-size:13px;" value="' + titles[type] + '" data-layout-title="' + i + '">';
+            inner += '<label style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text-secondary);white-space:nowrap;"><input type="checkbox" data-layout-enabled="' + i + '" checked style="accent-color:var(--accent);"> Show</label>';
+            if (type === 'spacer') inner += '<input type="number" style="width:60px;padding:4px;background:rgba(0,0,0,0.3);border:1px solid var(--border-color);border-radius:3px;color:var(--text-primary);font-size:12px;" value="40" data-layout-height="' + i + '">';
+            if (type === 'custom') inner += '<input type="text" class="form-input" style="flex:1;padding:6px 10px;font-size:12px;" data-layout-content="' + i + '" placeholder="Markdown content">';
+            inner += '<button class="btn-secondary" style="padding:4px 8px;font-size:11px;" onclick="moveLayoutSection(' + i + ',-1)">↑</button>';
+            inner += '<button class="btn-secondary" style="padding:4px 8px;font-size:11px;" onclick="moveLayoutSection(' + i + ',1)">↓</button>';
+            inner += '<button class="btn-secondary" style="padding:4px 8px;font-size:11px;color:var(--danger);" onclick="removeLayoutSection(' + i + ')">×</button>';
+            d.innerHTML = inner;
+            list.appendChild(d);
+        }
+
         async function saveDevPage() {
             const links = []; document.querySelectorAll('[data-link-label]').forEach(el => { const u=document.querySelector('[data-link-url="'+el.dataset.linkLabel+'"]'); if(el.value&&u?.value) links.push({label:el.value,url:u.value}); });
             const featured = []; document.querySelectorAll('[data-featured-game]:checked').forEach(el => featured.push(el.dataset.featuredGame));
@@ -1434,7 +1556,7 @@
                     banner_url: document.getElementById('dev-banner').value,
                     font_heading: document.getElementById('dev-font-heading').value,
                     font_body: document.getElementById('dev-font-body').value,
-                    links, featured_games: featured
+                    links, featured_games: featured, page_layout: getLayoutFromDOM()
                 }) });
                 toast('Developer page saved!', 'success');
             } catch (e) { toast('Failed to save: ' + e.message, 'error'); }
