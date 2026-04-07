@@ -591,10 +591,11 @@
             <div style="display:flex;gap:8px;">
                 <button class="btn-secondary" style="padding:6px 12px;font-size:12px;" onclick="toggleFps()" title="Toggle FPS (F)">FPS</button>
                 <button class="btn-secondary" style="padding:6px 12px;font-size:12px;" onclick="toggleFullscreen()" title="Fullscreen (F11)">⛶</button>
+                <button class="btn-secondary" style="padding:6px 12px;font-size:12px;" id="open-newtab-btn" onclick="openGameNewTab()">New Tab</button>
                 <button class="btn-secondary" onclick="closePlayer()">Close</button>
             </div>
         </div>
-        <iframe id="player-frame"></iframe>
+        <iframe id="player-frame" allow="gamepad; fullscreen; autoplay; pointer-lock; clipboard-write" allowfullscreen></iframe>
     </div>
 
     <div class="toast-container" id="toast-container"></div>
@@ -892,6 +893,8 @@
             formData.append('is_webgpu', document.getElementById('upload-webgpu').checked ? 'true' : 'false');
             const coverFile = document.getElementById('upload-cover').files[0];
             if (coverFile) formData.append('cover', coverFile);
+            const ssFiles = document.getElementById('upload-screenshots').files;
+            for (let i = 0; i < ssFiles.length; i++) formData.append('screenshots', ssFiles[i]);
             try {
                 showStatus('Uploading...', 'success');
                 const res = await fetch('/api/games', { method: 'POST', body: formData, credentials: 'same-origin' });
@@ -934,7 +937,7 @@
 
                 html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">';
                 html += '<div class="dev-profile" style="margin-bottom:0;">';
-                html += '<img src="' + (u.avatar_url ? esc(u.avatar_url) : 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + encodeURIComponent(u.username)) + '" class="dev-avatar">';
+                html += '<img src="' + avatarUrl(u) + '" class="dev-avatar">';
                 const level = Math.max(1, Math.floor(s.games_owned + s.review_count + s.games_uploaded + s.hours_played / 10));
                 html += '<div><div class="dev-name">' + escapeHtml(u.username) + '</div>';
                 html += '<span class="level-badge">Level ' + level + '</span>';
@@ -1028,6 +1031,13 @@
         }
 
         function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+        function avatarUrl(u) {
+            if (u.avatar_url) return esc(u.avatar_url);
+            const name = u.username || u.name || 'user';
+            const letter = name.charAt(0).toUpperCase();
+            // DiceBear with SVG fallback on error
+            return 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + encodeURIComponent(name) + '" onerror="this.onerror=null;this.src=\'data:image/svg+xml,' + encodeURIComponent('<svg xmlns=&quot;http://www.w3.org/2000/svg&quot; width=&quot;80&quot; height=&quot;80&quot;><rect fill=&quot;%232a475e&quot; width=&quot;80&quot; height=&quot;80&quot; rx=&quot;40&quot;/><text x=&quot;40&quot; y=&quot;52&quot; text-anchor=&quot;middle&quot; fill=&quot;%2366c0f4&quot; font-size=&quot;32&quot;>' + letter + '</text></svg>') + '\'';
+        }
         function escapeHtml(text) {
             if (text === null || text === undefined) return '';
             return String(text)
@@ -1128,7 +1138,7 @@
                     html += '<button class="btn-accent" onclick="submitGameReview()">Submit Review</button></div>';
                 }
                 allReviews.forEach(r => {
-                    const avatar = r.avatar_url ? esc(r.avatar_url) : 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + encodeURIComponent(r.username);
+                    const avatar = avatarUrl(r);
                     html += '<div class="review-card"><div class="review-header"><div style="display:flex;align-items:center;gap:10px;">';
                     html += '<img src="' + avatar + '" style="width:32px;height:32px;border-radius:3px;">';
                     html += '<span class="review-author">' + escapeHtml(r.username) + '</span></div>';
@@ -1288,7 +1298,7 @@
                 html += '</div>';
 
                 html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;">';
-                html += '<div class="dev-profile"><img src="' + (u.avatar_url ? esc(u.avatar_url) : 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + encodeURIComponent(u.username)) + '" class="dev-avatar">';
+                html += '<div class="dev-profile"><img src="' + avatarUrl(u) + '" class="dev-avatar">';
                 html += '<div><div class="dev-name">' + escapeHtml(page?.display_name || u.username) + '</div>';
                 html += '<div class="dev-meta">@' + escapeHtml(u.username) + ' · ' + stats.games_uploaded + ' games · ' + stats.hours_played.toFixed(0) + ' hours played</div>';
                 if (page?.links && page.links.length > 0) { html += '<div class="dev-links">'; page.links.forEach(l => html += '<a href="' + escapeHtml(l.url) + '" target="_blank" class="dev-link">' + escapeHtml(l.label) + '</a>'); html += '</div>'; }
@@ -1311,11 +1321,6 @@
                 if (data.games && data.games.length > 0) { html += '<div class="game-grid">'; data.games.forEach(g => html += gameCardHTML(g)); html += '</div>'; }
                 else html += '<div class="empty-state">No published games yet.</div>';
 
-                if (data.activity && data.activity.length > 0) {
-                    html += '<h2 class="section-title" style="margin-top:30px;">Recent Activity</h2><div class="card-box">';
-                    data.activity.forEach(a => { html += '<div class="activity-item"><div class="activity-icon">' + actIcon(a.type) + '</div><div class="activity-text">' + actVerb(a.type) + ' <strong>' + escapeHtml(a.game_title) + '</strong><div style="font-size:11px;color:var(--text-secondary);margin-top:2px;">' + escapeHtml(a.created_at) + '</div></div></div>'; });
-                    html += '</div>';
-                }
                 html += '</div>';
                 document.getElementById('developer-content').innerHTML = html;
                 navigate('developer', false);
@@ -1360,6 +1365,11 @@
                 return;
             }
             launchGame(gameId, entryFile);
+        }
+
+        function openGameNewTab() {
+            const src = document.getElementById('player-frame').src;
+            if (src) window.open(src, '_blank');
         }
 
         function launchGame(gameId, entryFile) {
@@ -2190,7 +2200,7 @@
                 if (!data.following || data.following.length === 0) { list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary);">Not following anyone yet.</div>'; return; }
                 list.innerHTML = data.following.map(u =>
                     '<div class="feed-item" onclick="showDeveloper(\'' + escapeHtml(u.username) + '\')">' +
-                    '<img src="' + (u.avatar_url ? esc(u.avatar_url) : 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + encodeURIComponent(u.username)) + '" style="width:35px;height:35px;border-radius:50%;object-fit:cover;">' +
+                    '<img src="' + avatarUrl(u) + '" style="width:35px;height:35px;border-radius:50%;object-fit:cover;">' +
                     '<div class="feed-item-info"><div class="feed-item-title">' + escapeHtml(u.username) + '</div>' +
                     '<div class="feed-item-meta">' + escapeHtml(u.bio || 'Developer') + '</div></div></div>'
                 ).join('');
@@ -2313,7 +2323,7 @@
 
         function renderComment(c, devlogId, depth) {
             const indent = depth * 20;
-            const avatar = c.avatar_url ? esc(c.avatar_url) : 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + encodeURIComponent(c.username);
+            const avatar = avatarUrl(c);
             let html = '<div style="margin-left:' + indent + 'px;padding:8px 0;border-bottom:1px solid var(--border-color);">';
             html += '<div style="display:flex;gap:8px;align-items:flex-start;">';
             html += '<img src="' + avatar + '" style="width:24px;height:24px;border-radius:50%;flex-shrink:0;margin-top:2px;">';

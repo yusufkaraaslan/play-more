@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -129,6 +131,27 @@ func UploadGame(c *gin.Context) {
 		coverName := "cover" + filepath.Ext(coverHeader.Filename)
 		storage.SaveGameFile(game.ID, coverName, coverData)
 		game.UpdateCover("/play/" + game.ID + "/" + coverName)
+	}
+
+	// Handle screenshots (multiple)
+	form, _ := c.MultipartForm()
+	if form != nil && form.File["screenshots"] != nil {
+		screenshots := []string{}
+		for i, fh := range form.File["screenshots"] {
+			f, err := fh.Open()
+			if err != nil {
+				continue
+			}
+			data, _ := io.ReadAll(f)
+			f.Close()
+			name := fmt.Sprintf("screenshot_%d%s", i, filepath.Ext(fh.Filename))
+			storage.SaveGameFile(game.ID, name, data)
+			screenshots = append(screenshots, "/play/"+game.ID+"/"+name)
+		}
+		if len(screenshots) > 0 {
+			ssJSON, _ := json.Marshal(screenshots)
+			storage.DB.Exec(`UPDATE games SET screenshots = ? WHERE id = ?`, string(ssJSON), game.ID)
+		}
 	}
 
 	// Mark user as developer
