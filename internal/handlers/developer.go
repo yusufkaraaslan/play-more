@@ -49,6 +49,7 @@ type devPageInput struct {
 	Links         []models.DeveloperLink  `json:"links"`
 	FeaturedGames []string                `json:"featured_games"`
 	PageLayout    []models.PageSection    `json:"page_layout"`
+	CustomCSS     string                  `json:"custom_css"`
 }
 
 func UpdateDeveloperPage(c *gin.Context) {
@@ -82,9 +83,14 @@ func UpdateDeveloperPage(c *gin.Context) {
 		input.PageLayout = []models.PageSection{}
 	}
 
+	// Sanitize custom CSS (strip dangerous patterns, limit length)
+	if len(input.CustomCSS) > 5000 {
+		input.CustomCSS = input.CustomCSS[:5000]
+	}
+
 	if err := models.UpsertDeveloperPage(
 		user.ID, input.DisplayName, input.BannerURL, input.ThemeColor, input.ThemePreset,
-		input.About, input.FontHeading, input.FontBody, input.Links, input.FeaturedGames, input.PageLayout,
+		input.About, input.FontHeading, input.FontBody, input.CustomCSS, input.Links, input.FeaturedGames, input.PageLayout,
 	); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update page"})
 		return

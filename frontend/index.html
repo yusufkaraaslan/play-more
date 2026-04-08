@@ -634,6 +634,19 @@
             'minimal-light': { name: 'Minimal Light', bg: '#f5f5f5', accent: '#2563eb', text: '#1a1a2e', card: 'rgba(0,0,0,0.05)' },
             'royal-purple': { name: 'Royal Purple', bg: '#13031a', accent: '#a855f7', text: '#e9d5ff', card: 'rgba(168,85,247,0.08)' },
         };
+        const pageTemplates = {
+            'gaming-studio': { name: 'Gaming Studio', preset: 'steam-dark', fontH: 'Montserrat', fontB: 'Open Sans',
+                layout: [{type:'about',enabled:true,title:'About'},{type:'featured',enabled:true,title:'Featured'},{type:'games',enabled:true,title:'Games'},{type:'links',enabled:true,title:'Links'}] },
+            'solo-dev': { name: 'Solo Developer', preset: 'ocean-blue', fontH: 'Playfair Display', fontB: 'Lato',
+                layout: [{type:'about',enabled:true,title:'About Me'},{type:'spacer',enabled:true,height:30},{type:'games',enabled:true,title:'My Projects'},{type:'links',enabled:true,title:'Find Me'},{type:'devlogs',enabled:true,title:'Dev Journal'}] },
+            'cyberpunk': { name: 'Cyberpunk', preset: 'neon-cyber', fontH: 'Press Start 2P', fontB: 'Fira Code',
+                layout: [{type:'about',enabled:true,title:'// ABOUT'},{type:'spacer',enabled:true,height:20},{type:'featured',enabled:true,title:'>> FEATURED'},{type:'games',enabled:true,title:'>> ALL PROGRAMS'}] },
+            'minimal': { name: 'Minimal Portfolio', preset: 'minimal-light', fontH: 'Inter', fontB: 'Inter',
+                layout: [{type:'about',enabled:true,title:'About'},{type:'games',enabled:true,title:'Work'},{type:'links',enabled:true,title:'Connect'}] },
+            'retro-arcade': { name: 'Retro Arcade', preset: 'retro-terminal', fontH: 'VT323', fontB: 'Source Code Pro',
+                layout: [{type:'about',enabled:true,title:'README.txt'},{type:'spacer',enabled:true,height:25},{type:'games',enabled:true,title:'PROGRAMS'},{type:'devlogs',enabled:true,title:'CHANGELOG'}] },
+        };
+
         const fontOptions = [
             '', 'Inter', 'Roboto', 'Open Sans', 'Lato', 'Montserrat', 'Poppins', 'Raleway',
             'Oswald', 'Playfair Display', 'Merriweather', 'Source Code Pro', 'Fira Code',
@@ -1394,7 +1407,30 @@
                     } else if (section.type === 'custom' && section.content) {
                         if (section.title) html += '<h2 class="section-title">' + esc(section.title) + '</h2>';
                         html += '<div class="dev-about">' + renderMarkdown(section.content) + '</div>';
+                    } else if (section.type === 'embed' && section.content) {
+                        if (section.title) html += '<h2 class="section-title">' + esc(section.title) + '</h2>';
+                        const embedUrl = section.content;
+                        const embedH = section.height || 400;
+                        // YouTube
+                        const ytMatch = embedUrl.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]+)/);
+                        if (ytMatch) {
+                            html += '<div style="border-radius:8px;overflow:hidden;margin-bottom:20px;"><iframe width="100%" height="' + embedH + '" src="https://www.youtube.com/embed/' + esc(ytMatch[1]) + '" frameborder="0" allowfullscreen style="border:none;"></iframe></div>';
+                        }
+                        // Discord
+                        else if (embedUrl.match(/discord/i) || embedUrl.match(/^\d{10,}$/)) {
+                            const serverId = embedUrl.replace(/[^0-9]/g, '') || embedUrl;
+                            html += '<iframe src="https://discord.com/widget?id=' + esc(serverId) + '&theme=dark" width="100%" height="' + embedH + '" allowtransparency="true" frameborder="0" sandbox="allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts" style="border-radius:8px;"></iframe>';
+                        }
+                        // Generic URL
+                        else if (embedUrl.startsWith('http')) {
+                            html += '<iframe src="' + esc(embedUrl) + '" width="100%" height="' + embedH + '" frameborder="0" sandbox="allow-scripts" style="border-radius:8px;border:1px solid var(--border-color);"></iframe>';
+                        }
                     }
+                }
+
+                // Inject custom CSS
+                if (page?.custom_css) {
+                    html += '<style>' + sanitizeCSS(page.custom_css) + '</style>';
                 }
 
                 html += '</div>';
@@ -1410,6 +1446,27 @@
             let page = null; let myGames = [];
             try { const d = await api('/developer/' + encodeURIComponent(currentUser.username)); page = d.page; myGames = d.games || []; } catch {}
             let html = '';
+
+            // Use pending template layout if set
+            if (window._pendingTemplateLayout) {
+                page = page || {};
+                page.page_layout = window._pendingTemplateLayout;
+                window._pendingTemplateLayout = null;
+            }
+
+            // Templates
+            html += '<div class="card-box" style="margin-bottom:15px;">';
+            html += '<div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display===\'none\'?\'block\':\'none\'">';
+            html += '<label class="form-label" style="margin-bottom:0;cursor:pointer;">🎭 Quick Start Templates</label><span style="color:var(--text-secondary);">▼</span></div>';
+            html += '<div style="display:none;margin-top:12px;">';
+            html += '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;">';
+            Object.entries(pageTemplates).forEach(([key, t]) => {
+                const p = themePresets[t.preset] || themePresets['steam-dark'];
+                html += '<div onclick="applyTemplate(\'' + key + '\')" style="padding:15px 10px;border-radius:8px;background:' + p.bg + ';border:2px solid ' + p.accent + '30;cursor:pointer;text-align:center;transition:all 0.2s;" onmouseenter="this.style.borderColor=\'' + p.accent + '\'" onmouseleave="this.style.borderColor=\'' + p.accent + '30\'">';
+                html += '<div style="color:' + p.accent + ';font-size:20px;font-weight:bold;margin-bottom:6px;">Aa</div>';
+                html += '<div style="color:' + p.text + ';font-size:11px;">' + t.name + '</div></div>';
+            });
+            html += '</div></div></div>';
 
             // Display name + banner
             html += '<div class="form-group"><label class="form-label">Display Name</label><input type="text" class="form-input" id="dev-display-name" value="' + escapeHtml(page?.display_name || currentUser.username) + '"></div>';
@@ -1437,6 +1494,16 @@
             fontOptions.forEach(f => { html += '<option value="' + f + '"' + (f === (page?.font_body || '') ? ' selected' : '') + '>' + (f || 'Default') + '</option>'; });
             html += '</select></div></div></div></div>';
 
+            // Custom CSS (advanced)
+            html += '<div class="card-box" style="margin-bottom:15px;">';
+            html += '<div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display===\'none\'?\'block\':\'none\'">';
+            html += '<label class="form-label" style="margin-bottom:0;cursor:pointer;">💻 Custom CSS (advanced)</label><span style="color:var(--text-secondary);">▼</span></div>';
+            html += '<div style="display:none;margin-top:12px;">';
+            html += '<p style="font-size:11px;color:var(--text-secondary);margin-bottom:8px;">Write custom CSS for your page. Selectors are auto-prefixed with .dev-page</p>';
+            html += '<textarea class="form-textarea" id="dev-custom-css" style="min-height:150px;font-family:monospace;font-size:12px;background:#0a0a1a;color:#a1cd44;border-color:#333;" maxlength="5000" placeholder=".dev-about {\n  border-radius: 16px;\n  box-shadow: 0 0 20px rgba(0,255,0,0.2);\n}\n\n.dev-name {\n  text-transform: uppercase;\n}">' + escapeHtml(page?.custom_css || '') + '</textarea>';
+            html += '<p style="font-size:10px;color:var(--text-secondary);margin-top:5px;">' + (page?.custom_css?.length || 0) + '/5000 chars</p>';
+            html += '</div></div>';
+
             // Page Layout — sections with inline editors
             const layout = (page?.page_layout?.length > 0) ? page.page_layout : [
                 {type:'about',enabled:true,title:'About'},{type:'featured',enabled:true,title:'Featured Games'},
@@ -1444,7 +1511,7 @@
             ];
             html += '<label class="form-label">Page Sections</label>';
             html += '<div id="dev-layout-list" style="display:flex;flex-direction:column;gap:8px;">';
-            const icons = {about:'📝',featured:'⭐',games:'🎮',links:'🔗',devlogs:'📖',spacer:'↕️',custom:'📄',gallery:'🖼️'};
+            const icons = {about:'📝',featured:'⭐',games:'🎮',links:'🔗',devlogs:'📖',spacer:'↕️',custom:'📄',gallery:'🖼️',embed:'🔗'};
             const featured = page?.featured_games || [];
 
             layout.forEach((sec, i) => {
@@ -1455,7 +1522,7 @@
                 html += '<input type="text" class="form-input" style="flex:1;padding:5px 10px;font-size:13px;background:transparent;border:1px solid transparent;" value="' + escapeHtml(sec.title || sec.type) + '" data-layout-title="' + i + '" onfocus="this.style.borderColor=\'var(--border-color)\'" onblur="this.style.borderColor=\'transparent\'">';
                 html += '<label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text-secondary);white-space:nowrap;"><input type="checkbox" data-layout-enabled="' + i + '"' + (sec.enabled ? ' checked' : '') + ' style="accent-color:var(--accent);"> Show</label>';
                 // Expand button (for sections with editable content)
-                const hasEditor = ['about','featured','links','custom','spacer'].includes(sec.type);
+                const hasEditor = ['about','featured','links','custom','spacer','embed'].includes(sec.type);
                 if (hasEditor) html += '<button class="btn-secondary" style="padding:3px 8px;font-size:10px;" onclick="toggleSectionEditor(' + i + ')">Edit</button>';
                 html += '<button class="btn-secondary" style="padding:3px 6px;font-size:10px;" onclick="moveLayoutSection(' + i + ',-1)">↑</button>';
                 html += '<button class="btn-secondary" style="padding:3px 6px;font-size:10px;" onclick="moveLayoutSection(' + i + ',1)">↓</button>';
@@ -1491,6 +1558,14 @@
                     html += '<input type="number" style="width:80px;padding:5px;background:rgba(0,0,0,0.3);border:1px solid var(--border-color);border-radius:3px;color:var(--text-primary);font-size:12px;" value="' + (sec.height || 40) + '" data-layout-height="' + i + '"></div>';
                 } else if (sec.type === 'custom') {
                     html += '<textarea class="form-textarea" style="min-height:120px;font-family:monospace;font-size:12px;" data-layout-content="' + i + '" placeholder="Write markdown content...">' + escapeHtml(sec.content || '') + '</textarea>';
+                } else if (sec.type === 'embed') {
+                    html += '<p style="font-size:12px;color:var(--text-secondary);margin-bottom:8px;">Paste a URL to embed:</p>';
+                    html += '<select class="form-select" style="padding:6px;font-size:12px;margin-bottom:8px;width:auto;" data-embed-type="' + i + '" onchange="updateEmbedPlaceholder(' + i + ')">';
+                    html += '<option value="youtube"' + ((sec.content||'').includes('youtube') ? ' selected' : '') + '>YouTube</option>';
+                    html += '<option value="discord"' + ((sec.content||'').includes('discord') ? ' selected' : '') + '>Discord Widget</option>';
+                    html += '<option value="url">Custom URL</option></select>';
+                    html += '<input type="text" class="form-input" style="padding:6px 10px;font-size:12px;" data-layout-content="' + i + '" value="' + escapeHtml(sec.content || '') + '" placeholder="https://www.youtube.com/watch?v=...">';
+                    html += '<input type="number" style="width:100px;padding:5px;margin-top:6px;background:rgba(0,0,0,0.3);border:1px solid var(--border-color);border-radius:3px;color:var(--text-primary);font-size:12px;" value="' + (sec.height || 400) + '" data-layout-height="' + i + '" placeholder="Height px">';
                 }
                 html += '</div></div>';
             });
@@ -1498,6 +1573,7 @@
             html += '<div style="display:flex;gap:8px;margin-top:10px;">';
             html += '<button class="btn-secondary" style="font-size:12px;" onclick="addLayoutSection(\'spacer\')">+ Spacer</button>';
             html += '<button class="btn-secondary" style="font-size:12px;" onclick="addLayoutSection(\'custom\')">+ Custom</button>';
+            html += '<button class="btn-secondary" style="font-size:12px;" onclick="addLayoutSection(\'embed\')">+ Embed</button>';
             html += '<button class="btn-secondary" style="font-size:12px;" onclick="addLayoutSection(\'gallery\')">+ Gallery</button>';
             html += '</div>';
 
@@ -1508,6 +1584,42 @@
         }
 
         function addDevLink() { const l=document.getElementById('dev-links-list'); const i=l.children.length; const d=document.createElement('div'); d.className='form-row'; d.style.marginBottom='8px'; d.innerHTML='<div><input type="text" class="form-input" placeholder="Label" data-link-label="'+i+'"></div><div><input type="text" class="form-input" placeholder="URL" data-link-url="'+i+'"></div>'; l.appendChild(d); }
+
+        // CSS sanitizer — prefix selectors + strip dangerous patterns
+        function sanitizeCSS(css) {
+            if (!css) return '';
+            // Strip dangerous patterns
+            css = css.replace(/@import\b[^;]*/gi, '/* import removed */');
+            css = css.replace(/expression\s*\(/gi, '/* expression removed */(');
+            css = css.replace(/javascript\s*:/gi, '/* js removed */');
+            css = css.replace(/url\s*\(\s*['"]?\s*javascript/gi, 'url(about:blank');
+            // Auto-prefix selectors with .dev-page
+            css = css.replace(/([^{}]+)\{/g, (match, selectors) => {
+                const prefixed = selectors.split(',').map(s => {
+                    s = s.trim();
+                    if (!s || s.startsWith('.dev-page') || s.startsWith('@')) return s;
+                    return '.dev-page ' + s;
+                }).join(', ');
+                return prefixed + ' {';
+            });
+            return css;
+        }
+
+        function applyTemplate(key) {
+            const t = pageTemplates[key];
+            if (!t || !confirm('Apply "' + t.name + '" template? This will overwrite your current layout settings.')) return;
+            // Update form fields
+            document.getElementById('dev-theme-preset').value = t.preset;
+            document.getElementById('dev-theme-color').value = themePresets[t.preset]?.accent || '#66c0f4';
+            document.getElementById('dev-font-heading').value = t.fontH;
+            document.getElementById('dev-font-body').value = t.fontB;
+            // Highlight the theme preset card
+            document.querySelectorAll('.theme-pick').forEach(e => e.style.borderColor = 'var(--border-color)');
+            // Reload the editor with new layout (save template layout temporarily)
+            window._pendingTemplateLayout = t.layout;
+            toast('Template "' + t.name + '" applied! Click Save to keep changes.', 'success');
+            loadDevEditor();
+        }
 
         function toggleSectionEditor(idx) {
             const el = document.getElementById('section-editor-' + idx);
@@ -1556,8 +1668,8 @@
         function addLayoutSection(type) {
             const list = document.getElementById('dev-layout-list');
             const i = list.children.length;
-            const icons = {spacer:'↕️',custom:'📄',gallery:'🖼️'};
-            const titles = {spacer:'Spacer',custom:'Custom Section',gallery:'Gallery'};
+            const icons = {spacer:'↕️',custom:'📄',gallery:'🖼️',embed:'🔗'};
+            const titles = {spacer:'Spacer',custom:'Custom Section',gallery:'Gallery',embed:'Embed'};
             const d = document.createElement('div');
             d.className = 'card-box';
             d.style.cssText = 'margin-bottom:0;padding:10px 15px;display:flex;align-items:center;gap:10px;';
@@ -1586,6 +1698,7 @@
                     banner_url: document.getElementById('dev-banner').value,
                     font_heading: document.getElementById('dev-font-heading').value,
                     font_body: document.getElementById('dev-font-body').value,
+                    custom_css: (document.getElementById('dev-custom-css')?.value || ''),
                     links, featured_games: featured, page_layout: getLayoutFromDOM()
                 }) });
                 toast('Developer page saved!', 'success');

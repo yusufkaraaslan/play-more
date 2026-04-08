@@ -66,13 +66,13 @@ func GetDeveloperPage(userID string) (*DeveloperPage, error) {
 	return p, nil
 }
 
-func UpsertDeveloperPage(userID, displayName, bannerURL, themeColor, themePreset, about, fontHeading, fontBody string, links []DeveloperLink, featuredGames []string, pageLayout []PageSection) error {
+func UpsertDeveloperPage(userID, displayName, bannerURL, themeColor, themePreset, about, fontHeading, fontBody, customCSS string, links []DeveloperLink, featuredGames []string, pageLayout []PageSection) error {
 	linksJSON, _ := json.Marshal(links)
 	featuredJSON, _ := json.Marshal(featuredGames)
 	layoutJSON, _ := json.Marshal(pageLayout)
 	_, err := storage.DB.Exec(
-		`INSERT INTO developer_pages (user_id, display_name, banner_url, theme_color, theme_preset, links, about, font_heading, font_body, featured_games, page_layout)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO developer_pages (user_id, display_name, banner_url, theme_color, theme_preset, links, about, font_heading, font_body, custom_css, featured_games, page_layout)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(user_id) DO UPDATE SET
 		     display_name = excluded.display_name,
 		     banner_url = excluded.banner_url,
@@ -82,10 +82,11 @@ func UpsertDeveloperPage(userID, displayName, bannerURL, themeColor, themePreset
 		     about = excluded.about,
 		     font_heading = excluded.font_heading,
 		     font_body = excluded.font_body,
+		     custom_css = excluded.custom_css,
 		     featured_games = excluded.featured_games,
 		     page_layout = excluded.page_layout,
 		     updated_at = CURRENT_TIMESTAMP`,
-		userID, displayName, bannerURL, themeColor, themePreset, string(linksJSON), about, fontHeading, fontBody, string(featuredJSON), string(layoutJSON),
+		userID, displayName, bannerURL, themeColor, themePreset, string(linksJSON), about, fontHeading, fontBody, customCSS, string(featuredJSON), string(layoutJSON),
 	)
 	return err
 }
