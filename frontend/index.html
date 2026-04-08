@@ -1411,93 +1411,108 @@
             try { const d = await api('/developer/' + encodeURIComponent(currentUser.username)); page = d.page; myGames = d.games || []; } catch {}
             let html = '';
 
-            // Display name
+            // Display name + banner
             html += '<div class="form-group"><label class="form-label">Display Name</label><input type="text" class="form-input" id="dev-display-name" value="' + escapeHtml(page?.display_name || currentUser.username) + '"></div>';
+            html += '<div class="form-group"><label class="form-label">Banner Image</label><input type="file" class="form-input" style="padding:8px;margin-bottom:5px;" accept="image/*" onchange="uploadImage(this,\'dev-banner\')"><input type="text" class="form-input" id="dev-banner" value="' + escapeHtml(page?.banner_url || '') + '" placeholder="URL or upload above"></div>';
 
-            // About (markdown with live preview)
-            html += '<div class="form-group"><label class="form-label">About (markdown, max 2000 chars)</label>';
-            html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;">';
-            html += '<textarea class="form-textarea" id="dev-about" style="min-height:200px;font-family:monospace;font-size:13px;" maxlength="2000" oninput="document.getElementById(\'dev-about-preview\').innerHTML=renderMarkdown(this.value)">' + escapeHtml(page?.about || '') + '</textarea>';
-            html += '<div id="dev-about-preview" class="card-box" style="min-height:200px;font-size:13px;line-height:1.6;color:var(--text-secondary);margin-bottom:0;overflow-y:auto;">' + renderMarkdown(page?.about || '') + '</div>';
-            html += '</div><p style="font-size:11px;color:var(--text-secondary);margin-top:5px;">Supports: **bold**, *italic*, [links](url), # headings, - lists</p></div>';
-
-            // Theme preset
-            html += '<div class="form-group"><label class="form-label">Theme Preset</label>';
-            html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">';
+            // Theme + Appearance (collapsible)
+            html += '<div class="card-box" style="margin-bottom:15px;">';
+            html += '<div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display===\'none\'?\'block\':\'none\'">';
+            html += '<label class="form-label" style="margin-bottom:0;cursor:pointer;">🎨 Appearance</label><span style="color:var(--text-secondary);">▼</span></div>';
+            html += '<div style="display:none;margin-top:15px;">';
+            // Theme presets
+            html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:15px;">';
             Object.entries(themePresets).forEach(([key, t]) => {
                 const sel = (page?.theme_preset || 'steam-dark') === key;
-                html += '<div onclick="document.querySelectorAll(\'.theme-pick\').forEach(e=>e.style.borderColor=\'var(--border-color)\');this.style.borderColor=\'' + t.accent + '\';document.getElementById(\'dev-theme-preset\').value=\'' + key + '\';document.getElementById(\'dev-theme-color\').value=\'' + t.accent + '\';" class="theme-pick" style="padding:12px;border-radius:6px;background:' + t.bg + ';border:2px solid ' + (sel ? t.accent : 'var(--border-color)') + ';cursor:pointer;text-align:center;">';
-                html += '<div style="color:' + t.accent + ';font-size:14px;font-weight:bold;">Aa</div>';
-                html += '<div style="color:' + t.text + ';font-size:11px;margin-top:4px;">' + t.name + '</div></div>';
+                html += '<div onclick="document.querySelectorAll(\'.theme-pick\').forEach(e=>e.style.borderColor=\'var(--border-color)\');this.style.borderColor=\'' + t.accent + '\';document.getElementById(\'dev-theme-preset\').value=\'' + key + '\';document.getElementById(\'dev-theme-color\').value=\'' + t.accent + '\';" class="theme-pick" style="padding:10px;border-radius:6px;background:' + t.bg + ';border:2px solid ' + (sel ? t.accent : 'var(--border-color)') + ';cursor:pointer;text-align:center;">';
+                html += '<div style="color:' + t.accent + ';font-size:13px;font-weight:bold;">Aa</div>';
+                html += '<div style="color:' + t.text + ';font-size:10px;margin-top:3px;">' + t.name + '</div></div>';
             });
-            html += '</div><input type="hidden" id="dev-theme-preset" value="' + escapeHtml(page?.theme_preset || 'steam-dark') + '"></div>';
-
-            // Custom accent color
-            html += '<div class="form-row"><div class="form-group"><label class="form-label">Accent Color <span class="color-preview" id="dev-color-preview" style="background:' + escapeHtml(page?.theme_color || '#66c0f4') + '"></span></label><input type="color" class="form-input" id="dev-theme-color" value="' + escapeHtml(page?.theme_color || '#66c0f4') + '" style="height:40px;padding:4px;" oninput="document.getElementById(\'dev-color-preview\').style.background=this.value"></div>';
-
-            // Banner
-            html += '<div class="form-group"><label class="form-label">Banner Image</label><input type="file" class="form-input" style="padding:8px;margin-bottom:5px;" accept="image/*" onchange="uploadImage(this,\'dev-banner\')"><input type="text" class="form-input" id="dev-banner" value="' + escapeHtml(page?.banner_url || '') + '" placeholder="URL or upload above"></div></div>';
-
-            // Fonts
-            html += '<div class="form-row"><div class="form-group"><label class="form-label">Heading Font</label><select class="form-select" id="dev-font-heading">';
+            html += '</div><input type="hidden" id="dev-theme-preset" value="' + escapeHtml(page?.theme_preset || 'steam-dark') + '">';
+            // Accent + fonts
+            html += '<div class="form-row"><div class="form-group" style="margin-bottom:0;"><label class="form-label">Accent <span class="color-preview" id="dev-color-preview" style="background:' + escapeHtml(page?.theme_color || '#66c0f4') + '"></span></label><input type="color" class="form-input" id="dev-theme-color" value="' + escapeHtml(page?.theme_color || '#66c0f4') + '" style="height:36px;padding:3px;" oninput="document.getElementById(\'dev-color-preview\').style.background=this.value"></div>';
+            html += '<div class="form-group" style="margin-bottom:0;"><label class="form-label">Heading Font</label><select class="form-select" id="dev-font-heading" style="padding:8px;">';
             fontOptions.forEach(f => { html += '<option value="' + f + '"' + (f === (page?.font_heading || '') ? ' selected' : '') + '>' + (f || 'Default') + '</option>'; });
-            html += '</select></div><div class="form-group"><label class="form-label">Body Font</label><select class="form-select" id="dev-font-body">';
+            html += '</select></div><div class="form-group" style="margin-bottom:0;"><label class="form-label">Body Font</label><select class="form-select" id="dev-font-body" style="padding:8px;">';
             fontOptions.forEach(f => { html += '<option value="' + f + '"' + (f === (page?.font_body || '') ? ' selected' : '') + '>' + (f || 'Default') + '</option>'; });
-            html += '</select></div></div>';
+            html += '</select></div></div></div></div>';
 
-            // Featured games
-            if (myGames.length > 0) {
-                const featured = page?.featured_games || [];
-                html += '<div class="form-group"><label class="form-label">Featured Games (select up to 6)</label>';
-                html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">';
-                myGames.forEach(g => {
-                    const isFeat = featured.includes(g.id);
-                    html += '<label style="display:flex;gap:8px;align-items:center;padding:8px;background:' + (isFeat ? 'rgba(102,192,244,0.15)' : 'rgba(0,0,0,0.2)') + ';border-radius:4px;cursor:pointer;font-size:13px;border:1px solid ' + (isFeat ? 'var(--accent)' : 'var(--border-color)') + ';">';
-                    html += '<input type="checkbox" data-featured-game="' + g.id + '"' + (isFeat ? ' checked' : '') + ' style="accent-color:var(--accent);">';
-                    html += esc(g.title) + '</label>';
-                });
-                html += '</div></div>';
-            }
-
-            // Page Layout
+            // Page Layout — sections with inline editors
             const layout = (page?.page_layout?.length > 0) ? page.page_layout : [
                 {type:'about',enabled:true,title:'About'},{type:'featured',enabled:true,title:'Featured Games'},
                 {type:'games',enabled:true,title:'All Games'},{type:'links',enabled:true,title:'Links'},{type:'devlogs',enabled:true,title:'Devlogs'}
             ];
-            html += '<div class="form-group"><label class="form-label">Page Layout (drag sections to reorder)</label>';
-            html += '<div id="dev-layout-list" style="display:flex;flex-direction:column;gap:6px;">';
+            html += '<label class="form-label">Page Sections</label>';
+            html += '<div id="dev-layout-list" style="display:flex;flex-direction:column;gap:8px;">';
+            const icons = {about:'📝',featured:'⭐',games:'🎮',links:'🔗',devlogs:'📖',spacer:'↕️',custom:'📄',gallery:'🖼️'};
+            const featured = page?.featured_games || [];
+
             layout.forEach((sec, i) => {
-                const icons = {about:'📝',featured:'⭐',games:'🎮',links:'🔗',devlogs:'📖',spacer:'↕️',custom:'📄',gallery:'🖼️'};
-                html += '<div class="card-box" style="margin-bottom:0;padding:10px 15px;display:flex;align-items:center;gap:10px;" data-layout-idx="' + i + '">';
+                html += '<div class="card-box" style="margin-bottom:0;padding:0;overflow:hidden;" data-layout-idx="' + i + '" data-section-type="' + sec.type + '">';
+                // Header bar
+                html += '<div style="padding:10px 15px;display:flex;align-items:center;gap:10px;background:rgba(0,0,0,0.15);">';
                 html += '<span style="font-size:16px;">' + (icons[sec.type] || '📦') + '</span>';
-                html += '<input type="text" class="form-input" style="flex:1;padding:6px 10px;font-size:13px;" value="' + escapeHtml(sec.title || sec.type) + '" data-layout-title="' + i + '">';
-                html += '<label style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text-secondary);white-space:nowrap;"><input type="checkbox" data-layout-enabled="' + i + '"' + (sec.enabled ? ' checked' : '') + ' style="accent-color:var(--accent);"> Show</label>';
-                if (sec.type === 'spacer') html += '<input type="number" style="width:60px;padding:4px;background:rgba(0,0,0,0.3);border:1px solid var(--border-color);border-radius:3px;color:var(--text-primary);font-size:12px;" value="' + (sec.height || 40) + '" data-layout-height="' + i + '" placeholder="px">';
-                if (sec.type === 'custom') html += '<input type="text" class="form-input" style="flex:1;padding:6px 10px;font-size:12px;" value="' + escapeHtml(sec.content || '') + '" data-layout-content="' + i + '" placeholder="Markdown content">';
-                html += '<button class="btn-secondary" style="padding:4px 8px;font-size:11px;" onclick="moveLayoutSection(' + i + ',-1)">↑</button>';
-                html += '<button class="btn-secondary" style="padding:4px 8px;font-size:11px;" onclick="moveLayoutSection(' + i + ',1)">↓</button>';
-                html += '<button class="btn-secondary" style="padding:4px 8px;font-size:11px;color:var(--danger);" onclick="removeLayoutSection(' + i + ')">×</button>';
+                html += '<input type="text" class="form-input" style="flex:1;padding:5px 10px;font-size:13px;background:transparent;border:1px solid transparent;" value="' + escapeHtml(sec.title || sec.type) + '" data-layout-title="' + i + '" onfocus="this.style.borderColor=\'var(--border-color)\'" onblur="this.style.borderColor=\'transparent\'">';
+                html += '<label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text-secondary);white-space:nowrap;"><input type="checkbox" data-layout-enabled="' + i + '"' + (sec.enabled ? ' checked' : '') + ' style="accent-color:var(--accent);"> Show</label>';
+                // Expand button (for sections with editable content)
+                const hasEditor = ['about','featured','links','custom','spacer'].includes(sec.type);
+                if (hasEditor) html += '<button class="btn-secondary" style="padding:3px 8px;font-size:10px;" onclick="toggleSectionEditor(' + i + ')">Edit</button>';
+                html += '<button class="btn-secondary" style="padding:3px 6px;font-size:10px;" onclick="moveLayoutSection(' + i + ',-1)">↑</button>';
+                html += '<button class="btn-secondary" style="padding:3px 6px;font-size:10px;" onclick="moveLayoutSection(' + i + ',1)">↓</button>';
+                html += '<button class="btn-secondary" style="padding:3px 6px;font-size:10px;color:var(--danger);" onclick="removeLayoutSection(' + i + ')">×</button>';
                 html += '</div>';
+
+                // Inline editor (hidden by default)
+                html += '<div id="section-editor-' + i + '" style="display:none;padding:15px;border-top:1px solid var(--border-color);">';
+                if (sec.type === 'about') {
+                    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">';
+                    html += '<textarea class="form-textarea" id="dev-about" style="min-height:180px;font-family:monospace;font-size:12px;" maxlength="2000" oninput="document.getElementById(\'dev-about-preview\').innerHTML=renderMarkdown(this.value)">' + escapeHtml(page?.about || '') + '</textarea>';
+                    html += '<div id="dev-about-preview" style="min-height:180px;font-size:12px;line-height:1.5;color:var(--text-secondary);padding:10px;background:rgba(0,0,0,0.2);border-radius:4px;overflow-y:auto;">' + renderMarkdown(page?.about || '') + '</div>';
+                    html += '</div><p style="font-size:10px;color:var(--text-secondary);margin-top:5px;">**bold** *italic* [link](url) # heading - list</p>';
+                } else if (sec.type === 'featured' && myGames.length > 0) {
+                    html += '<p style="font-size:12px;color:var(--text-secondary);margin-bottom:8px;">Select games to feature:</p>';
+                    html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;">';
+                    myGames.forEach(g => {
+                        const isFeat = featured.includes(g.id);
+                        html += '<label style="display:flex;gap:6px;align-items:center;padding:6px 8px;background:' + (isFeat ? 'rgba(102,192,244,0.15)' : 'rgba(0,0,0,0.2)') + ';border-radius:4px;cursor:pointer;font-size:12px;border:1px solid ' + (isFeat ? 'var(--accent)' : 'transparent') + ';">';
+                        html += '<input type="checkbox" data-featured-game="' + g.id + '"' + (isFeat ? ' checked' : '') + ' style="accent-color:var(--accent);">' + esc(g.title) + '</label>';
+                    });
+                    html += '</div>';
+                } else if (sec.type === 'featured') {
+                    html += '<p style="font-size:12px;color:var(--text-secondary);">Upload games first to feature them here.</p>';
+                } else if (sec.type === 'links') {
+                    html += '<div id="dev-links-list">';
+                    (page?.links || []).forEach((l, li) => {
+                        html += '<div class="form-row" style="margin-bottom:6px;"><div><input type="text" class="form-input" style="padding:6px 10px;font-size:12px;" placeholder="Label" value="' + escapeHtml(l.label) + '" data-link-label="' + li + '"></div><div><input type="text" class="form-input" style="padding:6px 10px;font-size:12px;" placeholder="URL" value="' + escapeHtml(l.url) + '" data-link-url="' + li + '"></div></div>';
+                    });
+                    html += '</div><button class="btn-secondary" style="margin-top:6px;font-size:11px;padding:5px 12px;" onclick="addDevLink()">+ Add Link</button>';
+                } else if (sec.type === 'spacer') {
+                    html += '<div style="display:flex;align-items:center;gap:10px;"><label style="font-size:12px;color:var(--text-secondary);">Height (px):</label>';
+                    html += '<input type="number" style="width:80px;padding:5px;background:rgba(0,0,0,0.3);border:1px solid var(--border-color);border-radius:3px;color:var(--text-primary);font-size:12px;" value="' + (sec.height || 40) + '" data-layout-height="' + i + '"></div>';
+                } else if (sec.type === 'custom') {
+                    html += '<textarea class="form-textarea" style="min-height:120px;font-family:monospace;font-size:12px;" data-layout-content="' + i + '" placeholder="Write markdown content...">' + escapeHtml(sec.content || '') + '</textarea>';
+                }
+                html += '</div></div>';
             });
             html += '</div>';
-            html += '<div style="display:flex;gap:8px;margin-top:8px;">';
+            html += '<div style="display:flex;gap:8px;margin-top:10px;">';
             html += '<button class="btn-secondary" style="font-size:12px;" onclick="addLayoutSection(\'spacer\')">+ Spacer</button>';
-            html += '<button class="btn-secondary" style="font-size:12px;" onclick="addLayoutSection(\'custom\')">+ Custom Section</button>';
+            html += '<button class="btn-secondary" style="font-size:12px;" onclick="addLayoutSection(\'custom\')">+ Custom</button>';
             html += '<button class="btn-secondary" style="font-size:12px;" onclick="addLayoutSection(\'gallery\')">+ Gallery</button>';
-            html += '</div></div>';
-
-            // Links
-            html += '<div class="form-group"><label class="form-label">Links</label><div id="dev-links-list">';
-            (page?.links || []).forEach((l, i) => { html += '<div class="form-row" style="margin-bottom:8px;"><div><input type="text" class="form-input" placeholder="Label" value="' + escapeHtml(l.label) + '" data-link-label="' + i + '"></div><div><input type="text" class="form-input" placeholder="URL" value="' + escapeHtml(l.url) + '" data-link-url="' + i + '"></div></div>'; });
-            html += '</div><button class="btn-secondary" style="margin-top:8px;" onclick="addDevLink()">+ Add Link</button></div>';
+            html += '</div>';
 
             // Save / Preview
-            html += '<div style="display:flex;gap:10px;margin-top:10px;"><button class="btn-primary" style="width:auto;padding:12px 30px;" onclick="saveDevPage()">Save Developer Page</button>';
+            html += '<div style="display:flex;gap:10px;margin-top:20px;"><button class="btn-primary" style="width:auto;padding:12px 30px;" onclick="saveDevPage()">Save Developer Page</button>';
             html += '<button class="btn-secondary" onclick="showDeveloper(\'' + escapeHtml(currentUser.username) + '\')">Preview</button></div>';
             document.getElementById('deveditor-content').innerHTML = html;
         }
 
         function addDevLink() { const l=document.getElementById('dev-links-list'); const i=l.children.length; const d=document.createElement('div'); d.className='form-row'; d.style.marginBottom='8px'; d.innerHTML='<div><input type="text" class="form-input" placeholder="Label" data-link-label="'+i+'"></div><div><input type="text" class="form-input" placeholder="URL" data-link-url="'+i+'"></div>'; l.appendChild(d); }
+
+        function toggleSectionEditor(idx) {
+            const el = document.getElementById('section-editor-' + idx);
+            if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+        }
 
         // Layout section management
         function getLayoutFromDOM() {
