@@ -227,6 +227,54 @@ func DeleteGame(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "game deleted"})
 }
 
+// ReuploadGameFiles replaces game files for an existing game.
+func ReuploadGameFiles(c *gin.Context) {
+	user := middleware.GetUser(c)
+	if user == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "not authenticated"})
+		return
+	}
+	game, err := models.GetGameByID(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "game not found"})
+		return
+	}
+	if game.DeveloperID != user.ID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "not your game"})
+		return
+	}
+
+	file, header, err := c.Request.FormFile("game_file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "game file required"})
+		return
+	}
+	defer file.Close()
+
+	data, _ := io.ReadAll(file)
+	fileName := header.Filename
+	entryFile := fileName
+
+	// Delete old files
+	storage.DeleteGameFiles(game.ID)
+
+	if strings.HasSuffix(strings.ToLower(fileName), ".zip") {
+		ef, err := storage.ExtractZip(game.ID, data)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "failed to extract ZIP: " + err.Error()})
+			return
+		}
+		entryFile = ef
+	} else {
+		if err := storage.SaveGameFile(game.ID, fileName, data); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save file"})
+			return
+		}
+	}
+	game.UpdateFiles(storage.GameDir(game.ID), entryFile)
+	c.JSON(http.StatusOK, gin.H{"message": "game files updated"})
+}
+
 // ServeGameFiles serves game files for the iframe player.
 func ServeGameFiles(c *gin.Context) {
 	gameID := c.Param("id")

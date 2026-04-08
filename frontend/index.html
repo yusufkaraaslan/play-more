@@ -4,6 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PlayMore</title>
+    <meta name="description" content="PlayMore — self-hosted game publishing platform. Upload, play, and share HTML5 games with WebGPU support.">
+    <meta property="og:title" content="PlayMore">
+    <meta property="og:description" content="Self-hosted game publishing platform for HTML5 games">
+    <meta property="og:type" content="website">
+    <meta name="twitter:card" content="summary">
+    <meta name="theme-color" content="#1b2838">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2366c0f4'><path d='M21 6H3c-1.1 0-2 .9-2 2v8c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-10 7H8v3H6v-3H3v-2h3V8h2v3h3v2zm4.5 2c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm4-3c-.83 0-1.5-.67-1.5-1.5S18.67 9 19.5 9s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z'/></svg>">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         :root {
@@ -803,7 +810,16 @@
             } else if (hash.startsWith('developer/')) {
                 showDeveloper(hash.slice(10));
             } else {
-                navigate(hash, false);
+                const validTabs = ['store','library','upload','profile','feed','dashboard','settings','admin','deveditor','gamedetail','developer','auth'];
+                if (validTabs.includes(hash)) {
+                    navigate(hash, false);
+                } else {
+                    // 404
+                    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+                    document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+                    document.getElementById('store-section').classList.add('active');
+                    document.getElementById('store-grid').innerHTML = '<div class="empty-state" style="padding:60px;"><h2 style="font-size:24px;margin-bottom:15px;">Page Not Found</h2><p>The page <strong>#' + esc(hash) + '</strong> doesn\'t exist.</p><p style="margin-top:15px;"><a style="color:var(--accent);cursor:pointer;" onclick="navigate(\'store\')">Back to Store</a></p></div>';
+                }
             }
         }
 
@@ -891,7 +907,7 @@
                 '<div class="game-card-overlay"><span class="game-card-play">VIEW</span></div>' +
                 '<div class="game-card-info">' +
                 '<div class="game-card-title">' + escapeHtml(g.title) + '</div>' +
-                '<div class="game-card-meta">' + escapeHtml(g.genre) + ' · ' + (g.play_count||0) + ' plays</div>' +
+                '<div class="game-card-meta">' + escapeHtml(g.genre) + ' · ' + (g.play_count||0) + ' plays · ' + ((g.avg_rating||0) > 0 ? '★ ' + g.avg_rating.toFixed(1) : '') + '</div>' +
                 '<div class="game-card-footer">' +
                 '<button class="btn-accent" style="padding:5px 15px;font-size:12px;width:auto;" onclick="event.stopPropagation();playGame(\'' + g.id + '\',\'' + g.entry_file + '\')">Play</button>' +
                 '<button class="btn-secondary" style="padding:5px 10px;font-size:11px;" onclick="event.stopPropagation();removeFromLib(\'' + g.id + '\')">Remove</button>' +
@@ -1241,7 +1257,21 @@
                 html += '</div>';
                 if (game.tags && game.tags.length > 0) { html += '<div class="tag-list">'; game.tags.forEach(t => html += '<span class="tag">' + escapeHtml(t) + '</span>'); html += '</div>'; }
 
-                html += '</div></div></div>';
+                html += '</div></div>';
+
+                // Similar games
+                try {
+                    const similar = await api('/games?genre=' + encodeURIComponent(game.genre) + '&limit=4');
+                    const others = (similar.games || []).filter(g => g.id !== game.id).slice(0, 3);
+                    if (others.length > 0) {
+                        html += '<h2 class="section-title" style="margin-top:20px;">More Like This</h2>';
+                        html += '<div class="game-grid">';
+                        others.forEach(g => html += gameCardHTML(g));
+                        html += '</div>';
+                    }
+                } catch {}
+
+                html += '</div>';
                 document.getElementById('game-detail-content').innerHTML = html;
                 selectedRating = 0;
                 navigate('gamedetail', false);
@@ -1977,6 +2007,7 @@
                 html += '<div class="form-group"><label class="form-label">Tags (comma separated)</label><input type="text" class="form-input" id="edit-game-tags" value="' + escapeHtml((g.tags||[]).join(', ')) + '"></div>';
                 html += '<div class="form-group"><label class="form-label">Description</label><textarea class="form-textarea" id="edit-game-desc">' + escapeHtml(g.description || '') + '</textarea></div>';
                 html += '<div class="form-group"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--text-secondary);"><input type="checkbox" id="edit-game-webgpu"' + (g.is_webgpu ? ' checked' : '') + ' style="accent-color:var(--accent);width:16px;height:16px;"> Uses WebGPU</label></div>';
+                html += '<div class="form-group"><label class="form-label">Re-upload Game Files (optional)</label><input type="file" class="form-input" id="edit-game-file" accept=".html,.js,.zip" style="padding:8px;"><p style="font-size:11px;color:var(--text-secondary);margin-top:4px;">Upload a new .html, .js, or .zip to replace the current game files.</p></div>';
                 html += '<button class="btn-primary" style="width:auto;padding:12px 30px;" onclick="saveGameEdit(\'' + id + '\')">Save Changes</button>';
                 html += '</div>';
                 document.getElementById('dashboard-content').innerHTML = html;
@@ -1998,6 +2029,14 @@
                         is_webgpu: document.getElementById('edit-game-webgpu').checked
                     })
                 });
+                // Re-upload game file if selected
+                const fileInput = document.getElementById('edit-game-file');
+                if (fileInput?.files?.length > 0) {
+                    const formData = new FormData();
+                    formData.append('game_file', fileInput.files[0]);
+                    const res = await fetch('/api/games/' + id + '/reupload', { method: 'POST', body: formData, credentials: 'same-origin' });
+                    if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'File upload failed'); }
+                }
                 toast('Game updated!', 'success');
                 loadDashboard();
             } catch (e) { toast('Failed to save: ' + e.message, 'error'); }
@@ -2110,6 +2149,12 @@
             document.getElementById('settings-content').innerHTML =
                 '<div style="max-width:600px;">' +
                 '<div class="card-box">' +
+                '<h3 style="font-size:16px;margin-bottom:10px;">Account</h3>' +
+                '<div class="form-group"><label class="form-label">Username</label><input type="text" class="form-input" id="settings-username" value="' + escapeHtml(currentUser?.username || '') + '"></div>' +
+                '<div class="form-group"><label class="form-label">Bio</label><textarea class="form-textarea" id="settings-bio" style="min-height:80px;" placeholder="Tell us about yourself...">' + escapeHtml(currentUser?.bio || '') + '</textarea></div>' +
+                '<div class="form-group"><label class="form-label">Avatar</label><div style="display:flex;gap:10px;"><input type="file" class="form-input" style="padding:8px;flex:1;" accept="image/*" onchange="uploadImage(this,\'settings-avatar\')"><input type="text" class="form-input" id="settings-avatar" value="' + escapeHtml(currentUser?.avatar_url || '') + '" placeholder="URL or upload" style="flex:1;"></div></div>' +
+                '<button class="btn-accent" onclick="saveAccountSettings()">Save Account</button></div>' +
+                '<div class="card-box">' +
                 '<h3 style="font-size:16px;margin-bottom:10px;">System Info</h3>' +
                 '<div class="sysinfo-item"><span class="sysinfo-label">WebGPU</span><span class="sysinfo-value">' + gpuStatus + '</span></div>' +
                 '<div class="sysinfo-item"><span class="sysinfo-label">WebGL2</span><span class="sysinfo-value">' + webgl2Status + '</span></div>' +
@@ -2138,6 +2183,21 @@
                 '<p style="color:var(--text-secondary);font-size:13px;margin-bottom:15px;">Permanently delete your account, games, reviews, and all data. This cannot be undone.</p>' +
                 '<button class="btn-secondary" style="border-color:var(--danger);color:var(--danger);" onclick="deleteAccount()">Delete Account</button></div>' +
                 '</div>';
+        }
+
+        async function saveAccountSettings() {
+            try {
+                await api('/profile', { method: 'PUT', body: JSON.stringify({
+                    username: document.getElementById('settings-username').value,
+                    bio: document.getElementById('settings-bio').value,
+                    avatar_url: document.getElementById('settings-avatar').value,
+                    banner_url: currentUser?.banner_url || '',
+                    theme_color: currentUser?.theme_color || '#66c0f4',
+                    links: currentUser?.links || []
+                }) });
+                await checkAuth();
+                toast('Account updated!', 'success');
+            } catch (e) { toast(e.message, 'error'); }
         }
 
         async function changePassword() {
