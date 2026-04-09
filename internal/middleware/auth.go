@@ -9,6 +9,12 @@ import (
 
 const UserKey = "user"
 
+// IsSecure returns true if the request arrived over HTTPS,
+// either directly (TLS) or via a reverse proxy (X-Forwarded-Proto).
+func IsSecure(c *gin.Context) bool {
+	return c.Request.TLS != nil || c.Request.Header.Get("X-Forwarded-Proto") == "https"
+}
+
 // AuthRequired rejects unauthenticated requests.
 func AuthRequired() gin.HandlerFunc {
 	return func(c *gin.Context) {

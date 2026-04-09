@@ -36,6 +36,52 @@ curl -X POST http://localhost:8080/api/seed
 docker-compose up -d
 ```
 
+## Production Deployment (HTTPS)
+
+### Option 1: Reverse Proxy (Recommended)
+
+**Caddy** (auto HTTPS, zero config):
+```
+playmore.example.com {
+    reverse_proxy localhost:8080
+}
+```
+
+**Nginx** with certbot:
+```nginx
+server {
+    listen 443 ssl;
+    server_name playmore.example.com;
+
+    ssl_certificate /etc/letsencrypt/live/playmore.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/playmore.example.com/privkey.pem;
+
+    location / {
+        proxy_pass http://localhost:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+}
+```
+
+Session cookies automatically get the `Secure` flag when `X-Forwarded-Proto: https` is set.
+
+### Option 2: Direct TLS
+
+```bash
+./playmore --tls-cert cert.pem --tls-key key.pem --port 443
+```
+
+Docker with TLS:
+```bash
+docker run -d \
+  -p 443:443 \
+  -v /path/to/certs:/certs:ro \
+  -v playmore-data:/app/data \
+  playmore --tls-cert /certs/cert.pem --tls-key /certs/key.pem --port 443
+```
+
 ## Tech Stack
 
 - **Backend**: Go + Gin + SQLite (pure Go, no CGO)

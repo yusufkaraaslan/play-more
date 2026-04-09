@@ -11,7 +11,7 @@ FROM alpine:3.19
 RUN apk --no-cache add ca-certificates
 WORKDIR /app
 COPY --from=builder /app/playmore .
-EXPOSE 8080
+EXPOSE 8080 443
 VOLUME ["/app/data"]
 ENTRYPOINT ["./playmore"]
 CMD ["--port", "8080", "--data", "/app/data"]

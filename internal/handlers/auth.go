@@ -45,7 +45,7 @@ func Register(c *gin.Context) {
 	}
 
 	c.SetSameSite(http.SameSiteLaxMode)
-	c.SetCookie("session", token, 30*24*3600, "/", "", true, true)
+	c.SetCookie("session", token, 30*24*3600, "/", "", middleware.IsSecure(c), true)
 	c.JSON(http.StatusCreated, gin.H{"user": user})
 }
 
@@ -80,7 +80,7 @@ func Login(c *gin.Context) {
 	}
 
 	c.SetSameSite(http.SameSiteLaxMode)
-	c.SetCookie("session", token, 30*24*3600, "/", "", true, true)
+	c.SetCookie("session", token, 30*24*3600, "/", "", middleware.IsSecure(c), true)
 	c.JSON(http.StatusOK, gin.H{"user": user})
 }
 
@@ -90,7 +90,7 @@ func Logout(c *gin.Context) {
 		models.DeleteSession(token)
 	}
 	c.SetSameSite(http.SameSiteLaxMode)
-	c.SetCookie("session", "", -1, "/", "", true, true)
+	c.SetCookie("session", "", -1, "/", "", middleware.IsSecure(c), true)
 	c.JSON(http.StatusOK, gin.H{"message": "logged out"})
 }
 
