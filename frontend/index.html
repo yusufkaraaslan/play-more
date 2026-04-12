@@ -775,7 +775,7 @@
         function showAuth(mode) {
             const form = document.getElementById('auth-form');
             if (mode === 'login') {
-                form.innerHTML = '<h2>Login</h2><div class="form-group"><label class="form-label">Email</label><input type="email" class="form-input" id="auth-email"></div><div class="form-group"><label class="form-label">Password</label><input type="password" class="form-input" id="auth-password"></div><button class="btn-primary" onclick="doLogin()">Login</button><div id="auth-error" class="error-msg"></div><div class="auth-toggle">No account? <a onclick="showAuth(\'register\')">Register</a></div>';
+                form.innerHTML = '<h2>Login</h2><div class="form-group"><label class="form-label">Email</label><input type="email" class="form-input" id="auth-email"></div><div class="form-group"><label class="form-label">Password</label><input type="password" class="form-input" id="auth-password"></div><button class="btn-primary" onclick="doLogin()">Login</button><div id="auth-error" class="error-msg"></div><div class="auth-toggle"><a onclick="showForgotPassword()" style="cursor:pointer;">Forgot password?</a></div><div class="auth-toggle">No account? <a onclick="showAuth(\'register\')">Register</a></div>';
             } else {
                 form.innerHTML = '<h2>Register</h2><div class="form-group"><label class="form-label">Username</label><input type="text" class="form-input" id="auth-username"></div><div class="form-group"><label class="form-label">Email</label><input type="email" class="form-input" id="auth-email"></div><div class="form-group"><label class="form-label">Password</label><input type="password" class="form-input" id="auth-password"></div><button class="btn-primary" onclick="doRegister()">Register</button><div id="auth-error" class="error-msg"></div><div class="auth-toggle">Have an account? <a onclick="showAuth(\'login\')">Login</a></div>';
             }
@@ -797,6 +797,56 @@
         }
 
         async function logout() { await api('/auth/logout', { method: 'POST' }); currentUser = null; renderHeader(); navigate('store'); toast('Logged out.', 'info'); }
+
+        function showForgotPassword() {
+            const form = document.getElementById('auth-form');
+            form.innerHTML = '<h2>Forgot Password</h2><p style="color:var(--text-secondary);margin-bottom:15px;">Enter your email and we\'ll send you a reset link.</p>' +
+                '<div class="form-group"><label class="form-label">Email</label><input type="email" class="form-input" id="auth-email"></div>' +
+                '<button class="btn-primary" onclick="doForgotPassword()">Send Reset Link</button>' +
+                '<div id="auth-error" class="error-msg"></div>' +
+                '<div class="auth-toggle"><a onclick="showAuth(\'login\')" style="cursor:pointer;">Back to Login</a></div>';
+            navigate('auth');
+        }
+        async function doForgotPassword() {
+            const email = document.getElementById('auth-email').value;
+            if (!email) { document.getElementById('auth-error').textContent = 'Please enter your email.'; return; }
+            try {
+                await api('/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email }) });
+                document.getElementById('auth-form').innerHTML = '<h2>Check Your Email</h2><p style="color:var(--text-secondary);">If an account exists with that email, we\'ve sent a password reset link. Check your inbox.</p>' +
+                    '<div class="auth-toggle" style="margin-top:20px;"><a onclick="showAuth(\'login\')" style="cursor:pointer;">Back to Login</a></div>';
+            } catch (e) { document.getElementById('auth-error').textContent = e.message; }
+        }
+
+        function showResetPassword(token) {
+            const form = document.getElementById('auth-form');
+            form.innerHTML = '<h2>Reset Password</h2>' +
+                '<div class="form-group"><label class="form-label">New Password</label><input type="password" class="form-input" id="auth-password" placeholder="Min 6 characters"></div>' +
+                '<div class="form-group"><label class="form-label">Confirm Password</label><input type="password" class="form-input" id="auth-password2"></div>' +
+                '<button class="btn-primary" onclick="doResetPassword(\'' + escapeHtml(token) + '\')">Reset Password</button>' +
+                '<div id="auth-error" class="error-msg"></div>';
+            navigate('auth', false);
+        }
+        async function doResetPassword(token) {
+            const pw = document.getElementById('auth-password').value;
+            const pw2 = document.getElementById('auth-password2').value;
+            if (pw !== pw2) { document.getElementById('auth-error').textContent = 'Passwords do not match.'; return; }
+            try {
+                await api('/auth/reset-password', { method: 'POST', body: JSON.stringify({ token, password: pw }) });
+                toast('Password reset! Please login.', 'success');
+                showAuth('login');
+                location.hash = '';
+            } catch (e) { document.getElementById('auth-error').textContent = e.message; }
+        }
+
+        async function verifyEmail(token) {
+            try {
+                await api('/auth/verify/' + token);
+                toast('Email verified!', 'success');
+                if (currentUser) await checkAuth();
+            } catch (e) { toast('Verification failed: ' + e.message, 'error'); }
+            navigate('store');
+            location.hash = '';
+        }
 
         /* ============ Navigation ============ */
         let suppressHashChange = false;
@@ -836,6 +886,12 @@
                 showGameDetail(hash.slice(5));
             } else if (hash.startsWith('developer/')) {
                 showDeveloper(hash.slice(10));
+            } else if (hash.startsWith('list/')) {
+                showList(hash.slice(5));
+            } else if (hash.startsWith('verify/')) {
+                verifyEmail(hash.slice(7));
+            } else if (hash.startsWith('reset/')) {
+                showResetPassword(hash.slice(6));
             } else {
                 const validTabs = ['store','library','upload','profile','feed','dashboard','settings','admin','deveditor','gamedetail','developer','auth'];
                 if (validTabs.includes(hash)) {
@@ -1102,9 +1158,13 @@
         function avatarUrl(u) {
             if (u.avatar_url) return esc(u.avatar_url);
             const name = u.username || u.name || 'user';
-            const letter = name.charAt(0).toUpperCase();
-            // DiceBear with SVG fallback on error
-            return 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + encodeURIComponent(name) + '" onerror="this.onerror=null;this.src=\'data:image/svg+xml,' + encodeURIComponent('<svg xmlns=&quot;http://www.w3.org/2000/svg&quot; width=&quot;80&quot; height=&quot;80&quot;><rect fill=&quot;%232a475e&quot; width=&quot;80&quot; height=&quot;80&quot; rx=&quot;40&quot;/><text x=&quot;40&quot; y=&quot;52&quot; text-anchor=&quot;middle&quot; fill=&quot;%2366c0f4&quot; font-size=&quot;32&quot;>' + letter + '</text></svg>') + '\'';
+            return '/avatar/' + encodeURIComponent(name);
+        }
+        function formatBytes(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+            if (bytes < 1073741824) return (bytes / 1048576).toFixed(1) + ' MB';
+            return (bytes / 1073741824).toFixed(1) + ' GB';
         }
         function escapeHtml(text) {
             if (text === null || text === undefined) return '';
@@ -1126,7 +1186,7 @@
         async function showGameDetail(gameId) {
             try {
                 const data = await api('/games/' + gameId);
-                const game = data.game; currentGameData = game;
+                const game = data.game; currentGameData = game; const fileSize = data.file_size || 0;
                 const reviews = await api('/games/' + gameId + '/reviews');
                 const coverSrc = game.cover_path || '';
                 const allReviews = reviews.reviews || [];
@@ -1303,6 +1363,7 @@
                 if (currentUser) {
                     html += '<button class="btn-secondary" id="lib-btn-' + game.id + '" onclick="toggleLib(\'' + game.id + '\')">Add to Library</button>';
                     html += '<button class="btn-wishlist" id="wish-btn-' + game.id + '" onclick="toggleWish(\'' + game.id + '\')">Add to Wishlist</button>';
+                    html += '<button class="btn-secondary" onclick="showAddToListModal(\'' + game.id + '\')" style="font-size:12px;">+ Add to List</button>';
                 }
                 html += '</div></div>';
 
@@ -1312,6 +1373,7 @@
                 html += '<div class="info-row"><span class="info-label">Genre</span><span class="info-value">' + escapeHtml(genreCap) + '</span></div>';
                 html += '<div class="info-row"><span class="info-label">Released</span><span class="info-value">' + escapeHtml(game.created_at || 'Unknown') + '</span></div>';
                 if (game.is_webgpu) html += '<div class="info-row"><span class="info-label">Graphics</span><span class="info-value" style="color:var(--success);">WebGPU Enabled</span></div>';
+                if (fileSize > 0) html += '<div class="info-row"><span class="info-label">Size</span><span class="info-value">' + formatBytes(fileSize) + '</span></div>';
                 html += '</div>';
                 if (game.tags && game.tags.length > 0) { html += '<div class="tag-list">'; game.tags.forEach(t => html += '<span class="tag">' + escapeHtml(t) + '</span>'); html += '</div>'; }
 
@@ -2627,6 +2689,67 @@
             showModal('Delete Collection', 'Are you sure?', async () => {
                 try { await api('/collections/' + colId, { method: 'DELETE' }); closeModal(); toast('Collection deleted.', 'info'); loadLibrary(); } catch (e) { toast(e.message, 'error'); closeModal(); }
             });
+        }
+
+        // ============ Public Lists ============
+        async function showList(listId) {
+            try {
+                const data = await api('/collections/' + listId);
+                const col = data.collection; const games = data.games || [];
+                let html = '<div style="max-width:1200px;margin:0 auto;padding:20px;">';
+                html += '<div style="margin-bottom:20px;"><a style="color:var(--accent);cursor:pointer;font-size:13px;" onclick="navigate(\'store\')">&larr; Back</a></div>';
+                html += '<h2 style="font-size:24px;margin-bottom:8px;">' + escapeHtml(col.name) + '</h2>';
+                if (col.username) html += '<p style="color:var(--text-secondary);font-size:13px;margin-bottom:8px;">by ' + escapeHtml(col.username) + '</p>';
+                if (col.description) html += '<p style="color:var(--text-secondary);margin-bottom:15px;">' + escapeHtml(col.description) + '</p>';
+                html += '<p style="color:var(--text-secondary);font-size:12px;margin-bottom:20px;">' + games.length + ' game' + (games.length!==1?'s':'') + '</p>';
+                if (games.length > 0) {
+                    html += '<div class="game-grid">' + games.map(g => gameCardHTML(g)).join('') + '</div>';
+                } else {
+                    html += '<div class="empty-state">This list is empty.</div>';
+                }
+                html += '</div>';
+                document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+                const sec = document.getElementById('store-section');
+                sec.classList.add('active');
+                document.getElementById('store-grid').innerHTML = html;
+                suppressHashChange = true; location.hash = 'list/' + listId; suppressHashChange = false;
+            } catch (e) { toast('List not found.', 'error'); navigate('store'); }
+        }
+
+        async function showAddToListModal(gameId) {
+            if (!currentUser) { showAuth('login'); return; }
+            const cols = await loadCollectionsUI();
+            let html = '<div style="max-height:300px;overflow-y:auto;">';
+            if (cols.length === 0) {
+                html += '<p style="color:var(--text-secondary);margin-bottom:10px;">No lists yet.</p>';
+            } else {
+                cols.forEach(c => {
+                    const hasGame = (c.game_ids||[]).includes(gameId);
+                    html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border-color);">';
+                    html += '<span>' + escapeHtml(c.name) + ' <span style="color:var(--text-secondary);font-size:11px;">(' + (c.game_ids||[]).length + ')</span></span>';
+                    if (hasGame) {
+                        html += '<span style="color:var(--success);font-size:12px;">Added</span>';
+                    } else {
+                        html += '<button class="btn-accent" style="padding:4px 12px;font-size:11px;" onclick="addGameToCollection(\'' + c.id + '\',\'' + gameId + '\');this.textContent=\'Added\';this.disabled=true;">Add</button>';
+                    }
+                    html += '</div>';
+                });
+            }
+            html += '</div><div style="margin-top:12px;"><input type="text" class="form-input" id="new-list-name" placeholder="New list name..." style="margin-bottom:8px;">';
+            html += '<button class="btn-secondary" style="width:100%;padding:8px;" onclick="quickCreateList(\'' + gameId + '\')">Create New List</button></div>';
+            showModal('Add to List', html, () => closeModal());
+            document.querySelector('#modal .modal-confirm').textContent = 'Done';
+        }
+
+        async function quickCreateList(gameId) {
+            const name = document.getElementById('new-list-name').value.trim();
+            if (!name) return;
+            try {
+                const res = await api('/collections', { method: 'POST', body: JSON.stringify({ name }) });
+                await api('/collections/' + res.id + '/games', { method: 'POST', body: JSON.stringify({ game_id: gameId }) });
+                toast('Created "' + name + '" and added game!', 'success');
+                closeModal();
+            } catch (e) { toast(e.message, 'error'); }
         }
 
         /* ============ Admin ============ */

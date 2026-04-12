@@ -126,6 +126,18 @@ func ExtractZip(gameID string, data []byte) (string, error) {
 	return entryFile, nil
 }
 
+// GameDirSize returns total size of all files in a game directory in bytes.
+func GameDirSize(gameID string) int64 {
+	var size int64
+	filepath.Walk(GameDir(gameID), func(_ string, info os.FileInfo, err error) error {
+		if err == nil && !info.IsDir() {
+			size += info.Size()
+		}
+		return nil
+	})
+	return size
+}
+
 // DeleteGameFiles removes all files for a game.
 func DeleteGameFiles(gameID string) error {
 	return os.RemoveAll(GameDir(gameID))

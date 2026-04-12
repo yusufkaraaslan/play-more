@@ -98,6 +98,15 @@ func (u *User) CheckPassword(password string) bool {
 	return bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(password)) == nil
 }
 
+func (u *User) SetPassword(password string) error {
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+	_, err = storage.DB.Exec(`UPDATE users SET password = ? WHERE id = ?`, string(hash), u.ID)
+	return err
+}
+
 func (u *User) Update(username, bio, avatarURL, bannerURL, themeColor string, links []Link, autoplayMedia bool) error {
 	linksJSON, _ := json.Marshal(links)
 	_, err := storage.DB.Exec(

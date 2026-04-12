@@ -46,7 +46,8 @@ func GetGame(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "game not found"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"game": game})
+	fileSize := storage.GameDirSize(game.ID)
+	c.JSON(http.StatusOK, gin.H{"game": game, "file_size": fileSize})
 }
 
 func UploadGame(c *gin.Context) {
@@ -452,5 +453,11 @@ func ServeGameFiles(c *gin.Context) {
 	// Games get a permissive CSP — they may load scripts from any CDN
 	c.Header("Content-Security-Policy", "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; img-src * data: blob:; media-src * data: blob:; font-src * data:; connect-src *")
 	c.Header("X-Frame-Options", "SAMEORIGIN")
-	c.File(fullPath)
+	// Cache-Control for game files: immutable assets
+	ext := strings.ToLower(filepath.Ext(fullPath))
+	if ext == ".wasm" || ext == ".js" || ext == ".css" || ext == ".png" || ext == ".jpg" || ext == ".svg" || ext == ".ogg" || ext == ".mp3" {
+		c.Header("Cache-Control", "public, max-age=31536000, immutable")
+	}
+	// Use http.ServeFile for Range request support (streaming WASM, resumable downloads)
+	http.ServeFile(c.Writer, c.Request, fullPath)
 }

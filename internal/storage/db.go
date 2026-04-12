@@ -50,6 +50,10 @@ func migrate() error {
 		`ALTER TABLE page_views ADD COLUMN has_webgpu INTEGER DEFAULT -1`,
 		`ALTER TABLE users ADD COLUMN autoplay_media BOOLEAN DEFAULT 0`,
 		`ALTER TABLE games ADD COLUMN videos TEXT DEFAULT '[]'`,
+		`ALTER TABLE collections ADD COLUMN is_public BOOLEAN DEFAULT 0`,
+		`ALTER TABLE collections ADD COLUMN description TEXT DEFAULT ''`,
+		`ALTER TABLE collections ADD COLUMN username TEXT DEFAULT ''`,
+		`ALTER TABLE users ADD COLUMN email_verified BOOLEAN DEFAULT 0`,
 		// Migrate existing video_url into videos array
 		`UPDATE games SET videos = '["' || video_url || '"]' WHERE video_url != '' AND videos = '[]'`,
 	}
@@ -72,6 +76,7 @@ CREATE TABLE IF NOT EXISTS users (
     theme_color TEXT DEFAULT '#66c0f4',
     links       TEXT DEFAULT '[]',
     autoplay_media BOOLEAN DEFAULT 0,
+    email_verified BOOLEAN DEFAULT 0,
     created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -188,7 +193,10 @@ CREATE TABLE IF NOT EXISTS collections (
     id          TEXT PRIMARY KEY,
     user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     name        TEXT NOT NULL,
+    description TEXT DEFAULT '',
     game_ids    TEXT DEFAULT '[]',
+    is_public   BOOLEAN DEFAULT 0,
+    username    TEXT DEFAULT '',
     created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -248,6 +256,15 @@ CREATE TABLE IF NOT EXISTS page_views (
     created_at    DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS email_tokens (
+    token       TEXT PRIMARY KEY,
+    user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    type        TEXT NOT NULL,
+    expires_at  DATETIME NOT NULL,
+    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_email_tokens_user ON email_tokens(user_id, type);
 CREATE INDEX IF NOT EXISTS idx_page_views_date ON page_views(created_at);
 CREATE INDEX IF NOT EXISTS idx_page_views_path ON page_views(path);
 CREATE INDEX IF NOT EXISTS idx_page_views_date_path ON page_views(created_at, path);

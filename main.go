@@ -1,17 +1,22 @@
 package main
 
 import (
+	"crypto/tls"
 	"embed"
 	"flag"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	emailpkg "github.com/yusufkaraaslan/play-more/internal/email"
 	"github.com/yusufkaraaslan/play-more/internal/middleware"
 	"github.com/yusufkaraaslan/play-more/internal/server"
 	"github.com/yusufkaraaslan/play-more/internal/storage"
+	"golang.org/x/crypto/acme/autocert"
 )
 
 //go:embed all:frontend
@@ -28,6 +33,14 @@ func main() {
 	goatcounter := flag.String("goatcounter", "", "GoatCounter URL (e.g. https://mysite.goatcounter.com)")
 	tlsCert := flag.String("tls-cert", "", "path to TLS certificate file")
 	tlsKey := flag.String("tls-key", "", "path to TLS private key file")
+	autoTLS := flag.Bool("auto-tls", false, "enable automatic TLS via Let's Encrypt")
+	domain := flag.String("domain", "", "domain name for auto-TLS certificate (required with --auto-tls)")
+	smtpHost := flag.String("smtp-host", "", "SMTP server hostname")
+	smtpPort := flag.Int("smtp-port", 587, "SMTP server port")
+	smtpUser := flag.String("smtp-user", "", "SMTP username")
+	smtpPass := flag.String("smtp-pass", "", "SMTP password")
+	smtpFrom := flag.String("smtp-from", "", "From address for emails")
+	baseURL := flag.String("base-url", "", "Public base URL (e.g. https://playmore.example.com)")
 	flag.Parse()
 
 	// Environment variables as fallback (flags take priority)
@@ -58,10 +71,47 @@ func main() {
 			*tlsKey = v
 		}
 	}
+	if !isFlagSet("auto-tls") {
+		if v := os.Getenv("PLAYMORE_AUTO_TLS"); v == "true" || v == "1" {
+			*autoTLS = true
+		}
+	}
+	if !isFlagSet("domain") {
+		if v := os.Getenv("PLAYMORE_DOMAIN"); v != "" {
+			*domain = v
+		}
+	}
 
-	// Validate TLS: both or neither
+	if !isFlagSet("smtp-host") {
+		if v := os.Getenv("PLAYMORE_SMTP_HOST"); v != "" { *smtpHost = v }
+	}
+	if !isFlagSet("smtp-port") {
+		if v := os.Getenv("PLAYMORE_SMTP_PORT"); v != "" {
+			if p, err := strconv.Atoi(v); err == nil { *smtpPort = p }
+		}
+	}
+	if !isFlagSet("smtp-user") {
+		if v := os.Getenv("PLAYMORE_SMTP_USER"); v != "" { *smtpUser = v }
+	}
+	if !isFlagSet("smtp-pass") {
+		if v := os.Getenv("PLAYMORE_SMTP_PASS"); v != "" { *smtpPass = v }
+	}
+	if !isFlagSet("smtp-from") {
+		if v := os.Getenv("PLAYMORE_SMTP_FROM"); v != "" { *smtpFrom = v }
+	}
+	if !isFlagSet("base-url") {
+		if v := os.Getenv("PLAYMORE_BASE_URL"); v != "" { *baseURL = v }
+	}
+
+	// Validate TLS options
 	if (*tlsCert == "") != (*tlsKey == "") {
 		log.Fatal("Both --tls-cert/PLAYMORE_TLS_CERT and --tls-key/PLAYMORE_TLS_KEY must be provided together")
+	}
+	if *autoTLS && *domain == "" {
+		log.Fatal("--domain/PLAYMORE_DOMAIN is required when using --auto-tls")
+	}
+	if *autoTLS && *tlsCert != "" {
+		log.Fatal("Cannot use --auto-tls together with --tls-cert/--tls-key")
 	}
 
 	// Initialize storage
@@ -72,11 +122,19 @@ func main() {
 		log.Fatal("Failed to initialize file storage:", err)
 	}
 
+	// Configure email
+	emailpkg.Host = *smtpHost
+	emailpkg.Port = *smtpPort
+	emailpkg.User = *smtpUser
+	emailpkg.Pass = *smtpPass
+	emailpkg.From = *smtpFrom
+	emailpkg.BaseURL = *baseURL
+
 	middleware.StartRateLimitCleanup()
 	middleware.StartAnalyticsWriter()
 
 	scheme := "http"
-	if *tlsCert != "" {
+	if *tlsCert != "" || *autoTLS {
 		scheme = "https"
 	}
 	fmt.Printf("PlayMore server starting on %s://localhost:%d\n", scheme, *port)
@@ -84,10 +142,42 @@ func main() {
 	if *goatcounter != "" {
 		fmt.Printf("GoatCounter: %s\n", *goatcounter)
 	}
+	if *autoTLS {
+		fmt.Printf("Auto-TLS: enabled for %s\n", *domain)
+	}
 
 	r := server.New(frontendFS, *goatcounter)
 	addr := fmt.Sprintf(":%d", *port)
-	if *tlsCert != "" {
+	if *autoTLS {
+		certDir := filepath.Join(*dataDir, "certs")
+		m := &autocert.Manager{
+			Cache:      autocert.DirCache(certDir),
+			Prompt:     autocert.AcceptTOS,
+			HostPolicy: autocert.HostWhitelist(*domain),
+		}
+		s := &http.Server{
+			Addr:    ":443",
+			Handler: r.Handler(),
+			TLSConfig: &tls.Config{
+				GetCertificate: m.GetCertificate,
+			},
+		}
+		// HTTP challenge server + redirect on port 80
+		go func() {
+			h := m.HTTPHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				target := "https://" + r.Host + r.URL.Path
+				if len(r.URL.RawQuery) > 0 {
+					target += "?" + r.URL.RawQuery
+				}
+				http.Redirect(w, r, target, http.StatusMovedPermanently)
+			}))
+			log.Fatal(http.ListenAndServe(":80", h))
+		}()
+		fmt.Printf("Listening on :443 (auto-TLS) and :80 (redirect)\n")
+		if err := s.ListenAndServeTLS("", ""); err != nil {
+			log.Fatal("Server failed:", err)
+		}
+	} else if *tlsCert != "" {
 		if err := r.RunTLS(addr, *tlsCert, *tlsKey); err != nil {
 			log.Fatal("Server failed:", err)
 		}

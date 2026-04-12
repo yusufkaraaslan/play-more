@@ -2,12 +2,15 @@ package server
 
 import (
 	"bytes"
+	"crypto/rand"
 	"embed"
+	"encoding/base64"
 	"html"
 	"io/fs"
 	"net/http"
 	"path/filepath"
 
+	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 	"github.com/yusufkaraaslan/play-more/internal/handlers"
 	"github.com/yusufkaraaslan/play-more/internal/middleware"
@@ -36,11 +39,10 @@ func New(frontendFS embed.FS, goatCounterURL string) *gin.Engine {
 		c.Header("X-Content-Type-Options", "nosniff")
 		c.Header("X-Frame-Options", "SAMEORIGIN")
 		c.Header("Referrer-Policy", "strict-origin-when-cross-origin")
-		csp := "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https://api.dicebear.com; connect-src 'self'; frame-src 'self'; media-src 'self' https://www.youtube.com; font-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com"
-		if goatCounterURL != "" {
-			csp = "default-src 'self'; script-src 'self' 'unsafe-inline' https://gc.zgo.at https://*.goatcounter.com https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https://api.dicebear.com https://gc.zgo.at; connect-src 'self' https://*.goatcounter.com https://cloudflareinsights.com; frame-src 'self'; media-src 'self' https://www.youtube.com; font-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com"
-		}
-		c.Header("Content-Security-Policy", csp)
+		// CSP is set per-request with nonce in the SPA handler; set a default for non-HTML
+		c.Set("goatcounter_url", goatCounterURL)
+		c.Header("Content-Security-Policy", "default-src 'self'; object-src 'none'")
+		// The SPA handler overrides this with a nonce-based CSP
 		if c.Request.Header.Get("X-Forwarded-Proto") == "https" || c.Request.TLS != nil {
 			c.Header("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload")
 		}
@@ -64,6 +66,9 @@ func New(frontendFS embed.FS, goatCounterURL string) *gin.Engine {
 		c.Next()
 	})
 
+	// Gzip compression (skip game file serving — handled separately with Range support)
+	r.Use(gzip.Gzip(gzip.DefaultCompression, gzip.WithExcludedPaths([]string{"/play/"})))
+
 	// Site analytics tracking
 	r.Use(middleware.TrackPageView())
 
@@ -80,6 +85,9 @@ func New(frontendFS embed.FS, goatCounterURL string) *gin.Engine {
 		auth.POST("/login", middleware.RateLimit(10, 300), handlers.Login)
 		auth.POST("/logout", handlers.Logout)
 		auth.GET("/me", handlers.Me)
+		auth.GET("/verify/:token", handlers.VerifyEmail)
+		auth.POST("/forgot-password", middleware.RateLimit(5, 3600), handlers.ForgotPassword)
+		auth.POST("/reset-password", middleware.RateLimit(10, 3600), handlers.ResetPassword)
 
 		// Games
 		api.GET("/games", handlers.ListGames)
@@ -154,9 +162,12 @@ func New(frontendFS embed.FS, goatCounterURL string) *gin.Engine {
 		api.GET("/following", middleware.AuthRequired(), handlers.GetFollowing)
 		api.GET("/followers/:username", handlers.GetFollowerCount)
 
-		// Collections
+		// Collections / Lists
 		api.GET("/collections", middleware.AuthRequired(), handlers.ListCollections)
+		api.GET("/collections/public", handlers.BrowsePublicLists)
+		api.GET("/collections/:id", handlers.GetCollection)
 		api.POST("/collections", middleware.AuthRequired(), handlers.CreateCollection)
+		api.PUT("/collections/:id", middleware.AuthRequired(), handlers.UpdateCollection)
 		api.DELETE("/collections/:id", middleware.AuthRequired(), handlers.DeleteCollection)
 		api.POST("/collections/:id/games", middleware.AuthRequired(), handlers.AddToCollection)
 		api.DELETE("/collections/:id/games/:game_id", middleware.AuthRequired(), handlers.RemoveFromCollection)
@@ -184,6 +195,12 @@ func New(frontendFS embed.FS, goatCounterURL string) *gin.Engine {
 
 	// Seed demo data (admin only, or first-run when no users exist)
 	r.POST("/api/seed", middleware.AuthOptional(), handlers.SeedData)
+
+	// Self-hosted avatar generation
+	r.GET("/avatar/:username", handlers.GetAvatar)
+
+	// API documentation
+	r.GET("/docs", handlers.APIDocs)
 
 	// Game file serving (for iframe player)
 	r.GET("/play/:id", handlers.ServeGameFiles)
@@ -217,10 +234,29 @@ func New(frontendFS embed.FS, goatCounterURL string) *gin.Engine {
 				c.String(http.StatusInternalServerError, "frontend not found")
 				return
 			}
+
+			// Generate per-request nonce for CSP
+			nonceBytes := make([]byte, 16)
+			rand.Read(nonceBytes)
+			nonce := base64.StdEncoding.EncodeToString(nonceBytes)
+
+			// Inject nonce into inline style and script tags
+			data = bytes.Replace(data, []byte("<style>"), []byte(`<style nonce="`+nonce+`">`), 1)
+			data = bytes.Replace(data, []byte("<script>"), []byte(`<script nonce="`+nonce+`">`), 1)
+
+			// Build nonce-based CSP
+			gcURL, _ := c.Get("goatcounter_url")
+			gcStr, _ := gcURL.(string)
+			csp := "default-src 'self'; script-src 'self' 'nonce-" + nonce + "'; style-src 'self' 'nonce-" + nonce + "' https://fonts.googleapis.com; img-src 'self' data: blob: https://img.youtube.com; connect-src 'self'; frame-src 'self' https://www.youtube.com; media-src 'self'; font-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; form-action 'self'"
+			if gcStr != "" {
+				csp = "default-src 'self'; script-src 'self' 'nonce-" + nonce + "' https://gc.zgo.at https://*.goatcounter.com https://static.cloudflareinsights.com; style-src 'self' 'nonce-" + nonce + "' https://fonts.googleapis.com; img-src 'self' data: blob: https://img.youtube.com https://gc.zgo.at; connect-src 'self' https://*.goatcounter.com https://cloudflareinsights.com; frame-src 'self' https://www.youtube.com; media-src 'self'; font-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; form-action 'self'"
+			}
+			c.Header("Content-Security-Policy", csp)
+
 			// Inject GoatCounter script if configured
-			if goatCounterURL != "" {
-				escaped := html.EscapeString(goatCounterURL)
-				snippet := []byte(`<script data-goatcounter="` + escaped + `/count" async src="//gc.zgo.at/count.js"></script></body>`)
+			if gcStr != "" {
+				escaped := html.EscapeString(gcStr)
+				snippet := []byte(`<script nonce="` + nonce + `" data-goatcounter="` + escaped + `/count" async src="//gc.zgo.at/count.js"></script></body>`)
 				data = bytes.Replace(data, []byte("</body>"), snippet, 1)
 			}
 			c.Data(http.StatusOK, "text/html; charset=utf-8", data)

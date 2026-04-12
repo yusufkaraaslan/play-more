@@ -102,11 +102,29 @@ func GetFollowerCount(c *gin.Context) {
 // ============ Collections ============
 
 type Collection struct {
-	ID        string   `json:"id"`
-	UserID    string   `json:"user_id"`
-	Name      string   `json:"name"`
-	GameIDs   []string `json:"game_ids"`
-	CreatedAt string   `json:"created_at"`
+	ID          string   `json:"id"`
+	UserID      string   `json:"user_id"`
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	GameIDs     []string `json:"game_ids"`
+	IsPublic    bool     `json:"is_public"`
+	Username    string   `json:"username"`
+	CreatedAt   string   `json:"created_at"`
+}
+
+func scanCollections(rows interface{ Next() bool; Scan(...any) error }) []Collection {
+	collections := []Collection{}
+	for rows.Next() {
+		var col Collection
+		var gameIDsJSON string
+		rows.Scan(&col.ID, &col.UserID, &col.Name, &col.Description, &gameIDsJSON, &col.IsPublic, &col.Username, &col.CreatedAt)
+		json.Unmarshal([]byte(gameIDsJSON), &col.GameIDs)
+		if col.GameIDs == nil {
+			col.GameIDs = []string{}
+		}
+		collections = append(collections, col)
+	}
+	return collections
 }
 
 func ListCollections(c *gin.Context) {
@@ -115,29 +133,96 @@ func ListCollections(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "not authenticated"})
 		return
 	}
-	rows, err := storage.DB.Query(`SELECT id, user_id, name, game_ids, created_at FROM collections WHERE user_id = ? ORDER BY created_at DESC`, user.ID)
+	rows, err := storage.DB.Query(`SELECT id, user_id, name, description, game_ids, is_public, username, created_at FROM collections WHERE user_id = ? ORDER BY created_at DESC`, user.ID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list collections"})
 		return
 	}
 	defer rows.Close()
+	c.JSON(http.StatusOK, gin.H{"collections": scanCollections(rows)})
+}
 
-	collections := []Collection{}
-	for rows.Next() {
-		var col Collection
-		var gameIDsJSON string
-		rows.Scan(&col.ID, &col.UserID, &col.Name, &gameIDsJSON, &col.CreatedAt)
-		json.Unmarshal([]byte(gameIDsJSON), &col.GameIDs)
-		if col.GameIDs == nil {
-			col.GameIDs = []string{}
-		}
-		collections = append(collections, col)
+// GetCollection returns a single collection (public or owned)
+func GetCollection(c *gin.Context) {
+	colID := c.Param("id")
+	var col Collection
+	var gameIDsJSON string
+	err := storage.DB.QueryRow(
+		`SELECT id, user_id, name, description, game_ids, is_public, username, created_at FROM collections WHERE id = ?`, colID,
+	).Scan(&col.ID, &col.UserID, &col.Name, &col.Description, &gameIDsJSON, &col.IsPublic, &col.Username, &col.CreatedAt)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "list not found"})
+		return
 	}
-	c.JSON(http.StatusOK, gin.H{"collections": collections})
+	json.Unmarshal([]byte(gameIDsJSON), &col.GameIDs)
+	if col.GameIDs == nil {
+		col.GameIDs = []string{}
+	}
+	// Check access: public or owner
+	user := middleware.GetUser(c)
+	if !col.IsPublic && (user == nil || user.ID != col.UserID) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "list not found"})
+		return
+	}
+	// Resolve game details
+	games := []models.Game{}
+	for _, gid := range col.GameIDs {
+		g, err := models.GetGameByID(gid)
+		if err == nil {
+			games = append(games, *g)
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"collection": col, "games": games})
+}
+
+// BrowsePublicLists returns recently created public lists
+func BrowsePublicLists(c *gin.Context) {
+	rows, err := storage.DB.Query(
+		`SELECT c.id, c.user_id, c.name, c.description, c.game_ids, c.is_public, u.username, c.created_at
+		 FROM collections c JOIN users u ON c.user_id = u.id
+		 WHERE c.is_public = 1 ORDER BY c.created_at DESC LIMIT 20`,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed"})
+		return
+	}
+	defer rows.Close()
+	c.JSON(http.StatusOK, gin.H{"collections": scanCollections(rows)})
+}
+
+// UpdateCollection updates name, description, visibility
+func UpdateCollection(c *gin.Context) {
+	user := middleware.GetUser(c)
+	if user == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "not authenticated"})
+		return
+	}
+	var input struct {
+		Name        *string `json:"name"`
+		Description *string `json:"description"`
+		IsPublic    *bool   `json:"is_public"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	colID := c.Param("id")
+	if input.Name != nil {
+		storage.DB.Exec(`UPDATE collections SET name = ? WHERE id = ? AND user_id = ?`, *input.Name, colID, user.ID)
+	}
+	if input.Description != nil {
+		storage.DB.Exec(`UPDATE collections SET description = ? WHERE id = ? AND user_id = ?`, *input.Description, colID, user.ID)
+	}
+	if input.IsPublic != nil {
+		storage.DB.Exec(`UPDATE collections SET is_public = ? WHERE id = ? AND user_id = ?`, *input.IsPublic, colID, user.ID)
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "updated"})
 }
 
 type collectionInput struct {
-	Name string `json:"name" binding:"required"`
+	Name        string `json:"name" binding:"required"`
+	Description string `json:"description"`
+	IsPublic    bool   `json:"is_public"`
 }
 
 func CreateCollection(c *gin.Context) {
@@ -152,7 +237,8 @@ func CreateCollection(c *gin.Context) {
 		return
 	}
 	id := uuid.New().String()
-	storage.DB.Exec(`INSERT INTO collections (id, user_id, name) VALUES (?, ?, ?)`, id, user.ID, input.Name)
+	storage.DB.Exec(`INSERT INTO collections (id, user_id, name, description, is_public, username) VALUES (?, ?, ?, ?, ?, ?)`,
+		id, user.ID, input.Name, input.Description, input.IsPublic, user.Username)
 	c.JSON(http.StatusCreated, gin.H{"id": id, "message": "collection created"})
 }
 
