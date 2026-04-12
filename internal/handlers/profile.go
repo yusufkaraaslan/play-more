@@ -28,12 +28,13 @@ func GetProfile(c *gin.Context) {
 }
 
 type profileInput struct {
-	Username   string        `json:"username"`
-	Bio        string        `json:"bio"`
-	AvatarURL  string        `json:"avatar_url"`
-	BannerURL  string        `json:"banner_url"`
-	ThemeColor string        `json:"theme_color"`
-	Links      []models.Link `json:"links"`
+	Username      string        `json:"username"`
+	Bio           string        `json:"bio"`
+	AvatarURL     string        `json:"avatar_url"`
+	BannerURL     string        `json:"banner_url"`
+	ThemeColor    string        `json:"theme_color"`
+	Links         []models.Link `json:"links"`
+	AutoplayMedia *bool         `json:"autoplay_media"`
 }
 
 func UpdateProfile(c *gin.Context) {
@@ -59,7 +60,12 @@ func UpdateProfile(c *gin.Context) {
 
 	input.Bio = SanitizePlain(input.Bio)
 
-	if err := user.Update(input.Username, input.Bio, input.AvatarURL, input.BannerURL, input.ThemeColor, input.Links); err != nil {
+	autoplay := user.AutoplayMedia
+	if input.AutoplayMedia != nil {
+		autoplay = *input.AutoplayMedia
+	}
+
+	if err := user.Update(input.Username, input.Bio, input.AvatarURL, input.BannerURL, input.ThemeColor, input.Links, autoplay); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update profile"})
 		return
 	}

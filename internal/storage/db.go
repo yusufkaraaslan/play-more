@@ -48,6 +48,7 @@ func migrate() error {
 		`ALTER TABLE page_views ADD COLUMN session_id TEXT DEFAULT ''`,
 		`ALTER TABLE page_views ADD COLUMN screen_res TEXT DEFAULT ''`,
 		`ALTER TABLE page_views ADD COLUMN has_webgpu INTEGER DEFAULT -1`,
+		`ALTER TABLE users ADD COLUMN autoplay_media BOOLEAN DEFAULT 0`,
 	}
 	for _, m := range migrations {
 		DB.Exec(m) // ignore errors (column already exists)
@@ -67,6 +68,7 @@ CREATE TABLE IF NOT EXISTS users (
     banner_url  TEXT DEFAULT '',
     theme_color TEXT DEFAULT '#66c0f4',
     links       TEXT DEFAULT '[]',
+    autoplay_media BOOLEAN DEFAULT 0,
     created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
