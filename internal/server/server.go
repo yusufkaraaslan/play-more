@@ -247,9 +247,10 @@ func New(frontendFS embed.FS, goatCounterURL string) *gin.Engine {
 			// Build nonce-based CSP
 			gcURL, _ := c.Get("goatcounter_url")
 			gcStr, _ := gcURL.(string)
-			csp := "default-src 'self'; script-src 'self' 'nonce-" + nonce + "'; style-src 'self' 'nonce-" + nonce + "' https://fonts.googleapis.com; img-src 'self' data: blob: https://img.youtube.com; connect-src 'self'; frame-src 'self' https://www.youtube.com; media-src 'self'; font-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; form-action 'self'"
+			// Nonce protects <script>/<style> blocks; unsafe-inline on -attr allows onclick/style attributes
+			csp := "default-src 'self'; script-src 'self' 'nonce-" + nonce + "'; script-src-attr 'unsafe-inline'; style-src 'self' 'nonce-" + nonce + "' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; img-src 'self' data: blob: https://img.youtube.com; connect-src 'self'; frame-src 'self' https://www.youtube.com; media-src 'self'; font-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; form-action 'self'"
 			if gcStr != "" {
-				csp = "default-src 'self'; script-src 'self' 'nonce-" + nonce + "' https://gc.zgo.at https://*.goatcounter.com https://static.cloudflareinsights.com; style-src 'self' 'nonce-" + nonce + "' https://fonts.googleapis.com; img-src 'self' data: blob: https://img.youtube.com https://gc.zgo.at; connect-src 'self' https://*.goatcounter.com https://cloudflareinsights.com; frame-src 'self' https://www.youtube.com; media-src 'self'; font-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; form-action 'self'"
+				csp = "default-src 'self'; script-src 'self' 'nonce-" + nonce + "' https://gc.zgo.at https://*.goatcounter.com https://static.cloudflareinsights.com; script-src-attr 'unsafe-inline'; style-src 'self' 'nonce-" + nonce + "' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; img-src 'self' data: blob: https://img.youtube.com https://gc.zgo.at; connect-src 'self' https://*.goatcounter.com https://cloudflareinsights.com; frame-src 'self' https://www.youtube.com; media-src 'self'; font-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; form-action 'self'"
 			}
 			c.Header("Content-Security-Policy", csp)
 
