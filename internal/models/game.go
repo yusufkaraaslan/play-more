@@ -27,6 +27,7 @@ type Game struct {
 	EntryFile   string   `json:"entry_file"`
 	Screenshots []string `json:"screenshots"`
 	VideoURL    string   `json:"video_url"`
+	Videos      []string `json:"videos"`
 	Published   bool     `json:"published"`
 	ThemeColor  string   `json:"theme_color"`
 	HeaderImage string   `json:"header_image"`
@@ -95,7 +96,7 @@ func GetGameByID(id string) (*Game, error) {
 	return scanGame(storage.DB.QueryRow(
 		`SELECT g.id, g.title, g.slug, g.genre, g.price, g.discount, g.description,
 		        g.cover_path, g.developer_id, g.tags, g.is_webgpu, g.file_path, g.entry_file,
-		        g.screenshots, g.video_url, g.published, g.theme_color, g.header_image, g.custom_about, g.features, g.sys_req_min, g.sys_req_rec, g.created_at, g.updated_at,
+		        g.screenshots, g.video_url, g.videos, g.published, g.theme_color, g.header_image, g.custom_about, g.features, g.sys_req_min, g.sys_req_rec, g.created_at, g.updated_at,
 		        u.username,
 		        COALESCE((SELECT AVG(rating) FROM reviews WHERE game_id = g.id), 0),
 		        COALESCE((SELECT COUNT(*) FROM reviews WHERE game_id = g.id), 0),
@@ -108,7 +109,7 @@ func GetGameBySlug(slug string) (*Game, error) {
 	return scanGame(storage.DB.QueryRow(
 		`SELECT g.id, g.title, g.slug, g.genre, g.price, g.discount, g.description,
 		        g.cover_path, g.developer_id, g.tags, g.is_webgpu, g.file_path, g.entry_file,
-		        g.screenshots, g.video_url, g.published, g.theme_color, g.header_image, g.custom_about, g.features, g.sys_req_min, g.sys_req_rec, g.created_at, g.updated_at,
+		        g.screenshots, g.video_url, g.videos, g.published, g.theme_color, g.header_image, g.custom_about, g.features, g.sys_req_min, g.sys_req_rec, g.created_at, g.updated_at,
 		        u.username,
 		        COALESCE((SELECT AVG(rating) FROM reviews WHERE game_id = g.id), 0),
 		        COALESCE((SELECT COUNT(*) FROM reviews WHERE game_id = g.id), 0),
@@ -118,12 +119,13 @@ func GetGameBySlug(slug string) (*Game, error) {
 }
 
 type GameListParams struct {
-	Genre  string
-	Search string
-	Sort   string
-	Page   int
-	Limit  int
-	DevID  string
+	Genre      string
+	Search     string
+	Sort       string
+	Page       int
+	Limit      int
+	DevID      string
+	IncludeAll bool // include unpublished (for developer's own dashboard)
 }
 
 func ListGames(p GameListParams) ([]Game, int, error) {
@@ -134,8 +136,11 @@ func ListGames(p GameListParams) ([]Game, int, error) {
 		p.Limit = 12
 	}
 
-	where := []string{"g.published = 1"}
+	where := []string{}
 	args := []any{}
+	if !p.IncludeAll {
+		where = append(where, "g.published = 1")
+	}
 
 	if p.Genre != "" {
 		where = append(where, "g.genre = ?")
@@ -159,7 +164,10 @@ func ListGames(p GameListParams) ([]Game, int, error) {
 		args = append(args, p.DevID)
 	}
 
-	whereClause := strings.Join(where, " AND ")
+	whereClause := "1=1"
+	if len(where) > 0 {
+		whereClause = strings.Join(where, " AND ")
+	}
 
 	var total int
 	storage.DB.QueryRow(`SELECT COUNT(*) FROM games g WHERE `+whereClause, args...).Scan(&total)
@@ -184,7 +192,7 @@ func ListGames(p GameListParams) ([]Game, int, error) {
 	rows, err := storage.DB.Query(
 		`SELECT g.id, g.title, g.slug, g.genre, g.price, g.discount, g.description,
 		        g.cover_path, g.developer_id, g.tags, g.is_webgpu, g.file_path, g.entry_file,
-		        g.screenshots, g.video_url, g.published, g.theme_color, g.header_image, g.custom_about, g.features, g.sys_req_min, g.sys_req_rec, g.created_at, g.updated_at,
+		        g.screenshots, g.video_url, g.videos, g.published, g.theme_color, g.header_image, g.custom_about, g.features, g.sys_req_min, g.sys_req_rec, g.created_at, g.updated_at,
 		        u.username,
 		        COALESCE((SELECT AVG(rating) FROM reviews WHERE game_id = g.id), 0),
 		        COALESCE((SELECT COUNT(*) FROM reviews WHERE game_id = g.id), 0),
@@ -238,43 +246,49 @@ type scannable interface {
 	Scan(dest ...any) error
 }
 
-func parseGameJSON(g *Game, tagsJSON, screenshotsJSON, featuresJSON string) {
+func parseGameJSON(g *Game, tagsJSON, screenshotsJSON, videosJSON, featuresJSON string) {
 	json.Unmarshal([]byte(tagsJSON), &g.Tags)
 	json.Unmarshal([]byte(screenshotsJSON), &g.Screenshots)
+	json.Unmarshal([]byte(videosJSON), &g.Videos)
 	json.Unmarshal([]byte(featuresJSON), &g.Features)
 	if g.Tags == nil { g.Tags = []string{} }
 	if g.Screenshots == nil { g.Screenshots = []string{} }
+	if g.Videos == nil { g.Videos = []string{} }
 	if g.Features == nil { g.Features = []string{} }
+	// Backward compat: derive video_url from first video
+	if g.VideoURL == "" && len(g.Videos) > 0 {
+		g.VideoURL = g.Videos[0]
+	}
 }
 
 func scanGame(row *sql.Row) (*Game, error) {
 	g := &Game{}
-	var tagsJSON, screenshotsJSON, featuresJSON string
+	var tagsJSON, screenshotsJSON, videosJSON, featuresJSON string
 	err := row.Scan(
 		&g.ID, &g.Title, &g.Slug, &g.Genre, &g.Price, &g.Discount, &g.Description,
 		&g.CoverPath, &g.DeveloperID, &tagsJSON, &g.IsWebGPU, &g.FilePath, &g.EntryFile,
-		&screenshotsJSON, &g.VideoURL, &g.Published,
+		&screenshotsJSON, &g.VideoURL, &videosJSON, &g.Published,
 		&g.ThemeColor, &g.HeaderImage, &g.CustomAbout, &featuresJSON, &g.SysReqMin, &g.SysReqRec,
 		&g.CreatedAt, &g.UpdatedAt,
 		&g.DeveloperName, &g.AvgRating, &g.ReviewCount, &g.PlayCount,
 	)
 	if err != nil { return nil, err }
-	parseGameJSON(g, tagsJSON, screenshotsJSON, featuresJSON)
+	parseGameJSON(g, tagsJSON, screenshotsJSON, videosJSON, featuresJSON)
 	return g, nil
 }
 
 func scanGameRow(rows *sql.Rows) (*Game, error) {
 	g := &Game{}
-	var tagsJSON, screenshotsJSON, featuresJSON string
+	var tagsJSON, screenshotsJSON, videosJSON, featuresJSON string
 	err := rows.Scan(
 		&g.ID, &g.Title, &g.Slug, &g.Genre, &g.Price, &g.Discount, &g.Description,
 		&g.CoverPath, &g.DeveloperID, &tagsJSON, &g.IsWebGPU, &g.FilePath, &g.EntryFile,
-		&screenshotsJSON, &g.VideoURL, &g.Published,
+		&screenshotsJSON, &g.VideoURL, &videosJSON, &g.Published,
 		&g.ThemeColor, &g.HeaderImage, &g.CustomAbout, &featuresJSON, &g.SysReqMin, &g.SysReqRec,
 		&g.CreatedAt, &g.UpdatedAt,
 		&g.DeveloperName, &g.AvgRating, &g.ReviewCount, &g.PlayCount,
 	)
 	if err != nil { return nil, err }
-	parseGameJSON(g, tagsJSON, screenshotsJSON, featuresJSON)
+	parseGameJSON(g, tagsJSON, screenshotsJSON, videosJSON, featuresJSON)
 	return g, nil
 }

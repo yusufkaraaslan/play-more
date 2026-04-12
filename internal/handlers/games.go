@@ -154,6 +154,14 @@ func UploadGame(c *gin.Context) {
 		}
 	}
 
+	// Handle video URLs
+	videoURL := strings.TrimSpace(c.PostForm("video_url"))
+	if videoURL != "" {
+		videos := []string{videoURL}
+		videosJSON, _ := json.Marshal(videos)
+		storage.DB.Exec(`UPDATE games SET video_url = ?, videos = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, videoURL, string(videosJSON), game.ID)
+	}
+
 	// Mark user as developer
 	if !user.IsDeveloper {
 		storage.DB.Exec(`UPDATE users SET is_developer = 1 WHERE id = ?`, user.ID)
@@ -187,8 +195,17 @@ func UpdateGame(c *gin.Context) {
 		Genre       string   `json:"genre"`
 		Description string   `json:"description"`
 		Price       float64  `json:"price"`
+		Discount    *int     `json:"discount"`
 		Tags        []string `json:"tags"`
 		IsWebGPU    bool     `json:"is_webgpu"`
+		Videos      []string `json:"videos"`
+		VideoURL    *string  `json:"video_url"`
+		ThemeColor  *string  `json:"theme_color"`
+		HeaderImage *string  `json:"header_image"`
+		CustomAbout *string  `json:"custom_about"`
+		Features    []string `json:"features"`
+		SysReqMin   *string  `json:"sys_req_min"`
+		SysReqRec   *string  `json:"sys_req_rec"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		log.Printf("Validation error in UpdateGame: %v", err)
@@ -201,7 +218,143 @@ func UpdateGame(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"game": game})
+	// Update extended fields
+	if input.Videos != nil {
+		videosJSON, _ := json.Marshal(input.Videos)
+		videoURL := ""
+		if len(input.Videos) > 0 {
+			videoURL = input.Videos[0]
+		}
+		storage.DB.Exec(`UPDATE games SET videos = ?, video_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, string(videosJSON), videoURL, game.ID)
+	} else if input.VideoURL != nil {
+		// Legacy single video_url update
+		storage.DB.Exec(`UPDATE games SET video_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, *input.VideoURL, game.ID)
+	}
+	if input.Discount != nil {
+		storage.DB.Exec(`UPDATE games SET discount = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, *input.Discount, game.ID)
+	}
+	if input.ThemeColor != nil {
+		storage.DB.Exec(`UPDATE games SET theme_color = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, *input.ThemeColor, game.ID)
+	}
+	if input.HeaderImage != nil {
+		storage.DB.Exec(`UPDATE games SET header_image = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, *input.HeaderImage, game.ID)
+	}
+	if input.CustomAbout != nil {
+		storage.DB.Exec(`UPDATE games SET custom_about = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, *input.CustomAbout, game.ID)
+	}
+	if input.Features != nil {
+		featJSON, _ := json.Marshal(input.Features)
+		storage.DB.Exec(`UPDATE games SET features = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, string(featJSON), game.ID)
+	}
+	if input.SysReqMin != nil {
+		storage.DB.Exec(`UPDATE games SET sys_req_min = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, *input.SysReqMin, game.ID)
+	}
+	if input.SysReqRec != nil {
+		storage.DB.Exec(`UPDATE games SET sys_req_rec = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, *input.SysReqRec, game.ID)
+	}
+
+	// Re-fetch updated game
+	updated, err := models.GetGameByID(game.ID)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"game": game})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"game": updated})
+}
+
+// ToggleVisibility lets a developer publish/unpublish their own game.
+func ToggleVisibility(c *gin.Context) {
+	user := middleware.GetUser(c)
+	if user == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "not authenticated"})
+		return
+	}
+	game, err := models.GetGameByID(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "game not found"})
+		return
+	}
+	if game.DeveloperID != user.ID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "not your game"})
+		return
+	}
+	var input struct {
+		Published bool `json:"published"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
+		return
+	}
+	storage.DB.Exec(`UPDATE games SET published = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, input.Published, game.ID)
+	c.JSON(http.StatusOK, gin.H{"published": input.Published})
+}
+
+// ManageScreenshots handles adding/removing screenshots for an existing game.
+func ManageScreenshots(c *gin.Context) {
+	user := middleware.GetUser(c)
+	if user == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "not authenticated"})
+		return
+	}
+	game, err := models.GetGameByID(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "game not found"})
+		return
+	}
+	if game.DeveloperID != user.ID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "not your game"})
+		return
+	}
+
+	form, _ := c.MultipartForm()
+	if form == nil || form.File["screenshots"] == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "no screenshots provided"})
+		return
+	}
+
+	screenshots := append([]string{}, game.Screenshots...)
+	baseIdx := len(screenshots)
+	for i, fh := range form.File["screenshots"] {
+		f, err := fh.Open()
+		if err != nil {
+			continue
+		}
+		data, _ := io.ReadAll(f)
+		f.Close()
+		name := fmt.Sprintf("screenshot_%d%s", baseIdx+i, filepath.Ext(fh.Filename))
+		storage.SaveGameFile(game.ID, name, data)
+		screenshots = append(screenshots, "/play/"+game.ID+"/"+name)
+	}
+	ssJSON, _ := json.Marshal(screenshots)
+	storage.DB.Exec(`UPDATE games SET screenshots = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, string(ssJSON), game.ID)
+	c.JSON(http.StatusOK, gin.H{"screenshots": screenshots})
+}
+
+// DeleteScreenshot removes a specific screenshot by index.
+func DeleteScreenshot(c *gin.Context) {
+	user := middleware.GetUser(c)
+	if user == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "not authenticated"})
+		return
+	}
+	game, err := models.GetGameByID(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "game not found"})
+		return
+	}
+	if game.DeveloperID != user.ID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "not your game"})
+		return
+	}
+	idx, err := strconv.Atoi(c.Param("index"))
+	if err != nil || idx < 0 || idx >= len(game.Screenshots) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid index"})
+		return
+	}
+	screenshots := append(game.Screenshots[:idx], game.Screenshots[idx+1:]...)
+	ssJSON, _ := json.Marshal(screenshots)
+	storage.DB.Exec(`UPDATE games SET screenshots = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, string(ssJSON), game.ID)
+	c.JSON(http.StatusOK, gin.H{"screenshots": screenshots})
 }
 
 func DeleteGame(c *gin.Context) {

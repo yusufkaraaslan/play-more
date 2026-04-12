@@ -107,10 +107,17 @@ func GetDeveloperGames(c *gin.Context) {
 		return
 	}
 
+	// Show unpublished games only to the developer themselves
+	includeAll := false
+	if reqUser := middleware.GetUser(c); reqUser != nil && reqUser.ID == user.ID {
+		includeAll = true
+	}
+
 	games, total, _ := models.ListGames(models.GameListParams{
-		DevID: user.ID,
-		Limit: 50,
-		Page:  1,
+		DevID:      user.ID,
+		Limit:      50,
+		Page:       1,
+		IncludeAll: includeAll,
 	})
 
 	c.JSON(http.StatusOK, gin.H{"games": games, "total": total})

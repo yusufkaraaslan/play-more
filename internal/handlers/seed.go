@@ -139,8 +139,12 @@ func SeedData(c *gin.Context) {
 		}
 
 		// Update extra fields
-		storage.DB.Exec(`UPDATE games SET discount=?, video_url=?, custom_about=?, features=?, sys_req_min=?, sys_req_rec=? WHERE id=?`,
-			sg.Discount, sg.VideoURL, sg.CustomAbout, mustJSON(sg.Features), sg.SysReqMin, sg.SysReqRec, game.ID)
+		videosJSON := "[]"
+		if sg.VideoURL != "" {
+			videosJSON = `["` + sg.VideoURL + `"]`
+		}
+		storage.DB.Exec(`UPDATE games SET discount=?, video_url=?, videos=?, custom_about=?, features=?, sys_req_min=?, sys_req_rec=? WHERE id=?`,
+			sg.Discount, sg.VideoURL, videosJSON, sg.CustomAbout, mustJSON(sg.Features), sg.SysReqMin, sg.SysReqRec, game.ID)
 
 		// Generate cover image
 		coverPath := generateCoverImage(game.ID, sg.Title, sg.Color1, sg.Color2)

@@ -88,6 +88,9 @@ func New(frontendFS embed.FS, goatCounterURL string) *gin.Engine {
 		api.PUT("/games/:id", middleware.AuthRequired(), handlers.UpdateGame)
 		api.DELETE("/games/:id", middleware.AuthRequired(), handlers.DeleteGame)
 		api.POST("/games/:id/reupload", middleware.AuthRequired(), handlers.ReuploadGameFiles)
+		api.PUT("/games/:id/visibility", middleware.AuthRequired(), handlers.ToggleVisibility)
+		api.POST("/games/:id/screenshots", middleware.AuthRequired(), handlers.ManageScreenshots)
+		api.DELETE("/games/:id/screenshots/:index", middleware.AuthRequired(), handlers.DeleteScreenshot)
 
 		// Reviews
 		api.GET("/games/:id/reviews", handlers.ListReviews)

@@ -49,6 +49,9 @@ func migrate() error {
 		`ALTER TABLE page_views ADD COLUMN screen_res TEXT DEFAULT ''`,
 		`ALTER TABLE page_views ADD COLUMN has_webgpu INTEGER DEFAULT -1`,
 		`ALTER TABLE users ADD COLUMN autoplay_media BOOLEAN DEFAULT 0`,
+		`ALTER TABLE games ADD COLUMN videos TEXT DEFAULT '[]'`,
+		// Migrate existing video_url into videos array
+		`UPDATE games SET videos = '["' || video_url || '"]' WHERE video_url != '' AND videos = '[]'`,
 	}
 	for _, m := range migrations {
 		DB.Exec(m) // ignore errors (column already exists)
@@ -94,6 +97,7 @@ CREATE TABLE IF NOT EXISTS games (
     entry_file  TEXT DEFAULT 'index.html',
     screenshots TEXT DEFAULT '[]',
     video_url   TEXT DEFAULT '',
+    videos      TEXT DEFAULT '[]',
     published   BOOLEAN DEFAULT 1,
     theme_color TEXT DEFAULT '',
     header_image TEXT DEFAULT '',

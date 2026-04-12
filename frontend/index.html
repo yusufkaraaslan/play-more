@@ -185,6 +185,19 @@
         .game-media-thumb-video::before { content: ''; position: absolute; top: 50%; left: 50%; width: 0; height: 0; margin: -7px 0 0 -3px; border-left: 11px solid #fff; border-top: 7px solid transparent; border-bottom: 7px solid transparent; z-index: 1; }
         .game-media-thumb-video-fallback { display: flex; align-items: center; justify-content: center; color: var(--text-secondary); font-size: 12px; background: rgba(0,0,0,0.5); }
         .game-media-thumb-video-fallback::before, .game-media-thumb-video-fallback::after { display: none; }
+        .lightbox { position: fixed; inset: 0; z-index: 10000; background: rgba(0,0,0,0.92); display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.2s; pointer-events: none; }
+        .lightbox.active { opacity: 1; pointer-events: auto; }
+        .lightbox-content { position: relative; width: 90vw; max-width: 1200px; aspect-ratio: 16 / 9; max-height: 85vh; }
+        .lightbox-content img, .lightbox-content iframe { width: 100%; height: 100%; object-fit: contain; border: none; display: block; border-radius: 4px; }
+        .lightbox-close { position: absolute; top: -40px; right: 0; background: none; border: none; color: #fff; font-size: 28px; cursor: pointer; padding: 4px 10px; opacity: 0.7; transition: opacity 0.2s; z-index: 1; }
+        .lightbox-close:hover { opacity: 1; }
+        .lightbox-nav { position: absolute; top: 50%; transform: translateY(-50%); background: rgba(0,0,0,0.6); border: none; color: #fff; font-size: 28px; cursor: pointer; padding: 12px 16px; opacity: 0; transition: opacity 0.2s; border-radius: 4px; z-index: 1; }
+        .lightbox:hover .lightbox-nav { opacity: 0.7; }
+        .lightbox-nav:hover { opacity: 1 !important; background: rgba(255,255,255,0.15); }
+        .lightbox-prev { left: 20px; }
+        .lightbox-next { right: 20px; }
+        .lightbox-counter { position: absolute; bottom: -32px; left: 50%; transform: translateX(-50%); color: rgba(255,255,255,0.6); font-size: 13px; white-space: nowrap; }
+        .game-media-main img { cursor: pointer; }
         .game-section { background: rgba(0,0,0,0.2); border-radius: 8px; padding: 20px; margin-bottom: 20px; }
         .game-section h3 { font-size: 16px; text-transform: uppercase; margin-bottom: 15px; letter-spacing: 1px; }
         .game-sidebar { display: flex; flex-direction: column; gap: 15px; }
@@ -790,6 +803,7 @@
 
         function navigate(tab, updateHash = true) {
             currentTab = tab;
+            if (lightboxOpen) closeLightbox();
             detachMediaKeyNav();
             document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
             document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
@@ -977,6 +991,8 @@
             formData.append('description', document.getElementById('upload-description').value);
             formData.append('tags', document.getElementById('upload-tags').value);
             formData.append('is_webgpu', document.getElementById('upload-webgpu').checked ? 'true' : 'false');
+            const videoUrl = document.getElementById('upload-video').value.trim();
+            if (videoUrl) formData.append('video_url', videoUrl);
             const coverFile = document.getElementById('upload-cover').files[0];
             if (coverFile) formData.append('cover', coverFile);
             const ssFiles = document.getElementById('upload-screenshots').files;
@@ -1133,7 +1149,8 @@
 
                 // Build unified media list: video (if any) first, then screenshots
                 currentMediaList = [];
-                if (game.video_url) currentMediaList.push({type:'video', url: game.video_url});
+                const gameVideos = (game.videos && game.videos.length > 0) ? game.videos : (game.video_url ? [game.video_url] : []);
+                gameVideos.forEach(v => currentMediaList.push({type:'video', url: v}));
                 if (game.screenshots) game.screenshots.forEach(s => currentMediaList.push({type:'image', url: s}));
                 if (currentMediaList.length === 0 && coverSrc) currentMediaList.push({type:'image', url: coverSrc});
                 currentMediaIdx = 0;
@@ -1154,7 +1171,7 @@
                             }
                         }
                     } else {
-                        html += '<img src="' + esc(first.url) + '" id="media-main-img">';
+                        html += '<img src="' + esc(first.url) + '" id="media-main-img" onclick="openLightbox(0)">';
                     }
                 }
                 html += '</div>';
@@ -1366,21 +1383,21 @@
             const main = document.getElementById('media-main');
             if (!main) return;
             if (item.type === 'video') {
-                // User-initiated click or keyboard nav — autoplay the embed (muted for consistency)
                 main.innerHTML = '<iframe src="' + escapeHtml(ytAutoplayUrl(item.url)) + '" allow="autoplay; encrypted-media" allowfullscreen></iframe>';
             } else {
-                main.innerHTML = '<img src="' + escapeHtml(item.url) + '" id="media-main-img">';
+                main.innerHTML = '<img src="' + escapeHtml(item.url) + '" id="media-main-img" onclick="openLightbox(' + idx + ')">';
             }
             const thumbs = document.querySelectorAll('#media-thumbs .game-media-thumb');
             thumbs.forEach((t, i) => t.classList.toggle('active', i === idx));
             if (thumbs[idx] && userInitiated) thumbs[idx].scrollIntoView({block:'nearest', inline:'center', behavior:'smooth'});
         }
         function mediaKeyHandler(e) {
+            if (e.key === 'Escape' && lightboxOpen) { e.preventDefault(); closeLightbox(); return; }
             if (currentMediaList.length < 2) return;
             const tag = (e.target.tagName || '').toLowerCase();
             if (tag === 'input' || tag === 'textarea' || e.target.isContentEditable) return;
-            if (e.key === 'ArrowRight') { e.preventDefault(); showMediaItem((currentMediaIdx + 1) % currentMediaList.length, true); }
-            else if (e.key === 'ArrowLeft') { e.preventDefault(); showMediaItem((currentMediaIdx - 1 + currentMediaList.length) % currentMediaList.length, true); }
+            if (e.key === 'ArrowRight') { e.preventDefault(); if (lightboxOpen) lightboxNav(1); else showMediaItem((currentMediaIdx + 1) % currentMediaList.length, true); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); if (lightboxOpen) lightboxNav(-1); else showMediaItem((currentMediaIdx - 1 + currentMediaList.length) % currentMediaList.length, true); }
         }
         function attachMediaKeyNav() {
             document.removeEventListener('keydown', mediaKeyHandler);
@@ -1388,6 +1405,58 @@
         }
         function detachMediaKeyNav() {
             document.removeEventListener('keydown', mediaKeyHandler);
+        }
+
+        // ============ Lightbox ============
+        let lightboxOpen = false;
+        function openLightbox(idx) {
+            if (currentMediaList.length === 0) return;
+            if (idx === undefined) idx = currentMediaIdx;
+            lightboxOpen = true;
+            currentMediaIdx = idx;
+            const lb = document.getElementById('lightbox');
+            if (!lb) {
+                const el = document.createElement('div');
+                el.id = 'lightbox';
+                el.className = 'lightbox';
+                el.onclick = function(e) { if (e.target === el) closeLightbox(); };
+                el.innerHTML = '<button class="lightbox-close" onclick="closeLightbox()">&times;</button>' +
+                    '<button class="lightbox-nav lightbox-prev" onclick="lightboxNav(-1)">&lsaquo;</button>' +
+                    '<div class="lightbox-content" id="lightbox-content"></div>' +
+                    '<button class="lightbox-nav lightbox-next" onclick="lightboxNav(1)">&rsaquo;</button>' +
+                    '<div class="lightbox-counter" id="lightbox-counter"></div>';
+                document.body.appendChild(el);
+                requestAnimationFrame(() => el.classList.add('active'));
+            } else {
+                lb.classList.add('active');
+            }
+            renderLightboxItem(idx);
+            document.body.style.overflow = 'hidden';
+        }
+        function closeLightbox() {
+            lightboxOpen = false;
+            const lb = document.getElementById('lightbox');
+            if (lb) { lb.classList.remove('active'); }
+            document.body.style.overflow = '';
+        }
+        function renderLightboxItem(idx) {
+            const item = currentMediaList[idx];
+            const cnt = document.getElementById('lightbox-content');
+            const ctr = document.getElementById('lightbox-counter');
+            if (!cnt || !item) return;
+            if (item.type === 'video') {
+                cnt.innerHTML = '<iframe src="' + escapeHtml(ytAutoplayUrl(item.url)) + '" allow="autoplay; encrypted-media" allowfullscreen></iframe>';
+            } else {
+                cnt.innerHTML = '<img src="' + escapeHtml(item.url) + '">';
+            }
+            if (ctr) ctr.textContent = (idx + 1) + ' / ' + currentMediaList.length;
+            // sync inline gallery
+            showMediaItem(idx, false);
+        }
+        function lightboxNav(dir) {
+            const next = (currentMediaIdx + dir + currentMediaList.length) % currentMediaList.length;
+            currentMediaIdx = next;
+            renderLightboxItem(next);
         }
 
         function selectStar(n) { selectedRating=n; document.querySelectorAll('#star-selector .star-select').forEach((s,i) => { s.classList.toggle('active',i<n); s.textContent=i<n?'★':'☆'; }); }
@@ -1916,7 +1985,7 @@
         /* ============ Modal ============ */
         function showModal(title, text, onConfirm) {
             document.getElementById('modal-title').textContent = title;
-            document.getElementById('modal-text').textContent = text;
+            document.getElementById('modal-text').innerHTML = text;
             document.getElementById('modal-confirm').onclick = onConfirm;
             document.getElementById('modal').classList.add('active');
         }
@@ -2047,6 +2116,7 @@
         }
 
         /* ============ Dashboard ============ */
+        let dashboardSort = 'newest';
         async function loadDashboard() {
             if (!currentUser) { showAuth('login'); return; }
             try {
@@ -2056,52 +2126,161 @@
                     container.innerHTML = '<div class="empty-state">No uploaded games. <a onclick="navigate(\'upload\')">Upload your first game!</a></div>';
                     return;
                 }
-                container.innerHTML = data.games.map(g => {
+                let games = data.games;
+                // Sort
+                if (dashboardSort === 'oldest') games.sort((a,b) => a.created_at.localeCompare(b.created_at));
+                else if (dashboardSort === 'popular') games.sort((a,b) => (b.play_count||0) - (a.play_count||0));
+                else if (dashboardSort === 'rating') games.sort((a,b) => (b.avg_rating||0) - (a.avg_rating||0));
+                else if (dashboardSort === 'title') games.sort((a,b) => a.title.localeCompare(b.title));
+                else games.sort((a,b) => b.created_at.localeCompare(a.created_at));
+
+                let html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">';
+                html += '<span style="color:var(--text-secondary);font-size:13px;">' + games.length + ' game' + (games.length !== 1 ? 's' : '') + '</span>';
+                html += '<select class="form-select" style="width:auto;padding:6px 10px;font-size:12px;" onchange="dashboardSort=this.value;loadDashboard()">';
+                ['newest','oldest','popular','rating','title'].forEach(s => html += '<option value="'+s+'"'+(dashboardSort===s?' selected':'')+'>'+s.charAt(0).toUpperCase()+s.slice(1)+'</option>');
+                html += '</select></div>';
+
+                html += games.map(g => {
                     const coverSrc = g.cover_path || '';
+                    const pubBadge = g.published
+                        ? '<span style="background:var(--success);color:#000;padding:2px 8px;border-radius:3px;font-size:11px;font-weight:600;">Published</span>'
+                        : '<span style="background:var(--text-secondary);color:#000;padding:2px 8px;border-radius:3px;font-size:11px;font-weight:600;">Draft</span>';
                     return '<div class="dashboard-card">' +
                         (coverSrc ? '<img src="' + escapeHtml(coverSrc) + '" style="width:180px;height:80px;object-fit:cover;border-radius:3px;cursor:pointer;" onclick="showGameDetail(\'' + g.id + '\')">' : '<div style="width:180px;height:80px;background:var(--bg-secondary);border-radius:3px;"></div>') +
-                        '<div><div class="game-card-title" style="cursor:pointer" onclick="showGameDetail(\'' + g.id + '\')">' + escapeHtml(g.title) + '</div>' +
+                        '<div><div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;"><div class="game-card-title" style="cursor:pointer;margin-bottom:0;" onclick="showGameDetail(\'' + g.id + '\')">' + escapeHtml(g.title) + '</div>' + pubBadge + '</div>' +
                         '<div class="dashboard-stats"><span>' + escapeHtml(g.genre) + '</span><span>★ ' + (g.avg_rating||0).toFixed(1) + '</span><span>' + (g.review_count||0) + ' reviews</span><span>' + (g.play_count||0) + ' plays</span></div></div>' +
-                        '<div class="dashboard-actions"><button class="dash-btn dash-btn-edit" onclick="showGameDetail(\'' + g.id + '\')">View</button>' +
+                        '<div class="dashboard-actions">' +
+                        '<button class="dash-btn dash-btn-edit" onclick="toggleVisibility(\'' + g.id + '\',' + !g.published + ')">' + (g.published ? 'Unpublish' : 'Publish') + '</button>' +
+                        '<button class="dash-btn dash-btn-edit" onclick="showGameDetail(\'' + g.id + '\')">View</button>' +
                         '<button class="dash-btn dash-btn-edit" onclick="showAnalytics(\'' + g.id + '\')">Analytics</button>' +
                         '<button class="dash-btn dash-btn-edit" onclick="editGame(\'' + g.id + '\')">Edit</button>' +
                         '<button class="dash-btn dash-btn-delete" onclick="deleteGame(\'' + g.id + '\',\'' + escapeHtml(g.title).replace(/'/g,"\\'") + '\')">Delete</button></div></div>';
                 }).join('');
+                container.innerHTML = html;
             } catch (e) { console.error('Dashboard error:', e); }
         }
 
+        async function toggleVisibility(id, published) {
+            try {
+                await api('/games/' + id + '/visibility', { method: 'PUT', body: JSON.stringify({ published }) });
+                toast(published ? 'Game published!' : 'Game set to draft.', 'success');
+                loadDashboard();
+            } catch (e) { toast(e.message, 'error'); }
+        }
+
         async function deleteGame(id, title) {
-            showModal('Delete Game', 'Are you sure you want to delete "' + title + '"? This cannot be undone.', async () => {
-                try { await api('/games/' + id, { method: 'DELETE' }); closeModal(); toast('"' + title + '" deleted.', 'info'); loadDashboard(); } catch (e) { toast(e.message, 'error'); closeModal(); }
-            });
+            showModal('Delete Game',
+                '<p>Type <strong>' + escapeHtml(title) + '</strong> to confirm deletion. This cannot be undone.</p>' +
+                '<input type="text" class="form-input" id="delete-confirm-input" placeholder="Type game name here" style="margin-top:10px;">',
+                async () => {
+                    const typed = document.getElementById('delete-confirm-input').value.trim();
+                    if (typed !== title) { toast('Name does not match. Deletion cancelled.', 'error'); return; }
+                    try { await api('/games/' + id, { method: 'DELETE' }); closeModal(); toast('"' + title + '" deleted.', 'info'); loadDashboard(); } catch (e) { toast(e.message, 'error'); closeModal(); }
+                });
         }
 
         async function editGame(id) {
             try {
                 const data = await api('/games/' + id);
                 const g = data.game;
+                const videos = (g.videos && g.videos.length > 0) ? g.videos : (g.video_url ? [g.video_url] : []);
                 let html = '<div class="dev-editor">';
                 html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;"><h2 class="section-title" style="margin-bottom:0;">Edit: ' + escapeHtml(g.title) + '</h2>';
                 html += '<button class="btn-secondary" onclick="loadDashboard()">Back to Dashboard</button></div>';
+
+                // === Basic Info ===
+                html += '<div class="card-box" style="margin-bottom:20px;"><h3 style="font-size:14px;text-transform:uppercase;letter-spacing:1px;margin-bottom:15px;">Basic Info</h3>';
                 html += '<div class="form-group"><label class="form-label">Title</label><input type="text" class="form-input" id="edit-game-title" value="' + escapeHtml(g.title) + '"></div>';
                 html += '<div class="form-row"><div class="form-group"><label class="form-label">Genre</label><select class="form-select" id="edit-game-genre">';
                 ['action','adventure','rpg','strategy','puzzle','racing','horror','experimental'].forEach(gen => {
                     html += '<option value="' + gen + '"' + (gen === g.genre ? ' selected' : '') + '>' + gen.charAt(0).toUpperCase() + gen.slice(1) + '</option>';
                 });
-                html += '</select></div><div class="form-group"><label class="form-label">Price ($)</label><input type="number" class="form-input" id="edit-game-price" value="' + g.price + '" step="0.01"></div></div>';
+                html += '</select></div>';
+                html += '<div class="form-group"><label class="form-label">Price ($)</label><input type="number" class="form-input" id="edit-game-price" value="' + g.price + '" step="0.01"></div>';
+                html += '<div class="form-group"><label class="form-label">Discount (%)</label><input type="number" class="form-input" id="edit-game-discount" value="' + (g.discount||0) + '" min="0" max="100"></div></div>';
                 html += '<div class="form-group"><label class="form-label">Tags (comma separated)</label><input type="text" class="form-input" id="edit-game-tags" value="' + escapeHtml((g.tags||[]).join(', ')) + '"></div>';
                 html += '<div class="form-group"><label class="form-label">Description</label><textarea class="form-textarea" id="edit-game-desc">' + escapeHtml(g.description || '') + '</textarea></div>';
                 html += '<div class="form-group"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--text-secondary);"><input type="checkbox" id="edit-game-webgpu"' + (g.is_webgpu ? ' checked' : '') + ' style="accent-color:var(--accent);width:16px;height:16px;"> Uses WebGPU</label></div>';
+                html += '</div>';
+
+                // === Media ===
+                html += '<div class="card-box" style="margin-bottom:20px;"><h3 style="font-size:14px;text-transform:uppercase;letter-spacing:1px;margin-bottom:15px;">Media</h3>';
+                // Cover
+                html += '<div class="form-group"><label class="form-label">Cover Image</label>';
+                if (g.cover_path) html += '<div style="margin-bottom:8px;"><img src="' + escapeHtml(g.cover_path) + '" style="height:80px;border-radius:4px;object-fit:cover;"></div>';
+                html += '<input type="file" class="form-input" id="edit-game-cover" accept="image/*" style="padding:8px;"></div>';
+                // Screenshots
+                html += '<div class="form-group"><label class="form-label">Screenshots</label>';
+                if (g.screenshots && g.screenshots.length > 0) {
+                    html += '<div id="edit-ss-list" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">';
+                    g.screenshots.forEach((s, i) => {
+                        html += '<div style="position:relative;"><img src="' + escapeHtml(s) + '" style="height:60px;border-radius:3px;object-fit:cover;">';
+                        html += '<button onclick="deleteScreenshot(\'' + id + '\',' + i + ')" style="position:absolute;top:-6px;right:-6px;background:var(--danger);color:#fff;border:none;border-radius:50%;width:20px;height:20px;font-size:12px;cursor:pointer;line-height:20px;text-align:center;">&times;</button></div>';
+                    });
+                    html += '</div>';
+                }
+                html += '<input type="file" class="form-input" id="edit-game-screenshots" accept="image/*" multiple style="padding:8px;"><p style="font-size:11px;color:var(--text-secondary);margin-top:4px;">Add more screenshots (appends to existing)</p></div>';
+                // Videos
+                html += '<div class="form-group"><label class="form-label">Video URLs (YouTube embed)</label>';
+                html += '<div id="edit-videos-list">';
+                if (videos.length > 0) {
+                    videos.forEach((v, i) => {
+                        html += '<div style="display:flex;gap:8px;margin-bottom:6px;" class="edit-video-row"><input type="text" class="form-input" value="' + escapeHtml(v) + '" style="flex:1;"><button class="btn-secondary" style="padding:6px 12px;" onclick="this.parentElement.remove()">Remove</button></div>';
+                    });
+                } else {
+                    html += '<div style="display:flex;gap:8px;margin-bottom:6px;" class="edit-video-row"><input type="text" class="form-input" placeholder="https://www.youtube.com/embed/..." style="flex:1;"><button class="btn-secondary" style="padding:6px 12px;" onclick="this.parentElement.remove()">Remove</button></div>';
+                }
+                html += '</div>';
+                html += '<button class="btn-secondary" style="padding:6px 14px;font-size:12px;" onclick="addVideoRow()">+ Add Video</button></div>';
+                html += '</div>';
+
+                // === Advanced ===
+                html += '<div class="card-box" style="margin-bottom:20px;"><h3 style="font-size:14px;text-transform:uppercase;letter-spacing:1px;margin-bottom:15px;">Advanced</h3>';
+                html += '<div class="form-group"><label class="form-label">Theme Color</label><input type="color" id="edit-game-theme" value="' + escapeHtml(g.theme_color || '#66c0f4') + '" style="width:60px;height:36px;border:none;cursor:pointer;"></div>';
+                html += '<div class="form-group"><label class="form-label">Header Image URL</label><input type="text" class="form-input" id="edit-game-header" value="' + escapeHtml(g.header_image || '') + '" placeholder="URL for header banner"></div>';
+                html += '<div class="form-group"><label class="form-label">Custom About</label><textarea class="form-textarea" id="edit-game-about" style="min-height:80px;">' + escapeHtml(g.custom_about || '') + '</textarea></div>';
+                html += '<div class="form-group"><label class="form-label">Features (one per line)</label><textarea class="form-textarea" id="edit-game-features" style="min-height:60px;">' + escapeHtml((g.features||[]).join('\n')) + '</textarea></div>';
+                html += '<div class="form-row"><div class="form-group"><label class="form-label">Min System Requirements</label><textarea class="form-textarea" id="edit-game-sysmin" style="min-height:50px;">' + escapeHtml(g.sys_req_min || '') + '</textarea></div>';
+                html += '<div class="form-group"><label class="form-label">Rec System Requirements</label><textarea class="form-textarea" id="edit-game-sysrec" style="min-height:50px;">' + escapeHtml(g.sys_req_rec || '') + '</textarea></div></div>';
+                html += '</div>';
+
+                // === Game Files ===
+                html += '<div class="card-box" style="margin-bottom:20px;"><h3 style="font-size:14px;text-transform:uppercase;letter-spacing:1px;margin-bottom:15px;">Game Files</h3>';
                 html += '<div class="form-group"><label class="form-label">Re-upload Game Files (optional)</label><input type="file" class="form-input" id="edit-game-file" accept=".html,.js,.zip" style="padding:8px;"><p style="font-size:11px;color:var(--text-secondary);margin-top:4px;">Upload a new .html, .js, or .zip to replace the current game files.</p></div>';
-                html += '<button class="btn-primary" style="width:auto;padding:12px 30px;" onclick="saveGameEdit(\'' + id + '\')">Save Changes</button>';
+                html += '</div>';
+
+                // Save button
+                html += '<div style="display:flex;gap:10px;"><button class="btn-primary" style="width:auto;padding:12px 30px;" onclick="saveGameEdit(\'' + id + '\')">Save Changes</button>';
+                html += '<button class="btn-secondary" onclick="loadDashboard()">Cancel</button></div>';
                 html += '</div>';
                 document.getElementById('dashboard-content').innerHTML = html;
             } catch (e) { toast('Failed to load game: ' + e.message, 'error'); }
         }
 
+        function addVideoRow() {
+            const list = document.getElementById('edit-videos-list');
+            const row = document.createElement('div');
+            row.style.cssText = 'display:flex;gap:8px;margin-bottom:6px;';
+            row.className = 'edit-video-row';
+            row.innerHTML = '<input type="text" class="form-input" placeholder="https://www.youtube.com/embed/..." style="flex:1;"><button class="btn-secondary" style="padding:6px 12px;" onclick="this.parentElement.remove()">Remove</button>';
+            list.appendChild(row);
+        }
+
+        async function deleteScreenshot(gameId, idx) {
+            try {
+                await api('/games/' + gameId + '/screenshots/' + idx, { method: 'DELETE' });
+                toast('Screenshot removed.', 'success');
+                editGame(gameId);
+            } catch (e) { toast(e.message, 'error'); }
+        }
+
         async function saveGameEdit(id) {
             const tagsStr = document.getElementById('edit-game-tags').value;
             const tags = tagsStr.split(',').map(t => t.trim()).filter(t => t);
+            const featuresStr = document.getElementById('edit-game-features').value;
+            const features = featuresStr.split('\n').map(f => f.trim()).filter(f => f);
+            const videoRows = document.querySelectorAll('#edit-videos-list .edit-video-row input');
+            const videos = Array.from(videoRows).map(i => i.value.trim()).filter(v => v);
             try {
                 await api('/games/' + id, {
                     method: 'PUT',
@@ -2109,9 +2288,17 @@
                         title: document.getElementById('edit-game-title').value,
                         genre: document.getElementById('edit-game-genre').value,
                         price: parseFloat(document.getElementById('edit-game-price').value) || 0,
+                        discount: parseInt(document.getElementById('edit-game-discount').value) || 0,
                         description: document.getElementById('edit-game-desc').value,
                         tags: tags,
-                        is_webgpu: document.getElementById('edit-game-webgpu').checked
+                        is_webgpu: document.getElementById('edit-game-webgpu').checked,
+                        videos: videos,
+                        theme_color: document.getElementById('edit-game-theme').value,
+                        header_image: document.getElementById('edit-game-header').value,
+                        custom_about: document.getElementById('edit-game-about').value,
+                        features: features,
+                        sys_req_min: document.getElementById('edit-game-sysmin').value,
+                        sys_req_rec: document.getElementById('edit-game-sysrec').value
                     })
                 });
                 // Re-upload game file if selected
@@ -2121,6 +2308,23 @@
                     formData.append('game_file', fileInput.files[0]);
                     const res = await fetch('/api/games/' + id + '/reupload', { method: 'POST', body: formData, credentials: 'same-origin' });
                     if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'File upload failed'); }
+                }
+                // Upload new cover if selected
+                const coverInput = document.getElementById('edit-game-cover');
+                if (coverInput?.files?.length > 0) {
+                    const formData = new FormData();
+                    formData.append('cover', coverInput.files[0]);
+                    formData.append('game_file', new Blob(), '');
+                    formData.append('title', document.getElementById('edit-game-title').value);
+                    formData.append('genre', document.getElementById('edit-game-genre').value);
+                }
+                // Upload new screenshots if selected
+                const ssInput = document.getElementById('edit-game-screenshots');
+                if (ssInput?.files?.length > 0) {
+                    const formData = new FormData();
+                    for (let i = 0; i < ssInput.files.length; i++) formData.append('screenshots', ssInput.files[i]);
+                    const res = await fetch('/api/games/' + id + '/screenshots', { method: 'POST', body: formData, credentials: 'same-origin' });
+                    if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Screenshot upload failed'); }
                 }
                 toast('Game updated!', 'success');
                 loadDashboard();
