@@ -535,6 +535,8 @@
                 <h2 class="section-title">Wishlist</h2>
                 <div class="game-grid" id="wishlist-grid"></div>
             </div>
+            <div id="my-lists-section" style="margin-top:30px;"></div>
+            <div id="public-lists-section" style="margin-top:30px;"></div>
         </section>
 
         <section id="upload-section" class="section">
@@ -981,6 +983,98 @@
                 if (sort === 'playtime') games.sort((a, b) => (b.play_count||0) - (a.play_count||0));
                 grid.innerHTML = games.map(g => libraryCardHTML(g)).join('');
             } catch (e) { console.error('Failed to load library:', e); }
+
+            // Load My Lists
+            loadMyLists();
+            // Load Public Lists
+            loadPublicLists();
+        }
+
+        async function loadMyLists() {
+            const container = document.getElementById('my-lists-section');
+            if (!container || !currentUser) { if (container) container.innerHTML = ''; return; }
+            try {
+                const data = await api('/collections');
+                const cols = data.collections || [];
+                let html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">';
+                html += '<h2 class="section-title" style="margin-bottom:0;">My Lists</h2>';
+                html += '<button class="btn-accent" style="padding:6px 16px;font-size:12px;" onclick="createListFromLibrary()">+ New List</button></div>';
+                if (cols.length === 0) {
+                    html += '<div class="empty-state" style="padding:20px;">No lists yet. Create one to organize your favorite games!</div>';
+                } else {
+                    html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;">';
+                    cols.forEach(c => {
+                        const count = (c.game_ids || []).length;
+                        const vis = c.is_public ? '<span style="color:var(--success);font-size:11px;">Public</span>' : '<span style="color:var(--text-secondary);font-size:11px;">Private</span>';
+                        html += '<div style="background:var(--card-bg);border-radius:8px;padding:15px;border:1px solid var(--border-color);cursor:pointer;" onclick="showList(\'' + c.id + '\')">';
+                        html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;"><strong>' + escapeHtml(c.name) + '</strong>' + vis + '</div>';
+                        if (c.description) html += '<p style="color:var(--text-secondary);font-size:12px;margin-bottom:6px;">' + escapeHtml(c.description) + '</p>';
+                        html += '<span style="color:var(--text-secondary);font-size:12px;">' + count + ' game' + (count !== 1 ? 's' : '') + '</span>';
+                        html += '<div style="margin-top:8px;display:flex;gap:6px;">';
+                        html += '<button class="btn-secondary" style="padding:3px 10px;font-size:11px;" onclick="event.stopPropagation();editList(\'' + c.id + '\',\'' + escapeHtml(c.name).replace(/'/g,"\\'") + '\',' + c.is_public + ',\'' + escapeHtml(c.description || '').replace(/'/g,"\\'") + '\')">' + 'Edit</button>';
+                        html += '<button class="btn-secondary" style="padding:3px 10px;font-size:11px;" onclick="event.stopPropagation();copyListLink(\'' + c.id + '\')">Share</button>';
+                        html += '<button class="btn-secondary" style="padding:3px 10px;font-size:11px;color:var(--danger);" onclick="event.stopPropagation();deleteCollection(\'' + c.id + '\')">Delete</button>';
+                        html += '</div></div>';
+                    });
+                    html += '</div>';
+                }
+                container.innerHTML = html;
+            } catch (e) { container.innerHTML = ''; }
+        }
+
+        async function loadPublicLists() {
+            const container = document.getElementById('public-lists-section');
+            if (!container) return;
+            try {
+                const data = await api('/collections/public');
+                const cols = data.collections || [];
+                if (cols.length === 0) { container.innerHTML = ''; return; }
+                let html = '<h2 class="section-title">Public Lists</h2>';
+                html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;">';
+                cols.forEach(c => {
+                    const count = (c.game_ids || []).length;
+                    html += '<div style="background:var(--card-bg);border-radius:8px;padding:15px;border:1px solid var(--border-color);cursor:pointer;" onclick="showList(\'' + c.id + '\')">';
+                    html += '<strong>' + escapeHtml(c.name) + '</strong>';
+                    if (c.username) html += '<span style="color:var(--text-secondary);font-size:12px;margin-left:8px;">by ' + escapeHtml(c.username) + '</span>';
+                    if (c.description) html += '<p style="color:var(--text-secondary);font-size:12px;margin-top:4px;">' + escapeHtml(c.description) + '</p>';
+                    html += '<div style="margin-top:6px;color:var(--text-secondary);font-size:12px;">' + count + ' game' + (count !== 1 ? 's' : '') + '</div>';
+                    html += '</div>';
+                });
+                html += '</div>';
+                container.innerHTML = html;
+            } catch (e) { container.innerHTML = ''; }
+        }
+
+        async function createListFromLibrary() {
+            const name = prompt('List name:');
+            if (!name) return;
+            try {
+                await api('/collections', { method: 'POST', body: JSON.stringify({ name }) });
+                toast('List "' + name + '" created!', 'success');
+                loadMyLists();
+            } catch (e) { toast(e.message, 'error'); }
+        }
+
+        function editList(id, name, isPublic, desc) {
+            showModal('Edit List',
+                '<div class="form-group"><label class="form-label">Name</label><input type="text" class="form-input" id="edit-list-name" value="' + name + '"></div>' +
+                '<div class="form-group"><label class="form-label">Description</label><input type="text" class="form-input" id="edit-list-desc" value="' + desc + '"></div>' +
+                '<div class="form-group"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--text-secondary);"><input type="checkbox" id="edit-list-public"' + (isPublic ? ' checked' : '') + ' style="width:16px;height:16px;"> Make public (anyone can view)</label></div>',
+                async () => {
+                    try {
+                        await api('/collections/' + id, { method: 'PUT', body: JSON.stringify({
+                            name: document.getElementById('edit-list-name').value,
+                            description: document.getElementById('edit-list-desc').value,
+                            is_public: document.getElementById('edit-list-public').checked
+                        }) });
+                        closeModal(); toast('List updated!', 'success'); loadMyLists();
+                    } catch (e) { toast(e.message, 'error'); }
+                });
+        }
+
+        function copyListLink(id) {
+            const url = location.origin + '/#list/' + id;
+            navigator.clipboard.writeText(url).then(() => toast('Link copied!', 'success')).catch(() => toast(url, 'info'));
         }
 
         function libraryCardHTML(g) {
