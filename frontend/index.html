@@ -970,7 +970,18 @@
 
         /* ============ Library ============ */
         async function loadLibrary() {
-            if (!currentUser) { document.getElementById('library-grid').innerHTML = '<div class="empty-state">Please <a onclick="showAuth(\'login\')">login</a> to see your library.</div>'; return; }
+            // Always load lists (even if not logged in — public lists are visible)
+            loadPublicLists();
+
+            if (!currentUser) {
+                document.getElementById('library-grid').innerHTML = '<div class="empty-state">Please <a onclick="showAuth(\'login\')">login</a> to see your library.</div>';
+                document.getElementById('my-lists-section').innerHTML = '';
+                return;
+            }
+
+            // Load My Lists
+            loadMyLists();
+
             try {
                 const data = await api('/library');
                 const grid = document.getElementById('library-grid');
@@ -983,11 +994,6 @@
                 if (sort === 'playtime') games.sort((a, b) => (b.play_count||0) - (a.play_count||0));
                 grid.innerHTML = games.map(g => libraryCardHTML(g)).join('');
             } catch (e) { console.error('Failed to load library:', e); }
-
-            // Load My Lists
-            loadMyLists();
-            // Load Public Lists
-            loadPublicLists();
         }
 
         async function loadMyLists() {
