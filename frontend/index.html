@@ -991,7 +991,7 @@
 
         /* ============ Library ============ */
         let libTab = 'library'; // 'library', 'wishlist', 'public', or a collection ID
-        let libCache = { library: [], wishlist: [], collections: [], publicLists: [] };
+        let libCache = { library: [], wishlist: [], collections: [] };
 
         async function loadLibrary() {
             if (!currentUser) {
@@ -1001,16 +1001,14 @@
                 return;
             }
             // Fetch all data in parallel
-            const [libData, wishData, colData, pubData] = await Promise.all([
+            const [libData, wishData, colData] = await Promise.all([
                 api('/library').catch(() => ({ games: [] })),
                 api('/wishlist').catch(() => ({ games: [] })),
                 api('/collections').catch(() => ({ collections: [] })),
-                api('/collections/public').catch(() => ({ collections: [] })),
             ]);
             libCache.library = libData.games || [];
             libCache.wishlist = wishData.games || [];
             libCache.collections = colData.collections || [];
-            libCache.publicLists = pubData.collections || [];
             renderLibSidebar();
             renderLibContent();
         }
@@ -1035,16 +1033,6 @@
                 html += '<div style="padding:4px 14px;font-size:11px;color:var(--text-secondary);font-style:italic;">No lists yet</div>';
             }
             html += '</div>';
-            // Public Lists
-            if (libCache.publicLists.length > 0) {
-                html += '<div class="lib-sidebar-group">';
-                html += '<div class="lib-sidebar-label">Public Lists</div>';
-                libCache.publicLists.forEach(c => {
-                    const count = (c.game_ids || []).length;
-                    html += libSidebarItem('pub_' + c.id, escapeHtml(c.name), count);
-                });
-                html += '</div>';
-            }
             sb.innerHTML = html;
         }
 
@@ -1060,11 +1048,6 @@
         }
 
         function switchLibTab(tab) {
-            // Handle public list clicks — redirect to showList
-            if (tab.startsWith('pub_')) {
-                showList(tab.slice(4));
-                return;
-            }
             libTab = tab;
             renderLibSidebar();
             renderLibContent();
