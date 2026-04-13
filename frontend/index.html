@@ -142,6 +142,36 @@
         .search-input:focus { outline: none; border-color: var(--accent); }
         .filter-select { padding: 10px 15px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: 3px; color: var(--text-primary); font-size: 14px; }
 
+        /* Library sidebar layout */
+        .lib-layout { display: grid; grid-template-columns: 240px 1fr; gap: 0; min-height: 70vh; }
+        .lib-sidebar { background: rgba(0,0,0,0.25); border-right: 1px solid var(--border-color); padding: 0; overflow-y: auto; max-height: 80vh; position: sticky; top: 0; }
+        .lib-sidebar-search { padding: 10px; border-bottom: 1px solid var(--border-color); }
+        .lib-sidebar-search input { width: 100%; padding: 7px 10px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: 3px; color: var(--text-primary); font-size: 12px; }
+        .lib-sidebar-search input:focus { outline: none; border-color: var(--accent); }
+        .lib-sidebar-group { padding: 6px 0; }
+        .lib-sidebar-label { padding: 6px 14px; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-secondary); font-weight: 600; display: flex; justify-content: space-between; align-items: center; }
+        .lib-sidebar-label button { background: none; border: none; color: var(--accent); font-size: 14px; cursor: pointer; padding: 0 4px; line-height: 1; }
+        .lib-sidebar-label button:hover { color: var(--text-primary); }
+        .lib-sidebar-item { display: flex; align-items: center; gap: 8px; padding: 7px 14px; cursor: pointer; font-size: 13px; color: var(--text-secondary); transition: all 0.15s; border-left: 3px solid transparent; }
+        .lib-sidebar-item:hover { background: rgba(255,255,255,0.05); color: var(--text-primary); }
+        .lib-sidebar-item.active { background: rgba(102,192,244,0.1); color: var(--accent); border-left-color: var(--accent); }
+        .lib-sidebar-item .lib-count { margin-left: auto; font-size: 11px; color: var(--text-secondary); opacity: 0.6; }
+        .lib-sidebar-item .lib-badge { margin-left: auto; font-size: 9px; padding: 1px 5px; border-radius: 3px; }
+        .lib-content { padding: 0 0 0 20px; }
+        .lib-toolbar { display: flex; align-items: center; gap: 10px; padding: 12px 0; margin-bottom: 10px; border-bottom: 1px solid var(--border-color); }
+        .lib-toolbar h2 { font-size: 16px; flex: 1; margin: 0; }
+        .lib-toolbar .lib-count-total { color: var(--text-secondary); font-size: 13px; }
+        @media (max-width: 768px) {
+            .lib-layout { grid-template-columns: 1fr; }
+            .lib-sidebar { max-height: none; position: static; border-right: none; border-bottom: 1px solid var(--border-color); display: flex; overflow-x: auto; padding: 8px; gap: 4px; }
+            .lib-sidebar-search { display: none; }
+            .lib-sidebar-group { display: contents; }
+            .lib-sidebar-label { display: none; }
+            .lib-sidebar-item { padding: 6px 12px; border-left: none; border-bottom: 2px solid transparent; white-space: nowrap; font-size: 12px; }
+            .lib-sidebar-item.active { border-bottom-color: var(--accent); border-left-color: transparent; }
+            .lib-content { padding: 0; }
+        }
+
         /* Game Grid */
         .game-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; }
         .game-card { background: var(--card-bg); border-radius: 8px; overflow: hidden; cursor: pointer; transition: all 0.3s ease; border: 1px solid var(--border-color); position: relative; }
@@ -521,22 +551,13 @@
         </section>
 
         <section id="library-section" class="section">
-            <div class="filter-bar">
-                <h2 class="section-title" style="margin-bottom:0;flex:1;">My Library</h2>
-                <input type="text" class="search-input" id="lib-search" placeholder="Search library..." style="width:200px;" oninput="loadLibrary()">
-                <select class="filter-select" id="lib-sort" onchange="loadLibrary()">
-                    <option value="recent">Recent</option>
-                    <option value="title">A-Z</option>
-                    <option value="playtime">Most Played</option>
-                </select>
+            <div class="lib-layout">
+                <div class="lib-sidebar" id="lib-sidebar"></div>
+                <div class="lib-content">
+                    <div class="lib-toolbar" id="lib-toolbar"></div>
+                    <div class="game-grid" id="library-grid"></div>
+                </div>
             </div>
-            <div class="game-grid" id="library-grid"></div>
-            <div id="wishlist-section" style="display:none;margin-top:30px;">
-                <h2 class="section-title">Wishlist</h2>
-                <div class="game-grid" id="wishlist-grid"></div>
-            </div>
-            <div id="my-lists-section" style="margin-top:30px;"></div>
-            <div id="public-lists-section" style="margin-top:30px;"></div>
         </section>
 
         <section id="upload-section" class="section">
@@ -969,95 +990,148 @@
         }
 
         /* ============ Library ============ */
-        async function loadLibrary() {
-            // Always load lists (even if not logged in — public lists are visible)
-            loadPublicLists();
+        let libTab = 'library'; // 'library', 'wishlist', 'public', or a collection ID
+        let libCache = { library: [], wishlist: [], collections: [], publicLists: [] };
 
+        async function loadLibrary() {
             if (!currentUser) {
                 document.getElementById('library-grid').innerHTML = '<div class="empty-state">Please <a onclick="showAuth(\'login\')">login</a> to see your library.</div>';
-                document.getElementById('my-lists-section').innerHTML = '';
+                document.getElementById('lib-sidebar').innerHTML = '';
+                document.getElementById('lib-toolbar').innerHTML = '';
                 return;
             }
-
-            // Load My Lists
-            loadMyLists();
-
-            try {
-                const data = await api('/library');
-                const grid = document.getElementById('library-grid');
-                if (!data.games || data.games.length === 0) { grid.innerHTML = '<div class="empty-state">Your library is empty. Browse the <a onclick="navigate(\'store\')">Store</a>!</div>'; return; }
-                let games = data.games;
-                const search = document.getElementById('lib-search')?.value?.toLowerCase() || '';
-                if (search) games = games.filter(g => g.title.toLowerCase().includes(search));
-                const sort = document.getElementById('lib-sort')?.value || 'recent';
-                if (sort === 'title') games.sort((a, b) => a.title.localeCompare(b.title));
-                if (sort === 'playtime') games.sort((a, b) => (b.play_count||0) - (a.play_count||0));
-                grid.innerHTML = games.map(g => libraryCardHTML(g)).join('');
-            } catch (e) { console.error('Failed to load library:', e); }
+            // Fetch all data in parallel
+            const [libData, wishData, colData, pubData] = await Promise.all([
+                api('/library').catch(() => ({ games: [] })),
+                api('/wishlist').catch(() => ({ games: [] })),
+                api('/collections').catch(() => ({ collections: [] })),
+                api('/collections/public').catch(() => ({ collections: [] })),
+            ]);
+            libCache.library = libData.games || [];
+            libCache.wishlist = wishData.games || [];
+            libCache.collections = colData.collections || [];
+            libCache.publicLists = pubData.collections || [];
+            renderLibSidebar();
+            renderLibContent();
         }
 
-        async function loadMyLists() {
-            const container = document.getElementById('my-lists-section');
-            if (!container || !currentUser) { if (container) container.innerHTML = ''; return; }
-            try {
-                const data = await api('/collections');
-                const cols = data.collections || [];
-                let html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">';
-                html += '<h2 class="section-title" style="margin-bottom:0;">My Lists</h2>';
-                html += '<button class="btn-accent" style="padding:6px 16px;font-size:12px;" onclick="createListFromLibrary()">+ New List</button></div>';
-                if (cols.length === 0) {
-                    html += '<div class="empty-state" style="padding:20px;">No lists yet. Create one to organize your favorite games!</div>';
-                } else {
-                    html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;">';
-                    cols.forEach(c => {
-                        const count = (c.game_ids || []).length;
-                        const vis = c.is_public ? '<span style="color:var(--success);font-size:11px;">Public</span>' : '<span style="color:var(--text-secondary);font-size:11px;">Private</span>';
-                        html += '<div style="background:var(--card-bg);border-radius:8px;padding:15px;border:1px solid var(--border-color);cursor:pointer;" onclick="showList(\'' + c.id + '\')">';
-                        html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;"><strong>' + escapeHtml(c.name) + '</strong>' + vis + '</div>';
-                        if (c.description) html += '<p style="color:var(--text-secondary);font-size:12px;margin-bottom:6px;">' + escapeHtml(c.description) + '</p>';
-                        html += '<span style="color:var(--text-secondary);font-size:12px;">' + count + ' game' + (count !== 1 ? 's' : '') + '</span>';
-                        html += '<div style="margin-top:8px;display:flex;gap:6px;">';
-                        html += '<button class="btn-secondary" style="padding:3px 10px;font-size:11px;" onclick="event.stopPropagation();editList(\'' + c.id + '\',\'' + escapeHtml(c.name).replace(/'/g,"\\'") + '\',' + c.is_public + ',\'' + escapeHtml(c.description || '').replace(/'/g,"\\'") + '\')">' + 'Edit</button>';
-                        html += '<button class="btn-secondary" style="padding:3px 10px;font-size:11px;" onclick="event.stopPropagation();copyListLink(\'' + c.id + '\')">Share</button>';
-                        html += '<button class="btn-secondary" style="padding:3px 10px;font-size:11px;color:var(--danger);" onclick="event.stopPropagation();deleteCollection(\'' + c.id + '\')">Delete</button>';
-                        html += '</div></div>';
-                    });
-                    html += '</div>';
-                }
-                container.innerHTML = html;
-            } catch (e) { container.innerHTML = ''; }
-        }
-
-        async function loadPublicLists() {
-            const container = document.getElementById('public-lists-section');
-            if (!container) return;
-            try {
-                const data = await api('/collections/public');
-                const cols = data.collections || [];
-                if (cols.length === 0) { container.innerHTML = ''; return; }
-                let html = '<h2 class="section-title">Public Lists</h2>';
-                html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;">';
-                cols.forEach(c => {
+        function renderLibSidebar() {
+            const sb = document.getElementById('lib-sidebar');
+            let html = '<div class="lib-sidebar-search"><input type="text" id="lib-search" placeholder="Search..." oninput="renderLibContent()"></div>';
+            // Main tabs
+            html += '<div class="lib-sidebar-group">';
+            html += '<div class="lib-sidebar-label">Library</div>';
+            html += libSidebarItem('library', 'My Games', libCache.library.length);
+            html += libSidebarItem('wishlist', 'Wishlist', libCache.wishlist.length);
+            html += '</div>';
+            // My Lists
+            html += '<div class="lib-sidebar-group">';
+            html += '<div class="lib-sidebar-label">My Lists <button onclick="createListFromLibrary()" title="New list">+</button></div>';
+            libCache.collections.forEach(c => {
+                const count = (c.game_ids || []).length;
+                html += libSidebarItem(c.id, escapeHtml(c.name), count, c.is_public);
+            });
+            if (libCache.collections.length === 0) {
+                html += '<div style="padding:4px 14px;font-size:11px;color:var(--text-secondary);font-style:italic;">No lists yet</div>';
+            }
+            html += '</div>';
+            // Public Lists
+            if (libCache.publicLists.length > 0) {
+                html += '<div class="lib-sidebar-group">';
+                html += '<div class="lib-sidebar-label">Public Lists</div>';
+                libCache.publicLists.forEach(c => {
                     const count = (c.game_ids || []).length;
-                    html += '<div style="background:var(--card-bg);border-radius:8px;padding:15px;border:1px solid var(--border-color);cursor:pointer;" onclick="showList(\'' + c.id + '\')">';
-                    html += '<strong>' + escapeHtml(c.name) + '</strong>';
-                    if (c.username) html += '<span style="color:var(--text-secondary);font-size:12px;margin-left:8px;">by ' + escapeHtml(c.username) + '</span>';
-                    if (c.description) html += '<p style="color:var(--text-secondary);font-size:12px;margin-top:4px;">' + escapeHtml(c.description) + '</p>';
-                    html += '<div style="margin-top:6px;color:var(--text-secondary);font-size:12px;">' + count + ' game' + (count !== 1 ? 's' : '') + '</div>';
-                    html += '</div>';
+                    html += libSidebarItem('pub_' + c.id, escapeHtml(c.name), count);
                 });
                 html += '</div>';
-                container.innerHTML = html;
-            } catch (e) { container.innerHTML = ''; }
+            }
+            sb.innerHTML = html;
+        }
+
+        function libSidebarItem(id, label, count, isPublic) {
+            const active = libTab === id ? ' active' : '';
+            let badge = '';
+            if (isPublic !== undefined) {
+                badge = isPublic ? '<span class="lib-badge" style="background:rgba(161,205,68,0.15);color:var(--success);">Public</span>' : '';
+            }
+            return '<div class="lib-sidebar-item' + active + '" onclick="switchLibTab(\'' + id + '\')">' +
+                '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + label + '</span>' + badge +
+                '<span class="lib-count">' + count + '</span></div>';
+        }
+
+        function switchLibTab(tab) {
+            // Handle public list clicks — redirect to showList
+            if (tab.startsWith('pub_')) {
+                showList(tab.slice(4));
+                return;
+            }
+            libTab = tab;
+            renderLibSidebar();
+            renderLibContent();
+        }
+
+        async function renderLibContent() {
+            const grid = document.getElementById('library-grid');
+            const toolbar = document.getElementById('lib-toolbar');
+            const search = document.getElementById('lib-search')?.value?.toLowerCase() || '';
+
+            // Check if it's a collection
+            const col = libCache.collections.find(c => c.id === libTab);
+
+            if (libTab === 'library') {
+                let games = libCache.library;
+                if (search) games = games.filter(g => g.title.toLowerCase().includes(search));
+                toolbar.innerHTML = '<h2>My Games</h2><span class="lib-count-total">' + games.length + ' games</span>' +
+                    '<select class="filter-select" style="margin-left:auto;padding:6px 10px;font-size:12px;" id="lib-sort" onchange="renderLibContent()">' +
+                    '<option value="recent">Recent</option><option value="title">A-Z</option><option value="playtime">Most Played</option></select>';
+                const sort = document.getElementById('lib-sort')?.value || 'recent';
+                if (sort === 'title') games = [...games].sort((a, b) => a.title.localeCompare(b.title));
+                if (sort === 'playtime') games = [...games].sort((a, b) => (b.play_count||0) - (a.play_count||0));
+                grid.innerHTML = games.length > 0 ? games.map(g => libraryCardHTML(g)).join('') :
+                    '<div class="empty-state">Your library is empty. Browse the <a onclick="navigate(\'store\')">Store</a>!</div>';
+
+            } else if (libTab === 'wishlist') {
+                let games = libCache.wishlist;
+                if (search) games = games.filter(g => g.title.toLowerCase().includes(search));
+                toolbar.innerHTML = '<h2>Wishlist</h2><span class="lib-count-total">' + games.length + ' games</span>';
+                grid.innerHTML = games.length > 0 ? games.map(g => libraryCardHTML(g)).join('') :
+                    '<div class="empty-state">Your wishlist is empty.</div>';
+
+            } else if (col) {
+                // User's own collection
+                toolbar.innerHTML = '<h2>' + escapeHtml(col.name) + '</h2><span class="lib-count-total">' + (col.game_ids||[]).length + ' games</span>' +
+                    '<div style="margin-left:auto;display:flex;gap:6px;">' +
+                    '<button class="btn-secondary" style="padding:4px 12px;font-size:11px;" onclick="editList(\'' + col.id + '\',\'' + escapeHtml(col.name).replace(/'/g,"\\'") + '\',' + col.is_public + ',\'' + escapeHtml(col.description || '').replace(/'/g,"\\'") + '\')">Edit</button>' +
+                    '<button class="btn-secondary" style="padding:4px 12px;font-size:11px;" onclick="copyListLink(\'' + col.id + '\')">Share</button>' +
+                    '<button class="btn-secondary" style="padding:4px 12px;font-size:11px;color:var(--danger);" onclick="deleteCollection(\'' + col.id + '\')">Delete</button></div>';
+                // Resolve games
+                const gameIds = col.game_ids || [];
+                if (gameIds.length === 0) {
+                    grid.innerHTML = '<div class="empty-state">This list is empty. Add games from game detail pages.</div>';
+                } else {
+                    grid.innerHTML = '<div class="empty-state">Loading...</div>';
+                    try {
+                        const data = await api('/collections/' + col.id);
+                        const games = (data.games || []).filter(g => !search || g.title.toLowerCase().includes(search));
+                        grid.innerHTML = games.length > 0 ? games.map(g => libraryCardHTML(g)).join('') :
+                            '<div class="empty-state">No matching games.</div>';
+                    } catch { grid.innerHTML = '<div class="empty-state">Failed to load list.</div>'; }
+                }
+            }
         }
 
         async function createListFromLibrary() {
             const name = prompt('List name:');
             if (!name) return;
             try {
-                await api('/collections', { method: 'POST', body: JSON.stringify({ name }) });
+                const res = await api('/collections', { method: 'POST', body: JSON.stringify({ name }) });
                 toast('List "' + name + '" created!', 'success');
-                loadMyLists();
+                // Refresh collections and switch to it
+                const colData = await api('/collections').catch(() => ({ collections: [] }));
+                libCache.collections = colData.collections || [];
+                libTab = res.id;
+                renderLibSidebar();
+                renderLibContent();
             } catch (e) { toast(e.message, 'error'); }
         }
 
@@ -1073,7 +1147,10 @@
                             description: document.getElementById('edit-list-desc').value,
                             is_public: document.getElementById('edit-list-public').checked
                         }) });
-                        closeModal(); toast('List updated!', 'success'); loadMyLists();
+                        closeModal(); toast('List updated!', 'success');
+                        const colData = await api('/collections').catch(() => ({ collections: [] }));
+                        libCache.collections = colData.collections || [];
+                        renderLibSidebar(); renderLibContent();
                     } catch (e) { toast(e.message, 'error'); }
                 });
         }
