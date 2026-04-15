@@ -24,11 +24,17 @@ A self-hosted game publishing platform for HTML5 games. Think Steam/itch.io but 
 
 ```bash
 go build -o playmore
+./playmore setup              # interactive wizard (HTTPS, email, etc.)
+./playmore                    # starts with config from .env
+
+# Or just run with defaults:
 ./playmore                    # http://localhost:8080
 
 # Seed demo data (4 games with reviews)
 curl -X POST http://localhost:8080/api/seed
 ```
+
+For detailed setup guides, see [docs/SETUP.md](docs/SETUP.md). For ProtonMail Bridge email setup, see [docs/SETUP_PROTONMAIL_BRIDGE.md](docs/SETUP_PROTONMAIL_BRIDGE.md).
 
 ## Docker
 

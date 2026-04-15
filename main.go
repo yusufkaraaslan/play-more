@@ -9,9 +9,11 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	emailpkg "github.com/yusufkaraaslan/play-more/internal/email"
@@ -277,6 +279,36 @@ func main() {
 	emailpkg.From = *smtpFrom
 	emailpkg.BaseURL = *baseURL
 
+	// SMTP health check (non-fatal — email is optional)
+	if emailpkg.Configured() {
+		if err := emailpkg.HealthCheck(); err != nil {
+			fmt.Printf("⚠  SMTP health check failed (%s:%d): %v\n", emailpkg.Host, emailpkg.Port, err)
+			if emailpkg.IsLocalBridge() {
+				// Try auto-starting protonmail-bridge on Linux
+				if tryStartLocalBridge() {
+					// Wait briefly for service to come up
+					for i := 0; i < 10; i++ {
+						time.Sleep(500 * time.Millisecond)
+						if emailpkg.HealthCheck() == nil {
+							fmt.Printf("✓  SMTP reachable after starting local bridge\n")
+							goto smtpOK
+						}
+					}
+				}
+				fmt.Println("   Local bridge not reachable. Start it manually:")
+				fmt.Println("   sudo systemctl start protonmail-bridge")
+				fmt.Println("   (or see docs/SETUP_PROTONMAIL_BRIDGE.md)")
+			smtpOK:
+			} else {
+				fmt.Println("   Email verification/reset will fail until SMTP is reachable.")
+			}
+		} else {
+			fmt.Printf("✓  SMTP reachable at %s:%d\n", emailpkg.Host, emailpkg.Port)
+		}
+	} else {
+		fmt.Println("ℹ  SMTP not configured — email verification and password reset disabled")
+	}
+
 	middleware.StartRateLimitCleanup()
 	middleware.StartAnalyticsWriter()
 
@@ -333,6 +365,36 @@ func main() {
 			log.Fatal("Server failed:", err)
 		}
 	}
+}
+
+// tryStartLocalBridge attempts to start protonmail-bridge via systemctl.
+// Returns true if a start command was issued successfully.
+func tryStartLocalBridge() bool {
+	// Only try on Linux with systemd
+	if _, err := os.Stat("/run/systemd/system"); err != nil {
+		return false
+	}
+	// Try common service names (protonmail-bridge or proton-bridge)
+	for _, svc := range []string{"protonmail-bridge", "proton-bridge"} {
+		cmd := exec.Command("systemctl", "is-active", "--quiet", svc)
+		if err := cmd.Run(); err == nil {
+			// Already active
+			return true
+		}
+		// Try starting
+		cmd = exec.Command("systemctl", "start", svc)
+		if err := cmd.Run(); err == nil {
+			fmt.Printf("→  Started %s via systemctl\n", svc)
+			return true
+		}
+		// Try user-level service
+		cmd = exec.Command("systemctl", "--user", "start", svc)
+		if err := cmd.Run(); err == nil {
+			fmt.Printf("→  Started user service %s via systemctl\n", svc)
+			return true
+		}
+	}
+	return false
 }
 
 func isFlagSet(name string) bool {

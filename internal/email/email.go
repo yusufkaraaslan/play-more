@@ -2,7 +2,9 @@ package email
 
 import (
 	"fmt"
+	"net"
 	"net/smtp"
+	"time"
 )
 
 var (
@@ -16,6 +18,27 @@ var (
 
 func Configured() bool {
 	return Host != "" && From != ""
+}
+
+// HealthCheck tests TCP connectivity to the configured SMTP server.
+// Returns nil if reachable, an error otherwise.
+func HealthCheck() error {
+	if !Configured() {
+		return fmt.Errorf("SMTP not configured")
+	}
+	addr := fmt.Sprintf("%s:%d", Host, Port)
+	conn, err := net.DialTimeout("tcp", addr, 3*time.Second)
+	if err != nil {
+		return err
+	}
+	conn.Close()
+	return nil
+}
+
+// IsLocalBridge reports whether the configured SMTP host is a localhost bridge
+// (ProtonMail Bridge, local SMTP relay, etc.)
+func IsLocalBridge() bool {
+	return Host == "127.0.0.1" || Host == "localhost" || Host == "::1"
 }
 
 func Send(to, subject, body string) error {
