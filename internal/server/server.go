@@ -88,11 +88,12 @@ func New(frontendFS embed.FS, goatCounterURL string) *gin.Engine {
 		auth.GET("/verify/:token", handlers.VerifyEmail)
 		auth.POST("/forgot-password", middleware.RateLimit(5, 3600), handlers.ForgotPassword)
 		auth.POST("/reset-password", middleware.RateLimit(10, 3600), handlers.ResetPassword)
+		auth.POST("/resend-verification", middleware.AuthRequired(), middleware.RateLimit(3, 3600), handlers.ResendVerification)
 
 		// Games
 		api.GET("/games", handlers.ListGames)
 		api.GET("/games/:id", handlers.GetGame)
-		api.POST("/games", middleware.AuthRequired(), middleware.RateLimit(10, 3600), handlers.UploadGame)
+		api.POST("/games", middleware.AuthRequired(), handlers.RequireVerifiedEmail(), middleware.RateLimit(10, 3600), handlers.UploadGame)
 		api.PUT("/games/:id", middleware.AuthRequired(), handlers.UpdateGame)
 		api.DELETE("/games/:id", middleware.AuthRequired(), handlers.DeleteGame)
 		api.POST("/games/:id/reupload", middleware.AuthRequired(), handlers.ReuploadGameFiles)
@@ -102,7 +103,7 @@ func New(frontendFS embed.FS, goatCounterURL string) *gin.Engine {
 
 		// Reviews
 		api.GET("/games/:id/reviews", handlers.ListReviews)
-		api.POST("/games/:id/reviews", middleware.AuthRequired(), middleware.RateLimit(20, 3600), handlers.CreateReview)
+		api.POST("/games/:id/reviews", middleware.AuthRequired(), handlers.RequireVerifiedEmail(), middleware.RateLimit(20, 3600), handlers.CreateReview)
 		api.DELETE("/reviews/:id", middleware.AuthRequired(), handlers.DeleteReview)
 
 		// Library
@@ -148,12 +149,12 @@ func New(frontendFS embed.FS, goatCounterURL string) *gin.Engine {
 
 		// Devlogs
 		api.GET("/games/:id/devlogs", handlers.ListDevlogs)
-		api.POST("/games/:id/devlogs", middleware.AuthRequired(), handlers.CreateDevlog)
+		api.POST("/games/:id/devlogs", middleware.AuthRequired(), handlers.RequireVerifiedEmail(), handlers.CreateDevlog)
 		api.DELETE("/devlogs/:id", middleware.AuthRequired(), handlers.DeleteDevlog)
 
 		// Comments on devlogs
 		api.GET("/devlogs/:id/comments", handlers.ListComments)
-		api.POST("/devlogs/:id/comments", middleware.AuthRequired(), handlers.CreateComment)
+		api.POST("/devlogs/:id/comments", middleware.AuthRequired(), handlers.RequireVerifiedEmail(), handlers.CreateComment)
 		api.DELETE("/comments/:id", middleware.AuthRequired(), handlers.DeleteComment)
 
 		// Follows

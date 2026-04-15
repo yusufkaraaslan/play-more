@@ -491,6 +491,11 @@
         </div>
     </header>
 
+    <div id="verify-banner" style="display:none;background:rgba(210,169,96,0.12);border-bottom:1px solid var(--warning);padding:10px 20px;text-align:center;font-size:13px;color:var(--warning);">
+        <strong>Verify your email</strong> to upload games, post reviews, and write devlogs.
+        <a onclick="resendVerificationEmail()" style="margin-left:10px;color:var(--accent);cursor:pointer;text-decoration:underline;">Resend email</a>
+    </div>
+
     <main class="main-content">
         <section id="auth-section" class="section">
             <div class="auth-form" id="auth-form"></div>
@@ -778,6 +783,9 @@
         function renderHeader() {
             const el = document.getElementById('header-actions');
             document.getElementById('nav-feed').style.display = currentUser ? '' : 'none';
+            // Show verify banner if user is logged in but email not verified
+            const banner = document.getElementById('verify-banner');
+            if (banner) banner.style.display = (currentUser && currentUser.email_verified === false) ? '' : 'none';
             if (currentUser) {
                 el.innerHTML = '<div style="position:relative;">' +
                     '<button class="feed-btn" onclick="toggleFeed()" title="Notifications">🔔</button>' +
@@ -869,6 +877,13 @@
             } catch (e) { toast('Verification failed: ' + e.message, 'error'); }
             navigate('store');
             location.hash = '';
+        }
+
+        async function resendVerificationEmail() {
+            try {
+                await api('/auth/resend-verification', { method: 'POST' });
+                toast('Verification email sent! Check your inbox.', 'success');
+            } catch (e) { toast('Failed: ' + e.message, 'error'); }
         }
 
         /* ============ Navigation ============ */

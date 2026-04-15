@@ -21,6 +21,7 @@ type User struct {
 	ThemeColor    string `json:"theme_color"`
 	Links         []Link `json:"links"`
 	AutoplayMedia bool   `json:"autoplay_media"`
+	EmailVerified bool   `json:"email_verified"`
 	CreatedAt     string `json:"created_at"`
 }
 
@@ -62,9 +63,9 @@ func GetUserByEmail(email string) (*User, error) {
 	user := &User{}
 	var linksJSON string
 	err := storage.DB.QueryRow(
-		`SELECT id, username, email, password, avatar_url, bio, is_developer, banner_url, theme_color, links, autoplay_media, created_at FROM users WHERE email = ?`,
+		`SELECT id, username, email, password, avatar_url, bio, is_developer, banner_url, theme_color, links, autoplay_media, email_verified, created_at FROM users WHERE email = ?`,
 		email,
-	).Scan(&user.ID, &user.Username, &user.Email, &user.Password, &user.AvatarURL, &user.Bio, &user.IsDeveloper, &user.BannerURL, &user.ThemeColor, &linksJSON, &user.AutoplayMedia, &user.CreatedAt)
+	).Scan(&user.ID, &user.Username, &user.Email, &user.Password, &user.AvatarURL, &user.Bio, &user.IsDeveloper, &user.BannerURL, &user.ThemeColor, &linksJSON, &user.AutoplayMedia, &user.EmailVerified, &user.CreatedAt)
 	if err != nil { return nil, err }
 	scanUser(user, linksJSON)
 	return user, nil
@@ -74,9 +75,9 @@ func GetUserByID(id string) (*User, error) {
 	user := &User{}
 	var linksJSON string
 	err := storage.DB.QueryRow(
-		`SELECT id, username, email, password, avatar_url, bio, is_developer, banner_url, theme_color, links, autoplay_media, created_at FROM users WHERE id = ?`,
+		`SELECT id, username, email, password, avatar_url, bio, is_developer, banner_url, theme_color, links, autoplay_media, email_verified, created_at FROM users WHERE id = ?`,
 		id,
-	).Scan(&user.ID, &user.Username, &user.Email, &user.Password, &user.AvatarURL, &user.Bio, &user.IsDeveloper, &user.BannerURL, &user.ThemeColor, &linksJSON, &user.AutoplayMedia, &user.CreatedAt)
+	).Scan(&user.ID, &user.Username, &user.Email, &user.Password, &user.AvatarURL, &user.Bio, &user.IsDeveloper, &user.BannerURL, &user.ThemeColor, &linksJSON, &user.AutoplayMedia, &user.EmailVerified, &user.CreatedAt)
 	if err != nil { return nil, err }
 	scanUser(user, linksJSON)
 	return user, nil
@@ -86,9 +87,9 @@ func GetUserByUsername(username string) (*User, error) {
 	user := &User{}
 	var linksJSON string
 	err := storage.DB.QueryRow(
-		`SELECT id, username, email, password, avatar_url, bio, is_developer, banner_url, theme_color, links, autoplay_media, created_at FROM users WHERE username = ?`,
+		`SELECT id, username, email, password, avatar_url, bio, is_developer, banner_url, theme_color, links, autoplay_media, email_verified, created_at FROM users WHERE username = ?`,
 		username,
-	).Scan(&user.ID, &user.Username, &user.Email, &user.Password, &user.AvatarURL, &user.Bio, &user.IsDeveloper, &user.BannerURL, &user.ThemeColor, &linksJSON, &user.AutoplayMedia, &user.CreatedAt)
+	).Scan(&user.ID, &user.Username, &user.Email, &user.Password, &user.AvatarURL, &user.Bio, &user.IsDeveloper, &user.BannerURL, &user.ThemeColor, &linksJSON, &user.AutoplayMedia, &user.EmailVerified, &user.CreatedAt)
 	if err != nil { return nil, err }
 	scanUser(user, linksJSON)
 	return user, nil

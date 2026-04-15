@@ -124,6 +124,55 @@ func generateToken() string {
 	return hex.EncodeToString(b)
 }
 
+// RequireVerifiedEmail is a middleware that rejects unverified users.
+// Only enforced when SMTP is configured (otherwise users can't verify).
+func RequireVerifiedEmail() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if !email.Configured() {
+			c.Next()
+			return
+		}
+		user := middleware.GetUser(c)
+		if user == nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "not authenticated"})
+			c.Abort()
+			return
+		}
+		if !user.EmailVerified {
+			c.JSON(http.StatusForbidden, gin.H{
+				"error":              "Please verify your email address first. Check your inbox for the verification link.",
+				"email_verification": "required",
+			})
+			c.Abort()
+			return
+		}
+		c.Next()
+	}
+}
+
+// ResendVerification sends a new verification email to the current user.
+func ResendVerification(c *gin.Context) {
+	user := middleware.GetUser(c)
+	if user == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "not authenticated"})
+		return
+	}
+	if user.EmailVerified {
+		c.JSON(http.StatusOK, gin.H{"message": "email already verified"})
+		return
+	}
+	if !email.Configured() {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "email sending not configured"})
+		return
+	}
+	storage.DB.Exec(`DELETE FROM email_tokens WHERE user_id = ? AND type = 'verify'`, user.ID)
+	token := generateToken()
+	storage.DB.Exec(`INSERT INTO email_tokens (token, user_id, type, expires_at) VALUES (?, ?, 'verify', ?)`,
+		token, user.ID, time.Now().Add(24*time.Hour).UTC().Format(time.RFC3339))
+	go email.SendVerification(user.Email, user.Username, token)
+	c.JSON(http.StatusOK, gin.H{"message": "verification email sent"})
+}
+
 // VerifyEmail validates a verification token and marks the user's email as verified.
 func VerifyEmail(c *gin.Context) {
 	token := c.Param("token")
