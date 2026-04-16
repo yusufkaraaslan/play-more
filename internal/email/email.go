@@ -1,6 +1,7 @@
 package email
 
 import (
+	"crypto/tls"
 	"fmt"
 	"net"
 	"net/smtp"
@@ -50,8 +51,57 @@ func Send(to, subject, body string) error {
 		From, to, subject, body)
 
 	addr := fmt.Sprintf("%s:%d", Host, Port)
+
+	// For local bridges (ProtonMail Bridge, etc.) use custom TLS config
+	// to accept self-signed certificates
+	if IsLocalBridge() {
+		return sendWithCustomTLS(addr, to, []byte(msg))
+	}
+
 	auth := smtp.PlainAuth("", User, Pass, Host)
 	return smtp.SendMail(addr, auth, From, []string{to}, []byte(msg))
+}
+
+func sendWithCustomTLS(addr, to string, msg []byte) error {
+	conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
+	if err != nil {
+		return err
+	}
+	c, err := smtp.NewClient(conn, Host)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+
+	// STARTTLS with self-signed cert accepted
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: true,
+		ServerName:         Host,
+	}
+	if err := c.StartTLS(tlsConfig); err != nil {
+		return err
+	}
+	auth := smtp.PlainAuth("", User, Pass, Host)
+	if err := c.Auth(auth); err != nil {
+		return err
+	}
+	if err := c.Mail(From); err != nil {
+		return err
+	}
+	if err := c.Rcpt(to); err != nil {
+		return err
+	}
+	w, err := c.Data()
+	if err != nil {
+		return err
+	}
+	if _, err := w.Write(msg); err != nil {
+		return err
+	}
+	if err := w.Close(); err != nil {
+		return err
+	}
+	return c.Quit()
 }
 
 func SendVerification(to, username, token string) error {
