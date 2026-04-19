@@ -208,7 +208,7 @@ func New(frontendFS embed.FS, goatCounterURL string) *gin.Engine {
 	r.GET("/docs", handlers.APIDocs)
 
 	// Deploy script download
-	r.GET("/deploy.sh", handlers.ServeDeployScript)
+	r.GET("/deploy.sh", middleware.RateLimit(10, 60), handlers.ServeDeployScript)
 
 	// Game file serving (for iframe player)
 	r.GET("/play/:id", handlers.ServeGameFiles)
