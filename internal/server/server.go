@@ -72,12 +72,11 @@ func New(frontendFS embed.FS, goatCounterURL string) *gin.Engine {
 	// Site analytics tracking
 	r.Use(middleware.TrackPageView())
 
-	// CSRF protection for all state-changing requests
-	r.Use(middleware.CSRFProtect())
-
 	// API routes
 	api := r.Group("/api")
 	api.Use(middleware.AuthOptional())
+	// CSRF after auth so we can check auth_method (API keys skip CSRF)
+	api.Use(middleware.CSRFProtect())
 	{
 		// Auth (strict rate limits)
 		auth := api.Group("/auth")

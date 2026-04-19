@@ -3,8 +3,10 @@ package models
 import (
 	"crypto/rand"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -32,7 +34,7 @@ func GenerateAPIKey(userID, name, scopes string) (*APIKey, string, error) {
 		return nil, "", err
 	}
 	rawKey := "pm_k_" + hex.EncodeToString(b)
-	prefix := rawKey[:13] // "pm_k_" + first 8 hex chars
+	prefix := rawKey[:13]
 
 	hash := sha256.Sum256([]byte(rawKey))
 	keyHash := hex.EncodeToString(hash[:])
@@ -72,14 +74,21 @@ func ValidateAPIKey(rawKey string) (*User, *APIKey, error) {
 		`SELECT id, user_id, name, key_prefix, scopes, last_used_at, created_at FROM api_keys WHERE key_prefix = ? AND key_hash = ?`,
 		prefix, keyHash,
 	).Scan(&key.ID, &key.UserID, &key.Name, &key.KeyPrefix, &key.Scopes, &lastUsed, &key.CreatedAt)
-	if err != nil {
+	if err == sql.ErrNoRows {
 		return nil, nil, fmt.Errorf("invalid API key")
+	}
+	if err != nil {
+		log.Printf("API key validation DB error: %v", err)
+		return nil, nil, fmt.Errorf("internal error")
 	}
 	key.LastUsedAt = lastUsed
 
-	// Update last_used_at asynchronously
+	// Capture ID before goroutine to avoid race
+	keyID := key.ID
 	go func() {
-		storage.DB.Exec(`UPDATE api_keys SET last_used_at = ? WHERE id = ?`, time.Now().UTC().Format(time.RFC3339), key.ID)
+		if _, err := storage.DB.Exec(`UPDATE api_keys SET last_used_at = ? WHERE id = ?`, time.Now().UTC().Format(time.RFC3339), keyID); err != nil {
+			log.Printf("failed to update API key last_used_at: %v", err)
+		}
 	}()
 
 	user, err := GetUserByID(key.UserID)
@@ -103,9 +112,15 @@ func ListAPIKeys(userID string) ([]APIKey, error) {
 	for rows.Next() {
 		var k APIKey
 		var lastUsed *string
-		rows.Scan(&k.ID, &k.UserID, &k.Name, &k.KeyPrefix, &k.Scopes, &lastUsed, &k.CreatedAt)
+		if err := rows.Scan(&k.ID, &k.UserID, &k.Name, &k.KeyPrefix, &k.Scopes, &lastUsed, &k.CreatedAt); err != nil {
+			log.Printf("failed to scan API key row: %v", err)
+			continue
+		}
 		k.LastUsedAt = lastUsed
 		keys = append(keys, k)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	if keys == nil {
 		keys = []APIKey{}
@@ -118,17 +133,20 @@ func DeleteAPIKey(id, userID string) error {
 	if err != nil {
 		return err
 	}
-	n, _ := result.RowsAffected()
+	n, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
 	if n == 0 {
 		return fmt.Errorf("key not found")
 	}
 	return nil
 }
 
-func CountAPIKeys(userID string) int {
+func CountAPIKeys(userID string) (int, error) {
 	var count int
-	storage.DB.QueryRow(`SELECT COUNT(*) FROM api_keys WHERE user_id = ?`, userID).Scan(&count)
-	return count
+	err := storage.DB.QueryRow(`SELECT COUNT(*) FROM api_keys WHERE user_id = ?`, userID).Scan(&count)
+	return count, err
 }
 
 func HasScope(key *APIKey, scope string) bool {

@@ -34,18 +34,26 @@ func CreateAPIKeyHandler(c *gin.Context) {
 	}
 
 	var input struct {
-		Name   string `json:"name" binding:"required"`
+		Name   string `json:"name" binding:"required,max=100"`
 		Scopes string `json:"scopes"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "name is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "name is required (max 100 chars)"})
 		return
 	}
 
-	if models.CountAPIKeys(user.ID) >= 10 {
+	count, err := models.CountAPIKeys(user.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to check key count"})
+		return
+	}
+	if count >= 10 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "maximum 10 API keys per account"})
 		return
 	}
+
+	// Force scopes to "all" — only supported value for now
+	input.Scopes = "all"
 
 	key, rawKey, err := models.GenerateAPIKey(user.ID, input.Name, input.Scopes)
 	if err != nil {

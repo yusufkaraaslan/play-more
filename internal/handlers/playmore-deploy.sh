@@ -60,20 +60,26 @@ USAGE
 
 load_config() {
     SERVER="" API_KEY="" GAME_ID=""
-    if [[ -f "$CONFIG_FILE" ]]; then
-        # shellcheck source=/dev/null
-        source "$CONFIG_FILE"
-    elif [[ -f "$GLOBAL_CONFIG" ]]; then
-        # shellcheck source=/dev/null
-        source "$GLOBAL_CONFIG"
+    local file=""
+    if [[ -f "$CONFIG_FILE" ]]; then file="$CONFIG_FILE"
+    elif [[ -f "$GLOBAL_CONFIG" ]]; then file="$GLOBAL_CONFIG"
     fi
+    [[ -n "$file" ]] || return
+    while IFS='=' read -r key value; do
+        value="${value#\'}" ; value="${value%\'}"
+        case "$key" in
+            SERVER)  SERVER="$value" ;;
+            API_KEY) API_KEY="$value" ;;
+            GAME_ID) GAME_ID="$value" ;;
+        esac
+    done < "$file"
 }
 
 save_config() {
     cat > "$CONFIG_FILE" <<EOF
-SERVER=$SERVER
-API_KEY=$API_KEY
-GAME_ID=$GAME_ID
+SERVER='$SERVER'
+API_KEY='$API_KEY'
+GAME_ID='$GAME_ID'
 EOF
     success "Config saved to $CONFIG_FILE"
 }
@@ -244,35 +250,32 @@ cmd_update() {
         esac
     done
 
-    # Build JSON
-    local json="{"
-    local first=true
-    add_field() {
-        [[ -z "$2" ]] && return
-        $first || json+=","
-        first=false
-        json+="\"$1\":\"$2\""
-    }
-    add_field "title" "$title"
-    add_field "description" "$desc"
-    add_field "genre" "$genre"
-    if [[ -n "$price" ]]; then
-        $first || json+=","
-        first=false
-        json+="\"price\":$price"
-    fi
-    if [[ -n "$tags" ]]; then
-        $first || json+=","
-        first=false
-        local tags_json
-        tags_json=$(echo "$tags" | sed 's/,/","/g')
-        json+="\"tags\":[\"$tags_json\"]"
-    fi
-    if [[ -n "$video" ]]; then
-        $first || json+=","
-        first=false
-        json+="\"videos\":[\"$video\"]"
-    fi
+    # Build JSON safely
+    local json
+    if command -v jq >/dev/null; then
+        json=$(jq -nc \
+            --arg title "$title" --arg desc "$desc" --arg genre "$genre" \
+            --arg price "$price" --arg tags "$tags" --arg video "$video" \
+            '{} |
+            (if $title != "" then . + {title: $title} else . end) |
+            (if $desc != "" then . + {description: $desc} else . end) |
+            (if $genre != "" then . + {genre: $genre} else . end) |
+            (if $price != "" then . + {price: ($price | tonumber)} else . end) |
+            (if $tags != "" then . + {tags: ($tags | split(",") | map(gsub("^\\s+|\\s+$";"")))} else . end) |
+            (if $video != "" then . + {videos: [$video]} else . end)')
+    else
+        json="{"
+        local first=true
+        _esc() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
+        _add() { [[ -z "$2" ]] && return; $first || json+=","; first=false; json+="\"$1\":\"$(_esc "$2")\""; }
+        _add "title" "$title"; _add "description" "$desc"; _add "genre" "$genre"
+        if [[ -n "$price" ]]; then $first || json+=","; first=false; json+="\"price\":$price"; fi
+        if [[ -n "$tags" ]]; then
+            $first || json+=","; first=false
+            local tags_json; tags_json=$(_esc "$tags" | sed 's/,/","/g')
+            json+="\"tags\":[\"$tags_json\"]"
+        fi
+        if [[ -n "$video" ]]; then $first || json+=","; first=false; json+="\"videos\":[\"$(_esc "$video")\"]"; fi
     json+="}"
 
     if [[ "$json" == "{}" ]]; then
@@ -314,13 +317,19 @@ cmd_devlog() {
         content=$(cat)
     fi
 
-    # Escape content for JSON
-    content=$(echo "$content" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g' | tr '\n' '\\' | sed 's/\\/\\n/g')
-
     info "Posting devlog..."
+    local json
+    if command -v jq >/dev/null; then
+        json=$(jq -nc --arg title "$title" --arg content "$content" '{title: $title, content: $content}')
+    else
+        local esc_title esc_content
+        esc_title=$(printf '%s' "$title" | sed 's/\\/\\\\/g; s/"/\\"/g')
+        esc_content=$(printf '%s' "$content" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g' | tr '\n' '\\' | sed 's/\\/\\n/g')
+        json="{\"title\":\"$esc_title\",\"content\":\"$esc_content\"}"
+    fi
     api_call POST "/api/games/$GAME_ID/devlogs" \
         -H "Content-Type: application/json" \
-        -d "{\"title\":\"$title\",\"content\":\"$content\"}" > /dev/null || exit 1
+        -d "$json" > /dev/null || exit 1
     success "Devlog posted: $title"
 }
 
@@ -355,8 +364,6 @@ cmd_status() {
 
 # --- Main ---
 [[ $# -gt 0 ]] || usage
-
-load_config
 
 case "$1" in
     init)    shift; cmd_init "$@" ;;

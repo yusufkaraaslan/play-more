@@ -18,8 +18,10 @@ func CSRFProtect() gin.HandlerFunc {
 			return
 		}
 
-		// Skip CSRF for API key auth (non-browser clients don't send Origin/Referer)
-		if strings.HasPrefix(c.GetHeader("Authorization"), "Bearer pm_k_") {
+		// Skip CSRF for API key auth (non-browser clients don't send Origin/Referer).
+		// Safe because AuthOptional rejects invalid Bearer tokens before we reach here,
+		// and only valid API key auth sets this context value.
+		if method, exists := c.Get("auth_method"); exists && method == "api_key" {
 			c.Next()
 			return
 		}

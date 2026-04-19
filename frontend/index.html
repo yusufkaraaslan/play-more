@@ -2788,7 +2788,7 @@
                         closeModal();
                         showModal('Your API Key',
                             '<p style="color:var(--warning);font-size:13px;margin-bottom:10px;">Copy this key now. You won\'t be able to see it again.</p>' +
-                            '<div style="display:flex;gap:6px;"><input type="text" class="form-input" id="raw-key-display" value="' + data.raw_key + '" readonly style="font-family:monospace;font-size:12px;">' +
+                            '<div style="display:flex;gap:6px;"><input type="text" class="form-input" id="raw-key-display" value="' + escapeHtml(data.raw_key) + '" readonly style="font-family:monospace;font-size:12px;">' +
                             '<button class="btn-accent" style="padding:6px 14px;white-space:nowrap;" onclick="navigator.clipboard.writeText(document.getElementById(\'raw-key-display\').value);toast(\'Copied!\',\'success\')">Copy</button></div>' +
                             '<p style="color:var(--text-secondary);font-size:12px;margin-top:12px;">Install the deploy script:<br><code style="font-size:11px;">curl -fsSL ' + location.origin + '/deploy.sh -o playmore-deploy && chmod +x playmore-deploy</code></p>',
                             () => { closeModal(); loadAPIKeys(); });

@@ -21,6 +21,7 @@ func DeleteAccount(c *gin.Context) {
 	}
 
 	// Delete all user data (CASCADE handles most)
+	storage.DB.Exec(`DELETE FROM api_keys WHERE user_id = ?`, user.ID)
 	storage.DB.Exec(`DELETE FROM sessions WHERE user_id = ?`, user.ID)
 	storage.DB.Exec(`DELETE FROM activity WHERE user_id = ?`, user.ID)
 	storage.DB.Exec(`DELETE FROM reviews WHERE user_id = ?`, user.ID)

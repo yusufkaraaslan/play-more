@@ -32,15 +32,18 @@ func AuthRequired() gin.HandlerFunc {
 // AuthOptional loads user from Bearer token or session cookie.
 func AuthOptional() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// 1. Try Bearer API key first
+			// 1. Try Bearer API key first — reject immediately if token is present but invalid
 		if authHeader := c.GetHeader("Authorization"); strings.HasPrefix(authHeader, "Bearer pm_k_") {
 			rawKey := strings.TrimPrefix(authHeader, "Bearer ")
 			user, apiKey, err := models.ValidateAPIKey(rawKey)
-			if err == nil && user != nil {
-				c.Set(UserKey, user)
-				c.Set("api_key", apiKey)
-				c.Set("auth_method", "api_key")
+			if err != nil {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid API key"})
+				c.Abort()
+				return
 			}
+			c.Set(UserKey, user)
+			c.Set("api_key", apiKey)
+			c.Set("auth_method", "api_key")
 			c.Next()
 			return
 		}
