@@ -34,7 +34,10 @@ go build -o playmore
 curl -X POST http://localhost:8080/api/seed
 ```
 
-For detailed setup guides, see [docs/SETUP.md](docs/SETUP.md). For ProtonMail Bridge email setup, see [docs/SETUP_PROTONMAIL_BRIDGE.md](docs/SETUP_PROTONMAIL_BRIDGE.md).
+**Guides:**
+- [Setup Guide](docs/SETUP.md) — production config, HTTPS, email, systemd
+- [Developer Guide](docs/DEVELOPER.md) — API keys, deploy CLI, API reference
+- [ProtonMail Bridge](docs/SETUP_PROTONMAIL_BRIDGE.md) — email via Proton
 
 ## Docker
 
