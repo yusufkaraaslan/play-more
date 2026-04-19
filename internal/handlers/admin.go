@@ -29,8 +29,12 @@ func isAdmin(c *gin.Context) bool {
 
 func AdminRequired() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if middleware.IsAPIKeyAuth(c) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Not found"})
+			c.Abort()
+			return
+		}
 		if !isAdmin(c) {
-			// Return 404 to hide admin endpoint existence
 			c.JSON(http.StatusNotFound, gin.H{"error": "Not found"})
 			c.Abort()
 			return

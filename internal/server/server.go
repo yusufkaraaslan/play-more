@@ -197,11 +197,19 @@ func New(frontendFS embed.FS, goatCounterURL string) *gin.Engine {
 	// Seed demo data (admin only, or first-run when no users exist)
 	r.POST("/api/seed", middleware.AuthOptional(), handlers.SeedData)
 
+	// API Keys
+	api.GET("/api-keys", middleware.AuthRequired(), handlers.ListAPIKeysHandler)
+	api.POST("/api-keys", middleware.AuthRequired(), middleware.RateLimit(10, 3600), handlers.CreateAPIKeyHandler)
+	api.DELETE("/api-keys/:id", middleware.AuthRequired(), handlers.DeleteAPIKeyHandler)
+
 	// Self-hosted avatar generation
 	r.GET("/avatar/:username", handlers.GetAvatar)
 
 	// API documentation
 	r.GET("/docs", handlers.APIDocs)
+
+	// Deploy script download
+	r.GET("/deploy.sh", handlers.ServeDeployScript)
 
 	// Game file serving (for iframe player)
 	r.GET("/play/:id", handlers.ServeGameFiles)

@@ -18,6 +18,12 @@ func CSRFProtect() gin.HandlerFunc {
 			return
 		}
 
+		// Skip CSRF for API key auth (non-browser clients don't send Origin/Referer)
+		if strings.HasPrefix(c.GetHeader("Authorization"), "Bearer pm_k_") {
+			c.Next()
+			return
+		}
+
 		// Check Content-Type — reject form submissions (CSRF vector)
 		// Our API only accepts JSON, so this blocks cross-origin form posts
 		ct := c.GetHeader("Content-Type")

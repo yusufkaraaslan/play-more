@@ -111,6 +111,12 @@ func apiGroups() []apiGroup {
 			{Method: "POST", Path: "/api/seed", Desc: "Seed demo data"},
 			{Method: "GET", Path: "/avatar/:username", Desc: "Get generated avatar image"},
 		}},
+		{Name: "API Keys", Endpoints: []apiEndpoint{
+			{Method: "GET", Path: "/api/api-keys", Desc: "List your API keys", Auth: true},
+			{Method: "POST", Path: "/api/api-keys", Desc: "Generate new API key (session only)", Auth: true, Rate: "10/hour"},
+			{Method: "DELETE", Path: "/api/api-keys/:id", Desc: "Revoke an API key (session only)", Auth: true},
+			{Method: "GET", Path: "/deploy.sh", Desc: "Download CLI deploy script"},
+		}},
 		{Name: "Admin", Endpoints: []apiEndpoint{
 			{Method: "GET", Path: "/api/admin/stats", Desc: "Site statistics", Auth: true},
 			{Method: "GET", Path: "/api/admin/users", Desc: "List all users", Auth: true},

@@ -2704,6 +2704,11 @@
                 '<div class="form-group"><label class="form-label">New Password (min 6 chars)</label><input type="password" class="form-input" id="settings-new-pw"></div>' +
                 '<button class="btn-accent" onclick="changePassword()">Change Password</button></div>' +
                 '<div class="card-box">' +
+                '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><h3 style="font-size:16px;margin-bottom:0;">API Keys</h3>' +
+                '<button class="btn-accent" style="padding:4px 14px;font-size:11px;" onclick="showGenerateKeyModal()">+ Generate Key</button></div>' +
+                '<p style="color:var(--text-secondary);font-size:12px;margin-bottom:12px;">Use API keys to deploy games from the command line or CI/CD. <a style="color:var(--accent);cursor:pointer;" onclick="window.open(\'/deploy.sh\')">Download deploy script</a></p>' +
+                '<div id="api-keys-list" style="color:var(--text-secondary);font-size:13px;">Loading...</div></div>' +
+                '<div class="card-box">' +
                 '<h3 style="font-size:16px;margin-bottom:10px;">Export Backup</h3>' +
                 '<p style="color:var(--text-secondary);font-size:13px;margin-bottom:15px;">Download your profile and activity data as JSON.</p>' +
                 '<button class="btn-accent" onclick="exportBackup()">Export Backup</button></div>' +
@@ -2717,6 +2722,7 @@
                 '<p style="color:var(--text-secondary);font-size:13px;margin-bottom:15px;">Permanently delete your account, games, reviews, and all data. This cannot be undone.</p>' +
                 '<button class="btn-secondary" style="border-color:var(--danger);color:var(--danger);" onclick="deleteAccount()">Delete Account</button></div>' +
                 '</div>';
+            loadAPIKeys();
         }
 
         async function saveAccountSettings() {
@@ -2747,6 +2753,54 @@
                 document.getElementById('settings-current-pw').value = '';
                 document.getElementById('settings-new-pw').value = '';
             } catch (e) { toast(e.message, 'error'); }
+        }
+
+        // ============ API Keys ============
+        async function loadAPIKeys() {
+            const el = document.getElementById('api-keys-list');
+            if (!el) return;
+            try {
+                const data = await api('/api-keys');
+                const keys = data.keys || [];
+                if (keys.length === 0) {
+                    el.innerHTML = '<span style="font-style:italic;">No API keys yet.</span>';
+                    return;
+                }
+                el.innerHTML = keys.map(k => {
+                    const lastUsed = k.last_used_at ? 'Last used: ' + k.last_used_at.split('T')[0] : 'Never used';
+                    return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border-color);">' +
+                        '<div><strong>' + escapeHtml(k.name) + '</strong>' +
+                        '<div style="font-size:11px;color:var(--text-secondary);margin-top:2px;"><code>' + escapeHtml(k.key_prefix) + '...</code> · ' + escapeHtml(k.scopes) + ' · ' + lastUsed + '</div></div>' +
+                        '<button class="btn-secondary" style="padding:3px 10px;font-size:11px;color:var(--danger);" onclick="revokeAPIKey(\'' + k.id + '\',\'' + escapeHtml(k.name).replace(/'/g, "\\'") + '\')">Revoke</button></div>';
+                }).join('');
+            } catch { el.innerHTML = '<span style="color:var(--danger);">Failed to load keys.</span>'; }
+        }
+
+        function showGenerateKeyModal() {
+            showModal('Generate API Key',
+                '<div class="form-group"><label class="form-label">Key Name</label><input type="text" class="form-input" id="gen-key-name" placeholder="e.g. CI Deploy, My Laptop"></div>' +
+                '<p style="color:var(--text-secondary);font-size:12px;">Scope: <strong>All</strong> (full access except admin/account deletion)</p>',
+                async () => {
+                    const name = document.getElementById('gen-key-name').value.trim();
+                    if (!name) { toast('Name is required.', 'error'); return; }
+                    try {
+                        const data = await api('/api-keys', { method: 'POST', body: JSON.stringify({ name }) });
+                        closeModal();
+                        showModal('Your API Key',
+                            '<p style="color:var(--warning);font-size:13px;margin-bottom:10px;">Copy this key now. You won\'t be able to see it again.</p>' +
+                            '<div style="display:flex;gap:6px;"><input type="text" class="form-input" id="raw-key-display" value="' + data.raw_key + '" readonly style="font-family:monospace;font-size:12px;">' +
+                            '<button class="btn-accent" style="padding:6px 14px;white-space:nowrap;" onclick="navigator.clipboard.writeText(document.getElementById(\'raw-key-display\').value);toast(\'Copied!\',\'success\')">Copy</button></div>' +
+                            '<p style="color:var(--text-secondary);font-size:12px;margin-top:12px;">Install the deploy script:<br><code style="font-size:11px;">curl -fsSL ' + location.origin + '/deploy.sh -o playmore-deploy && chmod +x playmore-deploy</code></p>',
+                            () => { closeModal(); loadAPIKeys(); });
+                        document.querySelector('#modal .modal-confirm').textContent = 'Done';
+                    } catch (e) { toast(e.message, 'error'); }
+                });
+        }
+
+        async function revokeAPIKey(id, name) {
+            showModal('Revoke API Key', 'Revoke <strong>' + name + '</strong>? Any scripts using this key will stop working immediately.', async () => {
+                try { await api('/api-keys/' + id, { method: 'DELETE' }); closeModal(); toast('Key revoked.', 'info'); loadAPIKeys(); } catch (e) { toast(e.message, 'error'); closeModal(); }
+            });
         }
 
         async function exportBackup() {

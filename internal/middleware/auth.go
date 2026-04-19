@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/yusufkaraaslan/play-more/internal/models"
@@ -28,9 +29,22 @@ func AuthRequired() gin.HandlerFunc {
 	}
 }
 
-// AuthOptional loads user if session exists but doesn't reject.
+// AuthOptional loads user from Bearer token or session cookie.
 func AuthOptional() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// 1. Try Bearer API key first
+		if authHeader := c.GetHeader("Authorization"); strings.HasPrefix(authHeader, "Bearer pm_k_") {
+			rawKey := strings.TrimPrefix(authHeader, "Bearer ")
+			user, apiKey, err := models.ValidateAPIKey(rawKey)
+			if err == nil && user != nil {
+				c.Set(UserKey, user)
+				c.Set("api_key", apiKey)
+				c.Set("auth_method", "api_key")
+			}
+			c.Next()
+			return
+		}
+		// 2. Fall back to session cookie
 		token, err := c.Cookie("session")
 		if err != nil || token == "" {
 			c.Next()
@@ -39,9 +53,16 @@ func AuthOptional() gin.HandlerFunc {
 		user, err := models.GetUserBySession(token)
 		if err == nil && user != nil {
 			c.Set(UserKey, user)
+			c.Set("auth_method", "session")
 		}
 		c.Next()
 	}
+}
+
+// IsAPIKeyAuth returns true if the request was authenticated via API key.
+func IsAPIKeyAuth(c *gin.Context) bool {
+	method, _ := c.Get("auth_method")
+	return method == "api_key"
 }
 
 // GetUser returns the authenticated user or nil.

@@ -10,6 +10,10 @@ import (
 )
 
 func DeleteAccount(c *gin.Context) {
+	if middleware.IsAPIKeyAuth(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "not allowed with API key"})
+		return
+	}
 	user := middleware.GetUser(c)
 	if user == nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "not authenticated"})
@@ -51,6 +55,10 @@ type changePasswordInput struct {
 }
 
 func ChangePassword(c *gin.Context) {
+	if middleware.IsAPIKeyAuth(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "not allowed with API key"})
+		return
+	}
 	user := middleware.GetUser(c)
 	if user == nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "not authenticated"})
