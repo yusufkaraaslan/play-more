@@ -57,10 +57,10 @@ func CSRFProtect() gin.HandlerFunc {
 			return
 		}
 
-		// If neither Origin nor Referer is present, check Content-Type
-		// Browsers always send Origin on cross-origin fetch/XHR, so missing Origin
-		// means same-origin or a non-browser client (API tool, curl) — allow JSON only
-		if !strings.Contains(ct, "application/json") && !strings.Contains(ct, "multipart/form-data") {
+		// If neither Origin nor Referer is present:
+		// - JSON is safe (cross-origin form posts can't send application/json without preflight)
+		// - multipart/form-data is a CORS-simple type, so we must NOT allow it without Origin/Referer
+		if !strings.Contains(ct, "application/json") {
 			c.JSON(http.StatusForbidden, gin.H{"error": "missing origin header"})
 			c.Abort()
 			return

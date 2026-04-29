@@ -74,6 +74,14 @@ func CreateDevlog(c *gin.Context) {
 		return
 	}
 
+	// Sanitize user input to plain text (frontend renders with white-space:pre-wrap)
+	input.Title = SanitizePlain(input.Title)
+	input.Content = SanitizePlain(input.Content)
+	if input.Title == "" || input.Content == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "title and content required"})
+		return
+	}
+
 	id := uuid.New().String()
 	_, err = storage.DB.Exec(
 		`INSERT INTO devlogs (id, game_id, user_id, title, content) VALUES (?, ?, ?, ?, ?)`,

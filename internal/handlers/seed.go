@@ -1,6 +1,9 @@
 package handlers
 
 import (
+	"crypto/rand"
+	"encoding/hex"
+	"fmt"
 	"image"
 	"image/color"
 	"image/png"
@@ -32,11 +35,9 @@ type seedGame struct {
 }
 
 func SeedData(c *gin.Context) {
-	// Only allow seeding if no users exist (first run) or if requester is admin
-	var userCount int
-	storage.DB.QueryRow(`SELECT COUNT(*) FROM users`).Scan(&userCount)
-	if userCount > 0 && !isAdmin(c) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "seed is only available on first run or for admins"})
+	// Seed is admin-only. To seed a fresh install, register first, then call this endpoint.
+	if !isAdmin(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "admin only"})
 		return
 	}
 
@@ -48,12 +49,16 @@ func SeedData(c *gin.Context) {
 		return
 	}
 
-	// Create demo user
-	user, err := models.CreateUser("playmore", "demo@playmore.dev", "demo123")
+	// Create demo user with a random password (admin can reset/login if needed)
+	pwBytes := make([]byte, 16)
+	rand.Read(pwBytes)
+	demoPassword := hex.EncodeToString(pwBytes)
+	user, err := models.CreateUser("playmore", "demo@playmore.dev", demoPassword)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create demo user: " + err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create demo user"})
 		return
 	}
+	fmt.Printf("[seed] created demo user 'playmore' with random password (use admin to reset if needed)\n")
 	storage.DB.Exec(`UPDATE users SET is_developer = 1, bio = 'Official PlayMore demo account' WHERE id = ?`, user.ID)
 
 	// Create developer page

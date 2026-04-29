@@ -193,8 +193,8 @@ func New(frontendFS embed.FS, goatCounterURL string) *gin.Engine {
 	uploadsDir := filepath.Join(storage.GamesDir, "..", "uploads")
 	r.Static("/uploads", uploadsDir)
 
-	// Seed demo data (admin only, or first-run when no users exist)
-	r.POST("/api/seed", middleware.AuthOptional(), handlers.SeedData)
+	// Seed demo data (admin only)
+	api.POST("/seed", middleware.AuthRequired(), middleware.RateLimit(3, 3600), handlers.SeedData)
 
 	// API Keys
 	api.GET("/api-keys", middleware.AuthRequired(), handlers.ListAPIKeysHandler)

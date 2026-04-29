@@ -2009,6 +2009,8 @@
         // CSS sanitizer — prefix selectors + strip dangerous patterns
         function sanitizeCSS(css) {
             if (!css) return '';
+            // Strip < and > to prevent </style> injection
+            css = css.replace(/[<>]/g, '');
             // Strip dangerous patterns
             css = css.replace(/@import\b[^;]*/gi, '/* import removed */');
             css = css.replace(/expression\s*\(/gi, '/* expression removed */(');
@@ -2860,9 +2862,9 @@
                 if (!data.devlogs || data.devlogs.length === 0) return '';
                 let html = '<div class="game-section"><h3>Devlogs</h3>';
                 data.devlogs.forEach(d => {
-                    html += '<div class="card-box" style="margin-bottom:10px;"><h4 style="font-size:15px;margin-bottom:8px;">' + d.title + '</h4>';
-                    html += '<p style="color:var(--text-secondary);font-size:13px;line-height:1.5;">' + d.content + '</p>';
-                    html += '<p style="font-size:11px;color:var(--text-secondary);margin-top:8px;">by ' + d.username + ' · ' + d.created_at + '</p></div>';
+                    html += '<div class="card-box" style="margin-bottom:10px;"><h4 style="font-size:15px;margin-bottom:8px;">' + escapeHtml(d.title) + '</h4>';
+                    html += '<p style="color:var(--text-secondary);font-size:13px;line-height:1.5;white-space:pre-wrap;">' + escapeHtml(d.content) + '</p>';
+                    html += '<p style="font-size:11px;color:var(--text-secondary);margin-top:8px;">by ' + escapeHtml(d.username) + ' · ' + escapeHtml(d.created_at) + '</p></div>';
                 });
                 html += '</div>';
                 return html;

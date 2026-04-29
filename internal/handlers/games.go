@@ -95,10 +95,22 @@ func UploadGame(c *gin.Context) {
 	}
 	defer file.Close()
 
-	data, err := io.ReadAll(file)
+	// Cap upload size at MaxFileSize (500 MiB) to prevent OOM
+	if header.Size > storage.MaxFileSize {
+		game.Delete()
+		c.JSON(http.StatusBadRequest, gin.H{"error": "file too large"})
+		return
+	}
+
+	data, err := io.ReadAll(io.LimitReader(file, storage.MaxFileSize+1))
 	if err != nil {
 		game.Delete()
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read file"})
+		return
+	}
+	if int64(len(data)) > storage.MaxFileSize {
+		game.Delete()
+		c.JSON(http.StatusBadRequest, gin.H{"error": "file too large"})
 		return
 	}
 
@@ -405,7 +417,15 @@ func ReuploadGameFiles(c *gin.Context) {
 	}
 	defer file.Close()
 
-	data, _ := io.ReadAll(file)
+	if header.Size > storage.MaxFileSize {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "file too large"})
+		return
+	}
+	data, err := io.ReadAll(io.LimitReader(file, storage.MaxFileSize+1))
+	if err != nil || int64(len(data)) > storage.MaxFileSize {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "file too large"})
+		return
+	}
 	fileName := header.Filename
 	entryFile := fileName
 

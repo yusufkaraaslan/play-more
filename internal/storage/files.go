@@ -12,6 +12,13 @@ import (
 
 var GamesDir string
 
+// Limits for ZIP extraction to prevent decompression bombs.
+const (
+	MaxExtractedSize  = 2 << 30 // 2 GiB total decompressed size
+	MaxExtractedFiles = 10000   // max entries in archive
+	MaxFileSize       = 500 << 20 // 500 MiB per file
+)
+
 func InitFileStorage(dataDir string) error {
 	GamesDir = filepath.Join(dataDir, "games")
 	return os.MkdirAll(GamesDir, 0755)
@@ -61,6 +68,17 @@ func ExtractZip(gameID string, data []byte) (string, error) {
 		}
 	}
 
+	if len(r.File) > MaxExtractedFiles {
+		return "", fmt.Errorf("too many files in archive (max %d)", MaxExtractedFiles)
+	}
+
+	// Ensure dir ends with separator for safe traversal check
+	dirWithSep := dir
+	if !strings.HasSuffix(dirWithSep, string(os.PathSeparator)) {
+		dirWithSep += string(os.PathSeparator)
+	}
+
+	var totalBytes int64
 	entryFile := ""
 	for _, f := range r.File {
 		name := strings.TrimPrefix(f.Name, prefix)
@@ -69,14 +87,22 @@ func ExtractZip(gameID string, data []byte) (string, error) {
 		}
 
 		target := filepath.Join(dir, filepath.FromSlash(name))
-		// Prevent path traversal
-		if !strings.HasPrefix(target, dir) {
+		// Prevent path traversal — must be inside dir, not just a string prefix match
+		if target != dir && !strings.HasPrefix(target, dirWithSep) {
 			continue
 		}
 
 		if f.FileInfo().IsDir() {
 			os.MkdirAll(target, 0755)
 			continue
+		}
+
+		// Check declared size before extracting
+		if int64(f.UncompressedSize64) > MaxFileSize {
+			return "", fmt.Errorf("file %q exceeds max size", name)
+		}
+		if totalBytes+int64(f.UncompressedSize64) > MaxExtractedSize {
+			return "", fmt.Errorf("archive total size exceeds limit")
 		}
 
 		if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
@@ -94,11 +120,19 @@ func ExtractZip(gameID string, data []byte) (string, error) {
 			return "", err
 		}
 
-		_, err = io.Copy(out, rc)
+		// LimitReader as defense against header-lying ZIP bombs
+		written, err := io.Copy(out, io.LimitReader(rc, MaxFileSize+1))
 		rc.Close()
 		out.Close()
 		if err != nil {
 			return "", err
+		}
+		if written > MaxFileSize {
+			return "", fmt.Errorf("file %q exceeds max size during extraction", name)
+		}
+		totalBytes += written
+		if totalBytes > MaxExtractedSize {
+			return "", fmt.Errorf("archive total size exceeds limit during extraction")
 		}
 
 		// Detect entry file

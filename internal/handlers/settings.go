@@ -83,6 +83,18 @@ func ChangePassword(c *gin.Context) {
 		return
 	}
 
-	storage.DB.Exec(`UPDATE users SET password = ? WHERE id = ?`, string(hash), user.ID)
+	if _, err := storage.DB.Exec(`UPDATE users SET password = ? WHERE id = ?`, string(hash), user.ID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save password"})
+		return
+	}
+
+	// Invalidate all OTHER sessions (keep the current one alive so user stays logged in)
+	currentToken, _ := c.Cookie("session")
+	if currentToken != "" {
+		storage.DB.Exec(`DELETE FROM sessions WHERE user_id = ? AND token != ?`, user.ID, currentToken)
+	} else {
+		storage.DB.Exec(`DELETE FROM sessions WHERE user_id = ?`, user.ID)
+	}
+
 	c.JSON(http.StatusOK, gin.H{"message": "password changed"})
 }

@@ -3,6 +3,7 @@ package handlers
 import (
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/yusufkaraaslan/play-more/internal/middleware"
@@ -83,7 +84,9 @@ func UpdateDeveloperPage(c *gin.Context) {
 		input.PageLayout = []models.PageSection{}
 	}
 
-	// Sanitize custom CSS (strip dangerous patterns, limit length)
+	// Sanitize custom CSS — strip < and > to prevent </style> injection, then cap length
+	input.CustomCSS = strings.ReplaceAll(input.CustomCSS, "<", "")
+	input.CustomCSS = strings.ReplaceAll(input.CustomCSS, ">", "")
 	if len(input.CustomCSS) > 5000 {
 		input.CustomCSS = input.CustomCSS[:5000]
 	}
