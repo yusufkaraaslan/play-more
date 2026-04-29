@@ -2,13 +2,17 @@ package handlers
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"log"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"golang.org/x/crypto/bcrypt"
+
 	"github.com/yusufkaraaslan/play-more/internal/email"
 	"github.com/yusufkaraaslan/play-more/internal/middleware"
 	"github.com/yusufkaraaslan/play-more/internal/models"
@@ -18,8 +22,12 @@ import (
 type registerInput struct {
 	Username string `json:"username" binding:"required,min=3,max=30"`
 	Email    string `json:"email" binding:"required,email"`
-	Password string `json:"password" binding:"required,min=6"`
+	Password string `json:"password" binding:"required,min=10"`
 }
+
+// usernameRe is a strict allowlist for usernames — alphanumeric, underscore, hyphen only.
+// Prevents XSS via username in JS-string-in-HTML-attribute contexts.
+var usernameRe = regexp.MustCompile(`^[a-zA-Z0-9_-]{3,30}$`)
 
 func Register(c *gin.Context) {
 	var input registerInput
@@ -31,6 +39,11 @@ func Register(c *gin.Context) {
 
 	input.Username = strings.TrimSpace(input.Username)
 	input.Email = strings.ToLower(strings.TrimSpace(input.Email))
+
+	if !usernameRe.MatchString(input.Username) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Username must be 3-30 characters: letters, numbers, underscores, hyphens only."})
+		return
+	}
 
 	user, err := models.CreateUser(input.Username, input.Email, input.Password)
 	if err != nil {
@@ -56,7 +69,7 @@ func Register(c *gin.Context) {
 	if email.Configured() {
 		vToken := generateToken()
 		storage.DB.Exec(`INSERT INTO email_tokens (token, user_id, type, expires_at) VALUES (?, ?, 'verify', ?)`,
-			vToken, user.ID, time.Now().Add(24*time.Hour).UTC().Format(time.RFC3339))
+			hashToken(vToken), user.ID, time.Now().Add(24*time.Hour).UTC().Format(time.RFC3339))
 		go email.SendVerification(input.Email, input.Username, vToken)
 	}
 
@@ -78,6 +91,12 @@ func Login(c *gin.Context) {
 
 	user, err := models.GetUserByEmail(strings.ToLower(strings.TrimSpace(input.Email)))
 	if err != nil {
+		// Run a dummy bcrypt comparison to equalize timing with the
+		// password-mismatch path, preventing user enumeration via timing.
+		bcrypt.CompareHashAndPassword(
+			[]byte("$2a$10$abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ012"),
+			[]byte(input.Password),
+		)
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
 		return
 	}
@@ -124,6 +143,13 @@ func generateToken() string {
 	return hex.EncodeToString(b)
 }
 
+// hashToken returns a stable hex-encoded SHA-256 hash for storing email tokens
+// in the DB. The raw token is sent in email; lookups hash and compare.
+func hashToken(token string) string {
+	h := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(h[:])
+}
+
 // RequireVerifiedEmail is a middleware that rejects unverified users.
 // Only enforced when SMTP is configured (otherwise users can't verify).
 func RequireVerifiedEmail() gin.HandlerFunc {
@@ -168,18 +194,25 @@ func ResendVerification(c *gin.Context) {
 	storage.DB.Exec(`DELETE FROM email_tokens WHERE user_id = ? AND type = 'verify'`, user.ID)
 	token := generateToken()
 	storage.DB.Exec(`INSERT INTO email_tokens (token, user_id, type, expires_at) VALUES (?, ?, 'verify', ?)`,
-		token, user.ID, time.Now().Add(24*time.Hour).UTC().Format(time.RFC3339))
+		hashToken(token), user.ID, time.Now().Add(24*time.Hour).UTC().Format(time.RFC3339))
 	go email.SendVerification(user.Email, user.Username, token)
 	c.JSON(http.StatusOK, gin.H{"message": "verification email sent"})
 }
 
-// VerifyEmail validates a verification token and marks the user's email as verified.
+// VerifyEmail validates a verification token (sent in JSON body) and marks email verified.
+// POST keeps the token out of access logs / Referer headers.
 func VerifyEmail(c *gin.Context) {
-	token := c.Param("token")
-	var userID string
-	var expiresAt string
+	var input struct {
+		Token string `json:"token" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "token required"})
+		return
+	}
+	tokenHash := hashToken(input.Token)
+	var userID, expiresAt string
 	err := storage.DB.QueryRow(
-		`SELECT user_id, expires_at FROM email_tokens WHERE token = ? AND type = 'verify'`, token,
+		`SELECT user_id, expires_at FROM email_tokens WHERE token = ? AND type = 'verify'`, tokenHash,
 	).Scan(&userID, &expiresAt)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid or expired token"})
@@ -187,12 +220,14 @@ func VerifyEmail(c *gin.Context) {
 	}
 	exp, _ := time.Parse(time.RFC3339, expiresAt)
 	if time.Now().After(exp) {
-		storage.DB.Exec(`DELETE FROM email_tokens WHERE token = ?`, token)
+		storage.DB.Exec(`DELETE FROM email_tokens WHERE token = ?`, tokenHash)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "token expired"})
 		return
 	}
-	storage.DB.Exec(`UPDATE users SET email_verified = 1 WHERE id = ?`, userID)
-	storage.DB.Exec(`DELETE FROM email_tokens WHERE token = ?`, token)
+	if _, err := storage.DB.Exec(`UPDATE users SET email_verified = 1 WHERE id = ?`, userID); err != nil {
+		log.Printf("verify: failed to mark verified: %v", err)
+	}
+	storage.DB.Exec(`DELETE FROM email_tokens WHERE token = ?`, tokenHash)
 	c.JSON(http.StatusOK, gin.H{"message": "email verified"})
 }
 
@@ -215,7 +250,7 @@ func ForgotPassword(c *gin.Context) {
 	storage.DB.Exec(`DELETE FROM email_tokens WHERE user_id = ? AND type = 'reset'`, user.ID)
 	token := generateToken()
 	storage.DB.Exec(`INSERT INTO email_tokens (token, user_id, type, expires_at) VALUES (?, ?, 'reset', ?)`,
-		token, user.ID, time.Now().Add(1*time.Hour).UTC().Format(time.RFC3339))
+		hashToken(token), user.ID, time.Now().Add(1*time.Hour).UTC().Format(time.RFC3339))
 	go email.SendPasswordReset(user.Email, user.Username, token)
 	c.JSON(http.StatusOK, gin.H{"message": "if an account exists, a reset email has been sent"})
 }
@@ -224,15 +259,16 @@ func ForgotPassword(c *gin.Context) {
 func ResetPassword(c *gin.Context) {
 	var input struct {
 		Token    string `json:"token" binding:"required"`
-		Password string `json:"password" binding:"required,min=6"`
+		Password string `json:"password" binding:"required,min=10"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "token and password (min 6 chars) required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "token and password (min 10 chars) required"})
 		return
 	}
+	tokenHash := hashToken(input.Token)
 	var userID, expiresAt string
 	err := storage.DB.QueryRow(
-		`SELECT user_id, expires_at FROM email_tokens WHERE token = ? AND type = 'reset'`, input.Token,
+		`SELECT user_id, expires_at FROM email_tokens WHERE token = ? AND type = 'reset'`, tokenHash,
 	).Scan(&userID, &expiresAt)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid or expired token"})
@@ -240,7 +276,7 @@ func ResetPassword(c *gin.Context) {
 	}
 	exp, _ := time.Parse(time.RFC3339, expiresAt)
 	if time.Now().After(exp) {
-		storage.DB.Exec(`DELETE FROM email_tokens WHERE token = ?`, input.Token)
+		storage.DB.Exec(`DELETE FROM email_tokens WHERE token = ?`, tokenHash)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "token expired"})
 		return
 	}
@@ -253,7 +289,7 @@ func ResetPassword(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to set password"})
 		return
 	}
-	storage.DB.Exec(`DELETE FROM email_tokens WHERE token = ?`, input.Token)
+	storage.DB.Exec(`DELETE FROM email_tokens WHERE token = ?`, tokenHash)
 	// Invalidate all sessions
 	storage.DB.Exec(`DELETE FROM sessions WHERE user_id = ?`, userID)
 	c.JSON(http.StatusOK, gin.H{"message": "password reset successfully"})

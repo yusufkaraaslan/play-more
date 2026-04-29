@@ -98,7 +98,7 @@ func New(frontendFS embed.FS, goatCounterURL, gamesDomain, trustedProxies string
 		auth.POST("/login", middleware.RateLimit(10, 300), handlers.Login)
 		auth.POST("/logout", handlers.Logout)
 		auth.GET("/me", handlers.Me)
-		auth.GET("/verify/:token", handlers.VerifyEmail)
+		auth.POST("/verify", middleware.RateLimit(10, 3600), handlers.VerifyEmail)
 		auth.POST("/forgot-password", middleware.RateLimit(5, 3600), handlers.ForgotPassword)
 		auth.POST("/reset-password", middleware.RateLimit(10, 3600), handlers.ResetPassword)
 		auth.POST("/resend-verification", middleware.AuthRequired(), middleware.RateLimit(3, 3600), handlers.ResendVerification)

@@ -192,6 +192,7 @@ func main() {
 	baseURL := flag.String("base-url", "", "Public base URL (e.g. https://playmore.example.com)")
 	gamesDomain := flag.String("games-domain", "", "Optional separate domain for game files (e.g. games.example.com) — strongest isolation against malicious uploaded games")
 	trustedProxies := flag.String("trusted-proxies", "", "Comma-separated list of trusted proxy CIDRs (e.g. '127.0.0.1/32,10.0.0.0/8'). Empty = trust no proxy headers.")
+	forceSecure := flag.Bool("behind-tls-proxy", false, "Always set Secure flag on cookies (use when behind a TLS-terminating reverse proxy)")
 	flag.Parse()
 
 	// Environment variables as fallback (flags take priority)
@@ -259,6 +260,10 @@ func main() {
 	if !isFlagSet("trusted-proxies") {
 		if v := os.Getenv("PLAYMORE_TRUSTED_PROXIES"); v != "" { *trustedProxies = v }
 	}
+	if !isFlagSet("behind-tls-proxy") {
+		if v := os.Getenv("PLAYMORE_BEHIND_TLS_PROXY"); v == "true" || v == "1" { *forceSecure = true }
+	}
+	middleware.ForceSecureCookies = *forceSecure
 
 	// Validate TLS options
 	if (*tlsCert == "") != (*tlsKey == "") {

@@ -50,14 +50,17 @@ func UploadImage(c *gin.Context) {
 	filename := uuid.New().String() + ext
 	fullPath := filepath.Join(uploadDir, filename)
 
-	data, err := io.ReadAll(file)
+	// Stream to disk with hard cap (defense against header.Size being incorrect)
+	out, err := os.Create(fullPath)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read file"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save file"})
 		return
 	}
-
-	if err := os.WriteFile(fullPath, data, 0644); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save file"})
+	written, err := io.Copy(out, io.LimitReader(file, maxImageSize+1))
+	out.Close()
+	if err != nil || written > maxImageSize {
+		os.Remove(fullPath)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "image too large"})
 		return
 	}
 

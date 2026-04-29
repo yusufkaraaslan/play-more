@@ -2,47 +2,19 @@ package handlers
 
 import (
 	"html"
-	"regexp"
-	"strings"
 )
 
-var (
-	// Allowed HTML tags for developer "about" fields
-	allowedTags    = map[string]bool{"p": true, "br": true, "b": true, "i": true, "em": true, "strong": true, "a": true, "ul": true, "ol": true, "li": true, "h1": true, "h2": true, "h3": true}
-	tagPattern     = regexp.MustCompile(`</?([a-zA-Z][a-zA-Z0-9]*)\b[^>]*>`)
-	eventPattern   = regexp.MustCompile(`(?i)\s+on\w+\s*=`)
-	scriptPattern  = regexp.MustCompile(`(?i)<script[\s>]`)
-	hrefJSPattern  = regexp.MustCompile(`(?i)href\s*=\s*["']?\s*javascript:`)
-)
-
-// SanitizeHTML strips dangerous tags/attributes, keeping only safe formatting tags.
-func SanitizeHTML(input string) string {
-	// Remove script tags entirely
-	if scriptPattern.MatchString(input) {
-		input = regexp.MustCompile(`(?i)<script[^>]*>[\s\S]*?</script>`).ReplaceAllString(input, "")
-	}
-	// Remove event handlers (onclick, onerror, etc.)
-	input = eventPattern.ReplaceAllString(input, " ")
-	// Remove javascript: hrefs
-	input = hrefJSPattern.ReplaceAllString(input, `href="`)
-
-	// Strip disallowed tags
-	input = tagPattern.ReplaceAllStringFunc(input, func(tag string) string {
-		matches := tagPattern.FindStringSubmatch(tag)
-		if len(matches) < 2 {
-			return html.EscapeString(tag)
-		}
-		tagName := strings.ToLower(matches[1])
-		if allowedTags[tagName] {
-			return tag
-		}
-		return html.EscapeString(tag)
-	})
-
-	return input
-}
-
-// SanitizePlain escapes all HTML — for notifications, review text, usernames, etc.
+// SanitizePlain escapes all HTML — use for stored fields that will be
+// rendered as text (bio, notifications, review text, etc).
+//
+// Policy: PlayMore stores user-supplied text *raw* and escapes it at render time
+// in the SPA via escapeHtml(). This function provides a server-side defense layer
+// for fields that should never contain HTML (bio, devlog content, etc).
+//
+// We deliberately do NOT provide a "safe HTML" allowlist sanitizer — regex-based
+// HTML allowlists are routinely bypassed (e.g. <a/onclick=...>, malformed tags,
+// HTML entities in attributes). If you need rich text in a future feature, use
+// a dedicated library like github.com/microcosm-cc/bluemonday.
 func SanitizePlain(input string) string {
 	return html.EscapeString(input)
 }

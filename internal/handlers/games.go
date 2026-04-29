@@ -16,6 +16,25 @@ import (
 	"github.com/yusufkaraaslan/play-more/internal/storage"
 )
 
+// videoURLAllowedPrefixes — only embed URLs from trusted providers are accepted.
+var videoURLAllowedPrefixes = []string{
+	"https://www.youtube.com/embed/",
+	"https://www.youtube-nocookie.com/embed/",
+	"https://player.vimeo.com/video/",
+}
+
+func validateVideoURL(url string) bool {
+	if url == "" {
+		return true // empty is allowed (clears the video)
+	}
+	for _, prefix := range videoURLAllowedPrefixes {
+		if strings.HasPrefix(url, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
 func ListGames(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "12"))
@@ -169,7 +188,7 @@ func UploadGame(c *gin.Context) {
 
 	// Handle video URLs
 	videoURL := strings.TrimSpace(c.PostForm("video_url"))
-	if videoURL != "" {
+	if videoURL != "" && validateVideoURL(videoURL) {
 		videos := []string{videoURL}
 		videosJSON, _ := json.Marshal(videos)
 		storage.DB.Exec(`UPDATE games SET video_url = ?, videos = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, videoURL, string(videosJSON), game.ID)
@@ -231,16 +250,22 @@ func UpdateGame(c *gin.Context) {
 		return
 	}
 
-	// Update extended fields
+	// Update extended fields — validate video URLs against allowlist
 	if input.Videos != nil {
-		videosJSON, _ := json.Marshal(input.Videos)
+		filtered := []string{}
+		for _, v := range input.Videos {
+			v = strings.TrimSpace(v)
+			if validateVideoURL(v) && v != "" {
+				filtered = append(filtered, v)
+			}
+		}
+		videosJSON, _ := json.Marshal(filtered)
 		videoURL := ""
-		if len(input.Videos) > 0 {
-			videoURL = input.Videos[0]
+		if len(filtered) > 0 {
+			videoURL = filtered[0]
 		}
 		storage.DB.Exec(`UPDATE games SET videos = ?, video_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, string(videosJSON), videoURL, game.ID)
-	} else if input.VideoURL != nil {
-		// Legacy single video_url update
+	} else if input.VideoURL != nil && validateVideoURL(*input.VideoURL) {
 		storage.DB.Exec(`UPDATE games SET video_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, *input.VideoURL, game.ID)
 	}
 	if input.Discount != nil {
@@ -435,7 +460,8 @@ func ReuploadGameFiles(c *gin.Context) {
 	if strings.HasSuffix(strings.ToLower(fileName), ".zip") {
 		ef, err := storage.ExtractZip(game.ID, data)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "failed to extract ZIP: " + err.Error()})
+			log.Printf("ZIP extraction failed for game %s: %v", game.ID, err)
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid game archive"})
 			return
 		}
 		entryFile = ef

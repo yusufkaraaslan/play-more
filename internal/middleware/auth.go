@@ -10,10 +10,23 @@ import (
 
 const UserKey = "user"
 
-// IsSecure returns true if the request arrived over HTTPS,
-// either directly (TLS) or via a reverse proxy (X-Forwarded-Proto).
+// ForceSecureCookies — when true, all session cookies have Secure=true regardless
+// of the current request's TLS state. Set this when running behind a TLS-terminating
+// reverse proxy where the front edge is always HTTPS.
+var ForceSecureCookies bool
+
+// IsSecure returns true if cookies should be marked Secure.
+// True if: ForceSecureCookies is set, request is over TLS directly, or
+// X-Forwarded-Proto: https is set (only trusted when SetTrustedProxies is configured).
 func IsSecure(c *gin.Context) bool {
-	return c.Request.TLS != nil || c.Request.Header.Get("X-Forwarded-Proto") == "https"
+	if ForceSecureCookies {
+		return true
+	}
+	if c.Request.TLS != nil {
+		return true
+	}
+	// X-Forwarded-Proto is only set by Gin into c.Request when proxy is trusted
+	return c.Request.Header.Get("X-Forwarded-Proto") == "https"
 }
 
 // AuthRequired rejects unauthenticated requests.

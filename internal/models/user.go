@@ -1,6 +1,8 @@
 package models
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"time"
 
@@ -120,7 +122,12 @@ func (u *User) Update(username, bio, avatarURL, bannerURL, themeColor string, li
 // Sessions
 
 func CreateSession(userID string) (string, error) {
-	token := uuid.New().String()
+	// 32 bytes = 256 bits of entropy from crypto/rand
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	token := hex.EncodeToString(b)
 	expires := time.Now().Add(30 * 24 * time.Hour) // 30 days
 	_, err := storage.DB.Exec(
 		`INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)`,

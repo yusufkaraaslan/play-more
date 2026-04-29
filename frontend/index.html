@@ -871,7 +871,7 @@
 
         async function verifyEmail(token) {
             try {
-                await api('/auth/verify/' + token);
+                await api('/auth/verify', { method: 'POST', body: JSON.stringify({ token }) });
                 toast('Email verified!', 'success');
                 if (currentUser) await checkAuth();
             } catch (e) { toast('Verification failed: ' + e.message, 'error'); }
