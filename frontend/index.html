@@ -667,7 +667,7 @@
                 <button class="btn-secondary" onclick="closePlayer()">Close</button>
             </div>
         </div>
-        <iframe id="player-frame" sandbox="allow-scripts allow-pointer-lock allow-popups allow-popups-to-escape-sandbox" allow="gamepad; fullscreen"></iframe>
+        <iframe id="player-frame" allow="gamepad; fullscreen"></iframe>
     </div>
 
     <div class="toast-container" id="toast-container"></div>
@@ -2155,7 +2155,19 @@
         function launchGame(gameId, entryFile) {
             const player = document.getElementById('game-player');
             document.getElementById('player-title').textContent = 'Loading...';
-            document.getElementById('player-frame').src = gameOrigin() + '/play/' + gameId + '/' + (entryFile || 'index.html');
+            const frame = document.getElementById('player-frame');
+            // Sandbox tradeoff:
+            //   - With --games-domain: games get their own origin, so allow-same-origin
+            //     gives them localStorage/IndexedDB while still being cross-origin from
+            //     the SPA (so they can't read SPA cookies / DOM).
+            //   - Without --games-domain: games are same-origin, so allow-same-origin
+            //     would let them call /api/* with the user's cookies — block storage
+            //     access to keep auth safe.
+            const hasSeparateOrigin = !!gameOrigin();
+            const sandbox = ['allow-scripts', 'allow-pointer-lock', 'allow-popups', 'allow-popups-to-escape-sandbox'];
+            if (hasSeparateOrigin) sandbox.push('allow-same-origin');
+            frame.setAttribute('sandbox', sandbox.join(' '));
+            frame.src = gameOrigin() + '/play/' + gameId + '/' + (entryFile || 'index.html');
             player.classList.add('active');
             gameSessionStart = Date.now();
             if (sessionTimerInterval) clearInterval(sessionTimerInterval);
