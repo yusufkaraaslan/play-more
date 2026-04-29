@@ -463,14 +463,18 @@ func ServeGameFiles(c *gin.Context) {
 		filePath = "/" + game.EntryFile
 	}
 
-	fullPath := filepath.Join(storage.GamesDir, gameID, filepath.FromSlash(filePath))
-	// Prevent path traversal
-	if !strings.HasPrefix(fullPath, storage.GamesDir) {
+	gameRoot := filepath.Join(storage.GamesDir, gameID)
+	fullPath := filepath.Join(gameRoot, filepath.FromSlash(filePath))
+	// Prevent path traversal — must be inside the specific game's directory
+	if fullPath != gameRoot && !strings.HasPrefix(fullPath, gameRoot+string(filepath.Separator)) {
 		c.String(http.StatusForbidden, "forbidden")
 		return
 	}
 
-	// Games get a permissive CSP — they may load scripts from any CDN
+	// Games get a permissive CSP — they may load scripts/assets from any CDN.
+	// Iframe sandbox (allow-scripts, NO allow-same-origin) is the primary defense:
+	// even on same-origin, sandboxed iframes have an opaque origin so cookies are
+	// not attached to fetch() and parent.document is unreachable.
 	c.Header("Content-Security-Policy", "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; img-src * data: blob:; media-src * data: blob:; font-src * data:; connect-src *")
 	c.Header("X-Frame-Options", "SAMEORIGIN")
 	// Cache-Control for game files: immutable assets

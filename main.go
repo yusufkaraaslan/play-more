@@ -190,6 +190,8 @@ func main() {
 	smtpPass := flag.String("smtp-pass", "", "SMTP password")
 	smtpFrom := flag.String("smtp-from", "", "From address for emails")
 	baseURL := flag.String("base-url", "", "Public base URL (e.g. https://playmore.example.com)")
+	gamesDomain := flag.String("games-domain", "", "Optional separate domain for game files (e.g. games.example.com) — strongest isolation against malicious uploaded games")
+	trustedProxies := flag.String("trusted-proxies", "", "Comma-separated list of trusted proxy CIDRs (e.g. '127.0.0.1/32,10.0.0.0/8'). Empty = trust no proxy headers.")
 	flag.Parse()
 
 	// Environment variables as fallback (flags take priority)
@@ -250,6 +252,12 @@ func main() {
 	}
 	if !isFlagSet("base-url") {
 		if v := os.Getenv("PLAYMORE_BASE_URL"); v != "" { *baseURL = v }
+	}
+	if !isFlagSet("games-domain") {
+		if v := os.Getenv("PLAYMORE_GAMES_DOMAIN"); v != "" { *gamesDomain = v }
+	}
+	if !isFlagSet("trusted-proxies") {
+		if v := os.Getenv("PLAYMORE_TRUSTED_PROXIES"); v != "" { *trustedProxies = v }
 	}
 
 	// Validate TLS options
@@ -325,7 +333,7 @@ func main() {
 		fmt.Printf("Auto-TLS: enabled for %s\n", *domain)
 	}
 
-	r := server.New(frontendFS, *goatcounter)
+	r := server.New(frontendFS, *goatcounter, *gamesDomain, *trustedProxies)
 	addr := fmt.Sprintf(":%d", *port)
 	if *autoTLS {
 		certDir := filepath.Join(*dataDir, "certs")

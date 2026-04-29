@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"net/http"
 	"path/filepath"
+	"strings"
 
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
@@ -17,8 +18,21 @@ import (
 	"github.com/yusufkaraaslan/play-more/internal/storage"
 )
 
-func New(frontendFS embed.FS, goatCounterURL string) *gin.Engine {
+func New(frontendFS embed.FS, goatCounterURL, gamesDomain, trustedProxies string) *gin.Engine {
 	r := gin.Default()
+
+	// Trust proxies — by default trust nothing; operator must explicitly opt in
+	if trustedProxies != "" {
+		proxies := []string{}
+		for _, p := range strings.Split(trustedProxies, ",") {
+			if p = strings.TrimSpace(p); p != "" {
+				proxies = append(proxies, p)
+			}
+		}
+		r.SetTrustedProxies(proxies)
+	} else {
+		r.SetTrustedProxies(nil)
+	}
 
 	// HTTPS redirect middleware (before security headers)
 	r.Use(func(c *gin.Context) {
@@ -252,13 +266,28 @@ func New(frontendFS embed.FS, goatCounterURL string) *gin.Engine {
 			data = bytes.Replace(data, []byte("<style>"), []byte(`<style nonce="`+nonce+`">`), 1)
 			data = bytes.Replace(data, []byte("<script>"), []byte(`<script nonce="`+nonce+`">`), 1)
 
-			// Build nonce-based CSP
+			// Inject games origin if configured
+			gamesOrigin := ""
+			if gamesDomain != "" {
+				scheme := "https://"
+				if c.Request.TLS == nil && c.Request.Header.Get("X-Forwarded-Proto") != "https" {
+					scheme = "http://"
+				}
+				gamesOrigin = scheme + gamesDomain
+				originSnippet := []byte(`<script nonce="` + nonce + `">window.PLAYMORE_GAMES_ORIGIN="` + html.EscapeString(gamesOrigin) + `";</script></head>`)
+				data = bytes.Replace(data, []byte("</head>"), originSnippet, 1)
+			}
+
+			// Build nonce-based CSP — frame-src must include games origin if set
 			gcURL, _ := c.Get("goatcounter_url")
 			gcStr, _ := gcURL.(string)
-			// Nonce protects <script>/<style> blocks; unsafe-inline on -attr allows onclick/style attributes
-			csp := "default-src 'self'; script-src 'self' 'nonce-" + nonce + "'; script-src-attr 'unsafe-inline'; style-src 'self' 'nonce-" + nonce + "' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; img-src 'self' data: blob: https://img.youtube.com; connect-src 'self'; frame-src 'self' https://www.youtube.com; media-src 'self'; font-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; form-action 'self'"
+			frameSrc := "'self' https://www.youtube.com"
+			if gamesOrigin != "" {
+				frameSrc += " " + gamesOrigin
+			}
+			csp := "default-src 'self'; script-src 'self' 'nonce-" + nonce + "'; script-src-attr 'unsafe-inline'; style-src 'self' 'nonce-" + nonce + "' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; img-src 'self' data: blob: https://img.youtube.com; connect-src 'self'; frame-src " + frameSrc + "; media-src 'self'; font-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; form-action 'self'"
 			if gcStr != "" {
-				csp = "default-src 'self'; script-src 'self' 'nonce-" + nonce + "' https://gc.zgo.at https://*.goatcounter.com https://static.cloudflareinsights.com; script-src-attr 'unsafe-inline'; style-src 'self' 'nonce-" + nonce + "' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; img-src 'self' data: blob: https://img.youtube.com https://gc.zgo.at; connect-src 'self' https://*.goatcounter.com https://cloudflareinsights.com; frame-src 'self' https://www.youtube.com; media-src 'self'; font-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; form-action 'self'"
+				csp = "default-src 'self'; script-src 'self' 'nonce-" + nonce + "' https://gc.zgo.at https://*.goatcounter.com https://static.cloudflareinsights.com; script-src-attr 'unsafe-inline'; style-src 'self' 'nonce-" + nonce + "' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; img-src 'self' data: blob: https://img.youtube.com https://gc.zgo.at; connect-src 'self' https://*.goatcounter.com https://cloudflareinsights.com; frame-src " + frameSrc + "; media-src 'self'; font-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; form-action 'self'"
 			}
 			c.Header("Content-Security-Policy", csp)
 
