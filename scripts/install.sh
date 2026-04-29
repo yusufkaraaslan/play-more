@@ -27,8 +27,11 @@ command -v cloudflared >/dev/null || { echo "cloudflared not found"; exit 1; }
 [[ -f .env ]]                     || { echo ".env missing — see docs/SETUP.md"; exit 1; }
 
 # Extract hostname from PLAYMORE_BASE_URL (e.g. https://playmore.world → playmore.world)
-HOSTNAME="$(grep -E '^PLAYMORE_BASE_URL=' .env | head -1 | cut -d= -f2- | sed -E 's|^https?://||; s|/.*||')"
+HOSTNAME="$(grep -E '^PLAYMORE_BASE_URL=' .env | head -1 | cut -d= -f2- | sed -E "s|^['\"]?https?://||; s|/.*||; s|['\"]?$||")"
 [[ -n "$HOSTNAME" ]] || { echo "PLAYMORE_BASE_URL missing from .env"; exit 1; }
+
+# Optional games domain for sandbox isolation
+GAMES_DOMAIN="$(grep -E '^PLAYMORE_GAMES_DOMAIN=' .env | head -1 | cut -d= -f2- | sed -E "s|^['\"]?||; s|['\"]?$||")"
 
 # Find the tunnel credentials JSON (named <uuid>.json)
 CRED_SRC="$(ls -1 "$HOME"/.cloudflared/*.json 2>/dev/null | head -1 || true)"
@@ -38,6 +41,7 @@ TUNNEL_ID="$(basename "$CRED_SRC" .json)"
 log "Repo:     $REPO_DIR"
 log "User:    $USER_NAME"
 log "Host:    $HOSTNAME"
+[[ -n "$GAMES_DOMAIN" ]] && log "Games:   $GAMES_DOMAIN (separate origin for game sandbox)"
 log "Tunnel:  $TUNNEL_ID"
 
 # --- Build ---
@@ -84,8 +88,16 @@ ingress:
     service: http://localhost:8080
   - hostname: www.$HOSTNAME
     service: http://localhost:8080
+$([[ -n "$GAMES_DOMAIN" ]] && echo "  - hostname: $GAMES_DOMAIN
+    service: http://localhost:8080")
   - service: http_status:404
 EOF
+
+# Auto-create DNS route for games subdomain (idempotent — silently no-ops if exists)
+if [[ -n "$GAMES_DOMAIN" ]]; then
+  log "Ensuring DNS route for $GAMES_DOMAIN"
+  cloudflared tunnel route dns "$TUNNEL_ID" "$GAMES_DOMAIN" 2>&1 | grep -v "An A, AAAA, or CNAME record" || true
+fi
 
 log "Installing cloudflared systemd service"
 if ! systemctl list-unit-files cloudflared.service >/dev/null 2>&1; then
