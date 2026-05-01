@@ -28,13 +28,33 @@ func GameDir(gameID string) string {
 	return filepath.Join(GamesDir, gameID)
 }
 
-// SaveGameFile saves a single HTML/JS file to the game directory.
+// SaveGameFile saves a single file to the game directory.
+// fileName is sanitized via filepath.Base + a no-traversal check; callers may
+// pass any filename from a multipart upload safely.
 func SaveGameFile(gameID string, fileName string, data []byte) error {
+	safe := SanitizeFileName(fileName)
+	if safe == "" {
+		return fmt.Errorf("invalid filename")
+	}
 	dir := GameDir(gameID)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(dir, fileName), data, 0644)
+	return os.WriteFile(filepath.Join(dir, safe), data, 0644)
+}
+
+// SanitizeFileName collapses a multipart filename to its basename and rejects
+// anything containing path separators or traversal segments. Returns "" if unsafe.
+func SanitizeFileName(fileName string) string {
+	fileName = strings.ReplaceAll(fileName, "\\", "/")
+	fileName = filepath.Base(fileName)
+	if fileName == "." || fileName == ".." || fileName == "" || fileName == "/" {
+		return ""
+	}
+	if strings.ContainsAny(fileName, "/\\") || strings.Contains(fileName, "..") {
+		return ""
+	}
+	return fileName
 }
 
 // ExtractZip extracts a ZIP file to the game directory and returns the entry file name.
@@ -85,6 +105,21 @@ func ExtractZip(gameID string, data []byte) (string, error) {
 		if name == "" || strings.HasPrefix(name, "__MACOSX") {
 			continue
 		}
+		// Reject any entry whose name still contains traversal after prefix-strip.
+		if strings.Contains(name, "..") || strings.HasPrefix(name, "/") || strings.HasPrefix(name, `\`) {
+			continue
+		}
+		// Strip dotfiles and dot-directories (.git, .htaccess, .env, etc.).
+		skipDot := false
+		for _, seg := range strings.Split(filepath.ToSlash(name), "/") {
+			if strings.HasPrefix(seg, ".") {
+				skipDot = true
+				break
+			}
+		}
+		if skipDot {
+			continue
+		}
 
 		target := filepath.Join(dir, filepath.FromSlash(name))
 		// Prevent path traversal — must be inside dir, not just a string prefix match
@@ -92,8 +127,15 @@ func ExtractZip(gameID string, data []byte) (string, error) {
 			continue
 		}
 
+		// Reject symlinks and other non-regular file modes — only directories and
+		// regular files may be extracted. Stops symlink-out / hardlink attacks.
+		mode := f.Mode()
+		if mode&os.ModeSymlink != 0 || mode&os.ModeNamedPipe != 0 || mode&os.ModeSocket != 0 || mode&os.ModeDevice != 0 {
+			continue
+		}
+
 		if f.FileInfo().IsDir() {
-			os.MkdirAll(target, 0755)
+			os.MkdirAll(target, 0750)
 			continue
 		}
 
@@ -105,7 +147,7 @@ func ExtractZip(gameID string, data []byte) (string, error) {
 			return "", fmt.Errorf("archive total size exceeds limit")
 		}
 
-		if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(target), 0750); err != nil {
 			return "", err
 		}
 
@@ -155,6 +197,10 @@ func ExtractZip(gameID string, data []byte) (string, error) {
 
 	if entryFile == "" {
 		return "", fmt.Errorf("no HTML file found in ZIP")
+	}
+	// Final defense: refuse entry paths that would escape the game dir at serve time.
+	if strings.Contains(entryFile, "..") || strings.HasPrefix(entryFile, "/") {
+		return "", fmt.Errorf("invalid entry file path")
 	}
 
 	return entryFile, nil

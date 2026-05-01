@@ -91,6 +91,22 @@ func UpdateDeveloperPage(c *gin.Context) {
 		input.CustomCSS = input.CustomCSS[:5000]
 	}
 
+	// Style fields flow into HTML style="" attributes — must be format-restricted server-side.
+	input.ThemeColor = SanitizeColor(input.ThemeColor)
+	input.FontHeading = SanitizeFontName(input.FontHeading)
+	input.FontBody = SanitizeFontName(input.FontBody)
+	input.BannerURL = SanitizeWebURL(input.BannerURL)
+
+	// Filter Links — drop any with non-http(s)/mailto URLs (javascript:, data:, etc.).
+	cleanLinks := input.Links[:0]
+	for _, l := range input.Links {
+		if u := SanitizeWebURL(l.URL); u != "" {
+			l.URL = u
+			cleanLinks = append(cleanLinks, l)
+		}
+	}
+	input.Links = cleanLinks
+
 	if err := models.UpsertDeveloperPage(
 		user.ID, input.DisplayName, input.BannerURL, input.ThemeColor, input.ThemePreset,
 		input.About, input.FontHeading, input.FontBody, input.CustomCSS, input.Links, input.FeaturedGames, input.PageLayout,

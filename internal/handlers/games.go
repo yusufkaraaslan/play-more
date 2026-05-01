@@ -133,10 +133,16 @@ func UploadGame(c *gin.Context) {
 		return
 	}
 
-	fileName := header.Filename
+	fileName := storage.SanitizeFileName(header.Filename)
+	if fileName == "" {
+		game.Delete()
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid filename"})
+		return
+	}
+	lowerName := strings.ToLower(fileName)
 	entryFile := fileName
 
-	if strings.HasSuffix(strings.ToLower(fileName), ".zip") {
+	if strings.HasSuffix(lowerName, ".zip") {
 		ef, err := storage.ExtractZip(game.ID, data)
 		if err != nil {
 			game.Delete()
@@ -145,27 +151,35 @@ func UploadGame(c *gin.Context) {
 			return
 		}
 		entryFile = ef
-	} else {
+	} else if strings.HasSuffix(lowerName, ".html") || strings.HasSuffix(lowerName, ".htm") {
 		if err := storage.SaveGameFile(game.ID, fileName, data); err != nil {
 			game.Delete()
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save file"})
 			return
 		}
+	} else {
+		game.Delete()
+		c.JSON(http.StatusBadRequest, gin.H{"error": "game file must be .html, .htm, or .zip"})
+		return
 	}
 
 	game.UpdateFiles(storage.GameDir(game.ID), entryFile)
 
-	// Handle cover image
+	// Handle cover image — must decode as a real image (no HTML-as-PNG XSS).
 	coverFile, coverHeader, err := c.Request.FormFile("cover")
 	if err == nil {
 		defer coverFile.Close()
-		coverData, _ := io.ReadAll(coverFile)
-		coverName := "cover" + filepath.Ext(coverHeader.Filename)
-		storage.SaveGameFile(game.ID, coverName, coverData)
-		game.UpdateCover("/play/" + game.ID + "/" + coverName)
+		declared := strings.ToLower(filepath.Ext(coverHeader.Filename))
+		coverData, ext, vErr := ValidateImageBytes(coverFile, declared, maxImageSize)
+		if vErr == nil {
+			coverName := "cover" + ext
+			if sErr := storage.SaveGameFile(game.ID, coverName, coverData); sErr == nil {
+				game.UpdateCover("/play/" + game.ID + "/" + coverName)
+			}
+		}
 	}
 
-	// Handle screenshots (multiple)
+	// Handle screenshots (multiple) — same validation.
 	form, _ := c.MultipartForm()
 	if form != nil && form.File["screenshots"] != nil {
 		screenshots := []string{}
@@ -174,10 +188,16 @@ func UploadGame(c *gin.Context) {
 			if err != nil {
 				continue
 			}
-			data, _ := io.ReadAll(f)
+			declared := strings.ToLower(filepath.Ext(fh.Filename))
+			data, ext, vErr := ValidateImageBytes(f, declared, maxImageSize)
 			f.Close()
-			name := fmt.Sprintf("screenshot_%d%s", i, filepath.Ext(fh.Filename))
-			storage.SaveGameFile(game.ID, name, data)
+			if vErr != nil {
+				continue
+			}
+			name := fmt.Sprintf("screenshot_%d%s", i, ext)
+			if err := storage.SaveGameFile(game.ID, name, data); err != nil {
+				continue
+			}
 			screenshots = append(screenshots, "/play/"+game.ID+"/"+name)
 		}
 		if len(screenshots) > 0 {
@@ -272,10 +292,14 @@ func UpdateGame(c *gin.Context) {
 		storage.DB.Exec(`UPDATE games SET discount = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, *input.Discount, game.ID)
 	}
 	if input.ThemeColor != nil {
-		storage.DB.Exec(`UPDATE games SET theme_color = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, *input.ThemeColor, game.ID)
+		// Validate hex color — flows into style="" attributes on the game page.
+		safe := SanitizeColor(*input.ThemeColor)
+		storage.DB.Exec(`UPDATE games SET theme_color = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, safe, game.ID)
 	}
 	if input.HeaderImage != nil {
-		storage.DB.Exec(`UPDATE games SET header_image = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, *input.HeaderImage, game.ID)
+		// Validate http(s) URL — flows into <img src="">.
+		safe := SanitizeWebURL(*input.HeaderImage)
+		storage.DB.Exec(`UPDATE games SET header_image = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, safe, game.ID)
 	}
 	if input.CustomAbout != nil {
 		storage.DB.Exec(`UPDATE games SET custom_about = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, *input.CustomAbout, game.ID)
@@ -357,10 +381,16 @@ func ManageScreenshots(c *gin.Context) {
 		if err != nil {
 			continue
 		}
-		data, _ := io.ReadAll(f)
+		declared := strings.ToLower(filepath.Ext(fh.Filename))
+		data, ext, vErr := ValidateImageBytes(f, declared, maxImageSize)
 		f.Close()
-		name := fmt.Sprintf("screenshot_%d%s", baseIdx+i, filepath.Ext(fh.Filename))
-		storage.SaveGameFile(game.ID, name, data)
+		if vErr != nil {
+			continue
+		}
+		name := fmt.Sprintf("screenshot_%d%s", baseIdx+i, ext)
+		if err := storage.SaveGameFile(game.ID, name, data); err != nil {
+			continue
+		}
 		screenshots = append(screenshots, "/play/"+game.ID+"/"+name)
 	}
 	ssJSON, _ := json.Marshal(screenshots)
@@ -451,13 +481,18 @@ func ReuploadGameFiles(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "file too large"})
 		return
 	}
-	fileName := header.Filename
+	fileName := storage.SanitizeFileName(header.Filename)
+	if fileName == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid filename"})
+		return
+	}
+	lowerName := strings.ToLower(fileName)
 	entryFile := fileName
 
 	// Delete old files
 	storage.DeleteGameFiles(game.ID)
 
-	if strings.HasSuffix(strings.ToLower(fileName), ".zip") {
+	if strings.HasSuffix(lowerName, ".zip") {
 		ef, err := storage.ExtractZip(game.ID, data)
 		if err != nil {
 			log.Printf("ZIP extraction failed for game %s: %v", game.ID, err)
@@ -465,11 +500,14 @@ func ReuploadGameFiles(c *gin.Context) {
 			return
 		}
 		entryFile = ef
-	} else {
+	} else if strings.HasSuffix(lowerName, ".html") || strings.HasSuffix(lowerName, ".htm") {
 		if err := storage.SaveGameFile(game.ID, fileName, data); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save file"})
 			return
 		}
+	} else {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "game file must be .html, .htm, or .zip"})
+		return
 	}
 	game.UpdateFiles(storage.GameDir(game.ID), entryFile)
 	c.JSON(http.StatusOK, gin.H{"message": "game files updated"})

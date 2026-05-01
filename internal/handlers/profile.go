@@ -54,8 +54,8 @@ func UpdateProfile(c *gin.Context) {
 	if input.Username == "" {
 		input.Username = user.Username
 	}
-	if input.Username != user.Username && !usernameRe.MatchString(input.Username) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Username must be 3-30 characters: letters, numbers, underscores, hyphens only."})
+	if input.Username != user.Username && !IsValidUsername(input.Username) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Username must be 3-30 characters (letters, numbers, underscores, hyphens) and not a reserved name."})
 		return
 	}
 	if input.Links == nil {

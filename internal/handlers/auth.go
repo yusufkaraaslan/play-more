@@ -29,6 +29,29 @@ type registerInput struct {
 // Prevents XSS via username in JS-string-in-HTML-attribute contexts.
 var usernameRe = regexp.MustCompile(`^[a-zA-Z0-9_-]{3,30}$`)
 
+// reservedUsernames are usernames that collide with route names, system roles,
+// or are commonly impersonated. Checked case-insensitively.
+var reservedUsernames = map[string]bool{
+	"admin": true, "administrator": true, "root": true, "system": true, "support": true,
+	"playmore": true, "staff": true, "moderator": true, "mod": true, "official": true,
+	"help": true, "security": true, "abuse": true, "noreply": true, "no-reply": true,
+	"api": true, "auth": true, "login": true, "logout": true, "register": true,
+	"signup": true, "settings": true, "profile": true, "developer": true, "store": true,
+	"library": true, "wishlist": true, "feed": true, "search": true, "docs": true,
+	"play": true, "uploads": true, "assets": true, "avatar": true, "deploy": true,
+	"seed": true, "verify": true, "reset": true, "me": true, "you": true, "null": true,
+	"undefined": true, "true": true, "false": true,
+}
+
+// IsValidUsername checks the regex AND the reserved-name list.
+// Use everywhere a username is accepted (register, update).
+func IsValidUsername(name string) bool {
+	if !usernameRe.MatchString(name) {
+		return false
+	}
+	return !reservedUsernames[strings.ToLower(name)]
+}
+
 func Register(c *gin.Context) {
 	var input registerInput
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -40,8 +63,8 @@ func Register(c *gin.Context) {
 	input.Username = strings.TrimSpace(input.Username)
 	input.Email = strings.ToLower(strings.TrimSpace(input.Email))
 
-	if !usernameRe.MatchString(input.Username) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Username must be 3-30 characters: letters, numbers, underscores, hyphens only."})
+	if !IsValidUsername(input.Username) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Username must be 3-30 characters (letters, numbers, underscores, hyphens) and not a reserved name."})
 		return
 	}
 

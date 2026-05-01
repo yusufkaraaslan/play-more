@@ -2,6 +2,8 @@ package handlers
 
 import (
 	"html"
+	"regexp"
+	"strings"
 )
 
 // SanitizePlain escapes all HTML — use for stored fields that will be
@@ -17,4 +19,45 @@ import (
 // a dedicated library like github.com/microcosm-cc/bluemonday.
 func SanitizePlain(input string) string {
 	return html.EscapeString(input)
+}
+
+var (
+	hexColorRe = regexp.MustCompile(`^#[0-9a-fA-F]{3,8}$`)
+	fontNameRe = regexp.MustCompile(`^[a-zA-Z0-9 _-]{0,40}$`)
+)
+
+// SanitizeColor returns input if it's a valid CSS hex color, else "".
+// Used to gate values that flow into style="" attributes.
+func SanitizeColor(input string) string {
+	input = strings.TrimSpace(input)
+	if hexColorRe.MatchString(input) {
+		return input
+	}
+	return ""
+}
+
+// SanitizeFontName returns input if it's a safe font-family name, else "".
+// Allows letters, digits, spaces, underscore, hyphen — sufficient for any
+// real font name, blocks the quotes/brackets needed to break out of style="".
+func SanitizeFontName(input string) string {
+	input = strings.TrimSpace(input)
+	if fontNameRe.MatchString(input) {
+		return input
+	}
+	return ""
+}
+
+// SanitizeWebURL returns input if it's an http(s) or mailto URL, else "".
+// Used for any field that flows into href="" or src="" — blocks the
+// javascript: / data: / vbscript: schemes that would execute on click.
+func SanitizeWebURL(input string) string {
+	input = strings.TrimSpace(input)
+	if input == "" {
+		return ""
+	}
+	lower := strings.ToLower(input)
+	if strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://") || strings.HasPrefix(lower, "mailto:") {
+		return input
+	}
+	return ""
 }
