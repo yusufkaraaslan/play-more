@@ -76,12 +76,23 @@ func CreateComment(c *gin.Context) {
 
 	var input commentInput
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
 		return
 	}
 
 	devlogID := c.Param("id")
 	input.Text = SanitizePlain(input.Text)
+
+	// Validate parent_id (if any) belongs to THIS devlog — stops cross-thread
+	// notification spam where a user replies to a comment in another thread.
+	if input.ParentID != "" {
+		var parentDevlog string
+		err := storage.DB.QueryRow(`SELECT devlog_id FROM comments WHERE id = ?`, input.ParentID).Scan(&parentDevlog)
+		if err != nil || parentDevlog != devlogID {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid parent comment"})
+			return
+		}
+	}
 
 	id := uuid.New().String()
 	_, err := storage.DB.Exec(

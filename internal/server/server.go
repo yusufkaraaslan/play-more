@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"embed"
 	"encoding/base64"
+	"fmt"
 	"html"
 	"io/fs"
 	"net/http"
@@ -19,7 +20,34 @@ import (
 )
 
 func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxies string) *gin.Engine {
-	r := gin.Default()
+	// gin.New() + Recovery() (no Logger) — we install a custom logger below
+	// that strips query strings, so password-reset/verify tokens don't land
+	// in journalctl forever.
+	r := gin.New()
+	r.Use(gin.Recovery())
+	// Cap multipart parsing at 32 MiB in memory; larger uploads spill to tmp
+	// (already capped per-route below). Caller must still wrap the request
+	// body with http.MaxBytesReader for large endpoints.
+	r.MaxMultipartMemory = 32 << 20
+
+	// limitBody returns middleware that caps the request body to maxBytes.
+	// Use on routes that accept multipart uploads — defense against attackers
+	// stuffing huge non-target form fields past the per-file size check.
+	limitBody := func(maxBytes int64) gin.HandlerFunc {
+		return func(c *gin.Context) {
+			c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxBytes)
+			c.Next()
+		}
+	}
+	uploadCap := int64(storage.MaxFileSize) + (32 << 20) // game file + cover/screenshots/form overhead
+	imageCap := int64(10 << 20)                          // 5 MiB image + form overhead
+	r.Use(gin.LoggerWithFormatter(func(p gin.LogFormatterParams) string {
+		// Path only, no RawQuery — tokens are passed via query in some flows.
+		return fmt.Sprintf("%s | %3d | %13v | %15s | %-7s %s\n",
+			p.TimeStamp.Format("2006/01/02 - 15:04:05"),
+			p.StatusCode, p.Latency, p.ClientIP, p.Method, p.Path,
+		)
+	}))
 
 	// Trust proxies — by default trust nothing; operator must explicitly opt in
 	if trustedProxies != "" {
@@ -58,7 +86,11 @@ func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxi
 		c.Header("Content-Security-Policy", "default-src 'self'; object-src 'none'")
 		// The SPA handler overrides this with a nonce-based CSP
 		if c.Request.Header.Get("X-Forwarded-Proto") == "https" || c.Request.TLS != nil {
-			c.Header("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload")
+			// `preload` is intentionally omitted — submit the domain to
+			// hstspreload.org first, then add it back. With `preload` set
+			// without submission, a self-hoster who later drops TLS would
+			// lock all returning visitors out for 2 years.
+			c.Header("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
 		}
 		c.Header("Permissions-Policy", "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()")
 		c.Next()
@@ -106,12 +138,12 @@ func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxi
 		// Games
 		api.GET("/games", handlers.ListGames)
 		api.GET("/games/:id", handlers.GetGame)
-		api.POST("/games", middleware.AuthRequired(), handlers.RequireVerifiedEmail(), middleware.RateLimit(10, 3600), handlers.UploadGame)
+		api.POST("/games", middleware.AuthRequired(), handlers.RequireVerifiedEmail(), middleware.RateLimit(10, 3600), limitBody(uploadCap), handlers.UploadGame)
 		api.PUT("/games/:id", middleware.AuthRequired(), handlers.UpdateGame)
 		api.DELETE("/games/:id", middleware.AuthRequired(), handlers.DeleteGame)
-		api.POST("/games/:id/reupload", middleware.AuthRequired(), middleware.RateLimit(10, 3600), handlers.ReuploadGameFiles)
+		api.POST("/games/:id/reupload", middleware.AuthRequired(), middleware.RateLimit(10, 3600), limitBody(uploadCap), handlers.ReuploadGameFiles)
 		api.PUT("/games/:id/visibility", middleware.AuthRequired(), handlers.ToggleVisibility)
-		api.POST("/games/:id/screenshots", middleware.AuthRequired(), middleware.RateLimit(20, 3600), handlers.ManageScreenshots)
+		api.POST("/games/:id/screenshots", middleware.AuthRequired(), middleware.RateLimit(20, 3600), limitBody(uploadCap), handlers.ManageScreenshots)
 		api.DELETE("/games/:id/screenshots/:index", middleware.AuthRequired(), handlers.DeleteScreenshot)
 
 		// Reviews
@@ -201,11 +233,32 @@ func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxi
 	}
 
 	// Image uploads
-	api.POST("/upload/image", middleware.AuthRequired(), handlers.UploadImage)
+	api.POST("/upload/image", middleware.AuthRequired(), middleware.RateLimit(20, 3600), limitBody(imageCap), handlers.UploadImage)
 
-	// Serve uploaded images
+	// Serve uploaded images. r.Static would expose directory listings
+	// (http.FileServer behavior); wrap with a handler that 404s any path
+	// resolving to a directory so /uploads/<userID>/ doesn't enumerate files.
 	uploadsDir := filepath.Join(storage.GamesDir, "..", "uploads")
-	r.Static("/uploads", uploadsDir)
+	uploadsFS := http.Dir(uploadsDir)
+	r.GET("/uploads/*filepath", func(c *gin.Context) {
+		fp := c.Param("filepath")
+		if fp == "" || strings.HasSuffix(fp, "/") {
+			c.String(http.StatusNotFound, "not found")
+			return
+		}
+		f, err := uploadsFS.Open(fp)
+		if err != nil {
+			c.String(http.StatusNotFound, "not found")
+			return
+		}
+		defer f.Close()
+		stat, err := f.Stat()
+		if err != nil || stat.IsDir() {
+			c.String(http.StatusNotFound, "not found")
+			return
+		}
+		http.ServeContent(c.Writer, c.Request, stat.Name(), stat.ModTime(), f)
+	})
 
 	// Seed demo data (admin only)
 	api.POST("/seed", middleware.AuthRequired(), middleware.RateLimit(3, 3600), handlers.SeedData)

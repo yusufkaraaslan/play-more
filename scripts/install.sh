@@ -44,6 +44,13 @@ log "Host:    $HOSTNAME"
 [[ -n "$GAMES_DOMAIN" ]] && log "Games:   $GAMES_DOMAIN (separate origin for game sandbox)"
 log "Tunnel:  $TUNNEL_ID"
 
+# --- Secrets ---
+log "Tightening permissions on .env and data directory"
+chmod 600 "$REPO_DIR/.env"
+mkdir -p "$REPO_DIR/data"
+chmod 700 "$REPO_DIR/data"
+[[ -f "$REPO_DIR/data/playmore.db" ]] && chmod 600 "$REPO_DIR/data/playmore.db" || true
+
 # --- Build ---
 log "Building playmore binary"
 go build -o playmore

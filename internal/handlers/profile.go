@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/yusufkaraaslan/play-more/internal/middleware"
 	"github.com/yusufkaraaslan/play-more/internal/models"
+	"github.com/yusufkaraaslan/play-more/internal/storage"
 )
 
 func GetProfile(c *gin.Context) {
@@ -109,6 +110,24 @@ func RecordPlaytime(c *gin.Context) {
 		log.Printf("Validation error in RecordPlaytime: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input. Please check all fields and try again."})
 		return
+	}
+
+	// Confirm the game exists and is published — stops attackers inflating
+	// play_count + popularity sort + achievements for arbitrary IDs.
+	var published int
+	err := storage.DB.QueryRow(`SELECT published FROM games WHERE id = ?`, input.GameID).Scan(&published)
+	if err != nil || published != 1 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "game not found"})
+		return
+	}
+
+	// Clamp per-call seconds to a sane upper bound. Frontend sends a heartbeat
+	// every ~minute; 600s gives margin for slow networks but caps abuse.
+	if input.Seconds < 0 {
+		input.Seconds = 0
+	}
+	if input.Seconds > 600 {
+		input.Seconds = 600
 	}
 
 	if err := models.RecordPlaytime(user.ID, input.GameID, input.Seconds); err != nil {

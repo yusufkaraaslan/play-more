@@ -20,6 +20,30 @@ func DeleteAccount(c *gin.Context) {
 		return
 	}
 
+	// Re-auth: irreversible action requires the current password to be re-typed.
+	// CSRF protects against cross-site triggers, but not against XSS, an
+	// unattended laptop, or a stolen session cookie.
+	var input struct {
+		Password string `json:"password" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "current password required to delete account"})
+		return
+	}
+	if !user.CheckPassword(input.Password) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "current password is incorrect"})
+		return
+	}
+
+	// Refuse to delete the admin (lowest-created_at user) — would silently
+	// promote the next-oldest user. They must hand off admin first.
+	var firstID string
+	storage.DB.QueryRow(`SELECT id FROM users ORDER BY created_at ASC LIMIT 1`).Scan(&firstID)
+	if firstID == user.ID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "the instance admin account cannot be deleted from here"})
+		return
+	}
+
 	// Delete all user data (CASCADE handles most)
 	storage.DB.Exec(`DELETE FROM api_keys WHERE user_id = ?`, user.ID)
 	storage.DB.Exec(`DELETE FROM sessions WHERE user_id = ?`, user.ID)
@@ -52,7 +76,7 @@ func DeleteAccount(c *gin.Context) {
 
 type changePasswordInput struct {
 	Current string `json:"current" binding:"required"`
-	New     string `json:"new" binding:"required,min=6"`
+	New     string `json:"new" binding:"required,min=10"`
 }
 
 func ChangePassword(c *gin.Context) {
@@ -68,7 +92,7 @@ func ChangePassword(c *gin.Context) {
 
 	var input changePasswordInput
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "current and new password (min 10 chars) required"})
 		return
 	}
 

@@ -16,13 +16,15 @@ import (
 
 func GetAvatar(c *gin.Context) {
 	username := c.Param("username")
-	if username == "" {
-		c.String(http.StatusBadRequest, "username required")
+	// Same regex as registration — keeps the avatar filename safe even though
+	// Gin path params can't contain "/" (defense in depth).
+	if !usernameRe.MatchString(username) {
+		c.String(http.StatusNotFound, "not found")
 		return
 	}
 
 	avatarDir := filepath.Join(storage.GamesDir, "..", "avatars")
-	os.MkdirAll(avatarDir, 0755)
+	os.MkdirAll(avatarDir, 0750)
 	avatarPath := filepath.Join(avatarDir, username+".png")
 
 	if _, err := os.Stat(avatarPath); os.IsNotExist(err) {

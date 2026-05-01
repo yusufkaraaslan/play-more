@@ -203,7 +203,7 @@ func UpdateCollection(c *gin.Context) {
 		IsPublic    *bool   `json:"is_public"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
 		return
 	}
 	colID := c.Param("id")
@@ -233,7 +233,7 @@ func CreateCollection(c *gin.Context) {
 	}
 	var input collectionInput
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
 		return
 	}
 	id := uuid.New().String()
@@ -264,7 +264,7 @@ func AddToCollection(c *gin.Context) {
 	}
 	var input addToCollectionInput
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
 		return
 	}
 

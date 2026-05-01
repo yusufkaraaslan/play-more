@@ -65,6 +65,15 @@ func GetGame(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "game not found"})
 		return
 	}
+	// Hide unpublished games from anyone but the owner — the list endpoint
+	// already filters; this closes the same hole on the by-id getter.
+	if !game.Published {
+		reqUser := middleware.GetUser(c)
+		if reqUser == nil || reqUser.ID != game.DeveloperID {
+			c.JSON(http.StatusNotFound, gin.H{"error": "game not found"})
+			return
+		}
+	}
 	fileSize := storage.GameDirSize(game.ID)
 	c.JSON(http.StatusOK, gin.H{"game": game, "file_size": fileSize})
 }

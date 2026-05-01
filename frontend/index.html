@@ -2870,9 +2870,14 @@
         }
 
         function deleteAccount() {
-            showModal('Delete Account', 'This will permanently delete your account, games, reviews, and all data. This cannot be undone.', async () => {
-                try { await api('/settings/account', { method: 'DELETE' }); closeModal(); currentUser = null; renderHeader(); navigate('store'); toast('Account deleted.', 'info'); } catch (e) { toast(e.message, 'error'); closeModal(); }
-            });
+            const pwd = prompt('Enter your current password to confirm permanent deletion of your account, games, reviews, and all data:');
+            if (!pwd) return;
+            (async () => {
+                try {
+                    await api('/settings/account', { method: 'DELETE', body: JSON.stringify({ password: pwd }) });
+                    currentUser = null; renderHeader(); navigate('store'); toast('Account deleted.', 'info');
+                } catch (e) { toast(e.message, 'error'); }
+            })();
         }
 
         /* ============ Devlogs ============ */
