@@ -63,6 +63,13 @@ func Register(c *gin.Context) {
 	input.Username = strings.TrimSpace(input.Username)
 	input.Email = strings.ToLower(strings.TrimSpace(input.Email))
 
+	// Per-email register cap stops attackers rotating IPs to spam a victim's
+	// inbox via the welcome/verification email path during signup.
+	if !middleware.AllowByKey("register:"+input.Email, 3, 3600) {
+		c.JSON(http.StatusTooManyRequests, gin.H{"error": "too many registration attempts for this email, please wait"})
+		return
+	}
+
 	if !IsValidUsername(input.Username) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Username must be 3-30 characters (letters, numbers, underscores, hyphens) and not a reserved name."})
 		return
@@ -111,8 +118,17 @@ func Login(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input. Please check all fields and try again."})
 		return
 	}
+	emailKey := strings.ToLower(strings.TrimSpace(input.Email))
 
-	user, err := models.GetUserByEmail(strings.ToLower(strings.TrimSpace(input.Email)))
+	// Per-account lockout — defeats distributed credential-stuffing where each
+	// IP only hits the per-IP limit (10/5min) but thousands of IPs converge on
+	// one account. 10 attempts per email per 15min, regardless of source IP.
+	if !middleware.AllowByKey("login:"+emailKey, 10, 900) {
+		c.JSON(http.StatusTooManyRequests, gin.H{"error": "too many login attempts for this account, please try again later"})
+		return
+	}
+
+	user, err := models.GetUserByEmail(emailKey)
 	if err != nil {
 		// Run a dummy bcrypt comparison to equalize timing with the
 		// password-mismatch path, preventing user enumeration via timing.
@@ -128,6 +144,11 @@ func Login(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
 		return
 	}
+
+	// Invalidate any pre-seated/orphan sessions for this user before issuing a
+	// new one — defeats session fixation where an attacker plants a session
+	// cookie that survives the victim's login.
+	storage.DB.Exec(`DELETE FROM sessions WHERE user_id = ?`, user.ID)
 
 	token, err := models.CreateSession(user.ID)
 	if err != nil {
@@ -214,6 +235,11 @@ func ResendVerification(c *gin.Context) {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "email sending not configured"})
 		return
 	}
+	// Per-account verify-resend cap (in addition to per-IP rate-limit middleware).
+	if !middleware.AllowByKey("verify:"+user.ID, 3, 3600) {
+		c.JSON(http.StatusTooManyRequests, gin.H{"error": "too many verification emails sent recently, please wait"})
+		return
+	}
 	storage.DB.Exec(`DELETE FROM email_tokens WHERE user_id = ? AND type = 'verify'`, user.ID)
 	token := generateToken()
 	storage.DB.Exec(`INSERT INTO email_tokens (token, user_id, type, expires_at) VALUES (?, ?, 'verify', ?)`,
@@ -263,8 +289,17 @@ func ForgotPassword(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "valid email required"})
 		return
 	}
+	emailKey := strings.ToLower(strings.TrimSpace(input.Email))
+
+	// Per-email cap stops attackers rotating IPs to flood a victim's inbox.
+	// Generic success response is preserved either way (no enumeration).
+	if !middleware.AllowByKey("reset:"+emailKey, 3, 3600) {
+		c.JSON(http.StatusOK, gin.H{"message": "if an account exists, a reset email has been sent"})
+		return
+	}
+
 	// Always return success to prevent user enumeration
-	user, err := models.GetUserByEmail(strings.ToLower(strings.TrimSpace(input.Email)))
+	user, err := models.GetUserByEmail(emailKey)
 	if err != nil || !email.Configured() {
 		c.JSON(http.StatusOK, gin.H{"message": "if an account exists, a reset email has been sent"})
 		return

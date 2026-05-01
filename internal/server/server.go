@@ -109,9 +109,9 @@ func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxi
 		api.POST("/games", middleware.AuthRequired(), handlers.RequireVerifiedEmail(), middleware.RateLimit(10, 3600), handlers.UploadGame)
 		api.PUT("/games/:id", middleware.AuthRequired(), handlers.UpdateGame)
 		api.DELETE("/games/:id", middleware.AuthRequired(), handlers.DeleteGame)
-		api.POST("/games/:id/reupload", middleware.AuthRequired(), handlers.ReuploadGameFiles)
+		api.POST("/games/:id/reupload", middleware.AuthRequired(), middleware.RateLimit(10, 3600), handlers.ReuploadGameFiles)
 		api.PUT("/games/:id/visibility", middleware.AuthRequired(), handlers.ToggleVisibility)
-		api.POST("/games/:id/screenshots", middleware.AuthRequired(), handlers.ManageScreenshots)
+		api.POST("/games/:id/screenshots", middleware.AuthRequired(), middleware.RateLimit(20, 3600), handlers.ManageScreenshots)
 		api.DELETE("/games/:id/screenshots/:index", middleware.AuthRequired(), handlers.DeleteScreenshot)
 
 		// Reviews
@@ -121,19 +121,19 @@ func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxi
 
 		// Library
 		api.GET("/library", middleware.AuthRequired(), handlers.GetLibrary)
-		api.POST("/library/:game_id", middleware.AuthRequired(), handlers.AddToLibrary)
-		api.DELETE("/library/:game_id", middleware.AuthRequired(), handlers.RemoveFromLibrary)
+		api.POST("/library/:game_id", middleware.AuthRequired(), middleware.RateLimit(60, 300), handlers.AddToLibrary)
+		api.DELETE("/library/:game_id", middleware.AuthRequired(), middleware.RateLimit(60, 300), handlers.RemoveFromLibrary)
 
 		// Wishlist
 		api.GET("/wishlist", middleware.AuthRequired(), handlers.GetWishlist)
-		api.POST("/wishlist/:game_id", middleware.AuthRequired(), handlers.AddToWishlist)
-		api.DELETE("/wishlist/:game_id", middleware.AuthRequired(), handlers.RemoveFromWishlist)
+		api.POST("/wishlist/:game_id", middleware.AuthRequired(), middleware.RateLimit(60, 300), handlers.AddToWishlist)
+		api.DELETE("/wishlist/:game_id", middleware.AuthRequired(), middleware.RateLimit(60, 300), handlers.RemoveFromWishlist)
 
 		// Profile
 		api.GET("/profile/:username", handlers.GetProfile)
 		api.PUT("/profile", middleware.AuthRequired(), middleware.RateLimit(10, 300), handlers.UpdateProfile)
 		api.GET("/activity", middleware.AuthRequired(), handlers.GetActivity)
-		api.POST("/playtime", middleware.AuthRequired(), handlers.RecordPlaytime)
+		api.POST("/playtime", middleware.AuthRequired(), middleware.RateLimit(60, 60), handlers.RecordPlaytime)
 
 		// Settings
 		api.DELETE("/settings/account", middleware.AuthRequired(), middleware.RateLimit(3, 3600), handlers.DeleteAccount)
@@ -146,11 +146,11 @@ func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxi
 
 		// Achievements
 		api.GET("/achievements/:username", handlers.GetUserAchievements)
-		api.POST("/achievements/check", middleware.AuthRequired(), handlers.CheckMyAchievements)
+		api.POST("/achievements/check", middleware.AuthRequired(), middleware.RateLimit(10, 300), handlers.CheckMyAchievements)
 
 		// Analytics
-		api.POST("/games/:id/view", handlers.TrackView)
-		api.POST("/analytics/client", handlers.TrackClientInfo)
+		api.POST("/games/:id/view", middleware.RateLimit(60, 60), handlers.TrackView)
+		api.POST("/analytics/client", middleware.RateLimit(60, 60), handlers.TrackClientInfo)
 		api.GET("/games/:id/analytics", middleware.AuthRequired(), handlers.GetGameAnalytics)
 
 		// Notifications
@@ -162,12 +162,12 @@ func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxi
 
 		// Devlogs
 		api.GET("/games/:id/devlogs", handlers.ListDevlogs)
-		api.POST("/games/:id/devlogs", middleware.AuthRequired(), handlers.RequireVerifiedEmail(), handlers.CreateDevlog)
+		api.POST("/games/:id/devlogs", middleware.AuthRequired(), handlers.RequireVerifiedEmail(), middleware.RateLimit(20, 3600), handlers.CreateDevlog)
 		api.DELETE("/devlogs/:id", middleware.AuthRequired(), handlers.DeleteDevlog)
 
 		// Comments on devlogs
 		api.GET("/devlogs/:id/comments", handlers.ListComments)
-		api.POST("/devlogs/:id/comments", middleware.AuthRequired(), handlers.RequireVerifiedEmail(), handlers.CreateComment)
+		api.POST("/devlogs/:id/comments", middleware.AuthRequired(), handlers.RequireVerifiedEmail(), middleware.RateLimit(30, 3600), handlers.CreateComment)
 		api.DELETE("/comments/:id", middleware.AuthRequired(), handlers.DeleteComment)
 
 		// Follows
@@ -180,11 +180,11 @@ func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxi
 		api.GET("/collections", middleware.AuthRequired(), handlers.ListCollections)
 		api.GET("/collections/public", handlers.BrowsePublicLists)
 		api.GET("/collections/:id", handlers.GetCollection)
-		api.POST("/collections", middleware.AuthRequired(), handlers.CreateCollection)
-		api.PUT("/collections/:id", middleware.AuthRequired(), handlers.UpdateCollection)
-		api.DELETE("/collections/:id", middleware.AuthRequired(), handlers.DeleteCollection)
-		api.POST("/collections/:id/games", middleware.AuthRequired(), handlers.AddToCollection)
-		api.DELETE("/collections/:id/games/:game_id", middleware.AuthRequired(), handlers.RemoveFromCollection)
+		api.POST("/collections", middleware.AuthRequired(), middleware.RateLimit(30, 3600), handlers.CreateCollection)
+		api.PUT("/collections/:id", middleware.AuthRequired(), middleware.RateLimit(60, 300), handlers.UpdateCollection)
+		api.DELETE("/collections/:id", middleware.AuthRequired(), middleware.RateLimit(30, 3600), handlers.DeleteCollection)
+		api.POST("/collections/:id/games", middleware.AuthRequired(), middleware.RateLimit(60, 300), handlers.AddToCollection)
+		api.DELETE("/collections/:id/games/:game_id", middleware.AuthRequired(), middleware.RateLimit(60, 300), handlers.RemoveFromCollection)
 	}
 
 	// Admin routes
@@ -216,10 +216,10 @@ func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxi
 	api.DELETE("/api-keys/:id", middleware.AuthRequired(), handlers.DeleteAPIKeyHandler)
 
 	// Self-hosted avatar generation
-	r.GET("/avatar/:username", handlers.GetAvatar)
+	r.GET("/avatar/:username", middleware.RateLimit(120, 60), handlers.GetAvatar)
 
 	// API documentation
-	r.GET("/docs", handlers.APIDocs)
+	r.GET("/docs", middleware.RateLimit(60, 60), handlers.APIDocs)
 
 	// Deploy script download
 	r.GET("/deploy.sh", middleware.RateLimit(10, 60), handlers.ServeDeployScript)
