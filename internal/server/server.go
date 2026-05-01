@@ -18,7 +18,7 @@ import (
 	"github.com/yusufkaraaslan/play-more/internal/storage"
 )
 
-func New(frontendFS embed.FS, goatCounterURL, gamesDomain, trustedProxies string) *gin.Engine {
+func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxies string) *gin.Engine {
 	r := gin.Default()
 
 	// Trust proxies — by default trust nothing; operator must explicitly opt in
@@ -225,8 +225,11 @@ func New(frontendFS embed.FS, goatCounterURL, gamesDomain, trustedProxies string
 	r.GET("/deploy.sh", middleware.RateLimit(10, 60), handlers.ServeDeployScript)
 
 	// Game file serving (for iframe player)
-	r.GET("/play/:id", handlers.ServeGameFiles)
-	r.GET("/play/:id/*filepath", handlers.ServeGameFiles)
+	// Game iframe content. spaOrigin gates who can embed via CSP frame-ancestors —
+	// XFO can't whitelist a cross-origin host, so split-origin (games.* subdomain) needs CSP.
+	spaOrigin := strings.TrimRight(baseURL, "/")
+	r.GET("/play/:id", handlers.ServeGameFiles(spaOrigin))
+	r.GET("/play/:id/*filepath", handlers.ServeGameFiles(spaOrigin))
 
 	// Frontend (SPA) - serve embedded files
 	frontendSub, err := fs.Sub(frontendFS, "frontend")

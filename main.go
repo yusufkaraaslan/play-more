@@ -338,7 +338,7 @@ func main() {
 		fmt.Printf("Auto-TLS: enabled for %s\n", *domain)
 	}
 
-	r := server.New(frontendFS, *goatcounter, *gamesDomain, *trustedProxies)
+	r := server.New(frontendFS, *goatcounter, *gamesDomain, *baseURL, *trustedProxies)
 	addr := fmt.Sprintf(":%d", *port)
 	if *autoTLS {
 		certDir := filepath.Join(*dataDir, "certs")

@@ -475,39 +475,43 @@ func ReuploadGameFiles(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "game files updated"})
 }
 
-// ServeGameFiles serves game files for the iframe player.
-func ServeGameFiles(c *gin.Context) {
-	gameID := c.Param("id")
-	filePath := c.Param("filepath")
-	if filePath == "" || filePath == "/" {
-		// Look up entry file
-		game, err := models.GetGameByID(gameID)
-		if err != nil {
-			c.String(http.StatusNotFound, "game not found")
+// ServeGameFiles serves game files for the iframe player. spaOrigin (e.g. "https://playmore.world")
+// is the origin allowed to embed via CSP frame-ancestors; pass "" for legacy same-origin embed.
+func ServeGameFiles(spaOrigin string) gin.HandlerFunc {
+	frameAncestors := "'self'"
+	if spaOrigin != "" {
+		frameAncestors = spaOrigin
+	}
+	csp := "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; img-src * data: blob:; media-src * data: blob:; font-src * data:; connect-src *; frame-ancestors " + frameAncestors
+
+	return func(c *gin.Context) {
+		gameID := c.Param("id")
+		filePath := c.Param("filepath")
+		if filePath == "" || filePath == "/" {
+			game, err := models.GetGameByID(gameID)
+			if err != nil {
+				c.String(http.StatusNotFound, "game not found")
+				return
+			}
+			filePath = "/" + game.EntryFile
+		}
+
+		gameRoot := filepath.Join(storage.GamesDir, gameID)
+		fullPath := filepath.Join(gameRoot, filepath.FromSlash(filePath))
+		if fullPath != gameRoot && !strings.HasPrefix(fullPath, gameRoot+string(filepath.Separator)) {
+			c.String(http.StatusForbidden, "forbidden")
 			return
 		}
-		filePath = "/" + game.EntryFile
-	}
 
-	gameRoot := filepath.Join(storage.GamesDir, gameID)
-	fullPath := filepath.Join(gameRoot, filepath.FromSlash(filePath))
-	// Prevent path traversal — must be inside the specific game's directory
-	if fullPath != gameRoot && !strings.HasPrefix(fullPath, gameRoot+string(filepath.Separator)) {
-		c.String(http.StatusForbidden, "forbidden")
-		return
+		// Permissive CSP for game assets; frame-ancestors gates who can embed.
+		// Iframe sandbox is the primary defense against malicious game code.
+		c.Header("Content-Security-Policy", csp)
+		// XFO can't whitelist a cross-origin host — frame-ancestors is the only way to allow split-origin embed.
+		c.Writer.Header().Del("X-Frame-Options")
+		ext := strings.ToLower(filepath.Ext(fullPath))
+		if ext == ".wasm" || ext == ".js" || ext == ".css" || ext == ".png" || ext == ".jpg" || ext == ".svg" || ext == ".ogg" || ext == ".mp3" {
+			c.Header("Cache-Control", "public, max-age=31536000, immutable")
+		}
+		http.ServeFile(c.Writer, c.Request, fullPath)
 	}
-
-	// Games get a permissive CSP — they may load scripts/assets from any CDN.
-	// Iframe sandbox (allow-scripts, NO allow-same-origin) is the primary defense:
-	// even on same-origin, sandboxed iframes have an opaque origin so cookies are
-	// not attached to fetch() and parent.document is unreachable.
-	c.Header("Content-Security-Policy", "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; img-src * data: blob:; media-src * data: blob:; font-src * data:; connect-src *")
-	c.Header("X-Frame-Options", "SAMEORIGIN")
-	// Cache-Control for game files: immutable assets
-	ext := strings.ToLower(filepath.Ext(fullPath))
-	if ext == ".wasm" || ext == ".js" || ext == ".css" || ext == ".png" || ext == ".jpg" || ext == ".svg" || ext == ".ogg" || ext == ".mp3" {
-		c.Header("Cache-Control", "public, max-age=31536000, immutable")
-	}
-	// Use http.ServeFile for Range request support (streaming WASM, resumable downloads)
-	http.ServeFile(c.Writer, c.Request, fullPath)
 }
