@@ -1,14 +1,17 @@
 # PlayMore
 
-> Self-hosted, WebGPU-first, Steam-style web gaming platform for the indie web.
+> **Your own Steam — for modern browser games.** Self-hosted. WebGPU-native. Indie-owned.
 
+[![Status: Alpha](https://img.shields.io/badge/status-alpha-orange.svg)](#)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Go Version](https://img.shields.io/badge/Go-1.26+-00ADD8?logo=go)](https://go.dev)
 [![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker)](docker-compose.yml)
 
+**🎮 [Try the live demo at playmore.world](https://playmore.world)** — real games running in your browser right now.
+
 PlayMore is a **self-hosted game publishing platform** that gives indie developers their own storefront — think Steam, but you own the server, control the experience, and your games run natively in the browser with **WebGPU, WebAssembly, and WebGL2**.
 
-No walled gardens. No algorithm feeds. Just your games, your community, your platform.
+No walled gardens. No algorithm feeds. No 30% cut. Just your games, your community, your platform.
 
 ---
 
@@ -78,17 +81,16 @@ No walled gardens. No algorithm feeds. Just your games, your community, your pla
 
 ## Quick Start
 
+**Try it first:** [playmore.world](https://playmore.world) is a public instance running the latest build — sign up and explore before installing.
+
 ```bash
 # Build
 go build -o playmore
 
-# Interactive setup wizard (creates .env)
+# Interactive setup wizard (creates .env, optional)
 ./playmore setup
 
-# Run with .env config
-./playmore
-
-# Or run with defaults (http://localhost:8080)
+# Run — http://localhost:8080
 ./playmore
 
 # Seed demo data (4 games with reviews)
