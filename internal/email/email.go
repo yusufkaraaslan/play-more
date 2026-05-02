@@ -52,18 +52,18 @@ func Send(to, subject, body string) error {
 
 	addr := fmt.Sprintf("%s:%d", Host, Port)
 
-	// For local bridges (ProtonMail Bridge, etc.) use custom TLS config
-	// to accept self-signed certificates
-	if IsLocalBridge() {
-		return sendWithCustomTLS(addr, to, []byte(msg))
-	}
-
-	auth := smtp.PlainAuth("", User, Pass, Host)
-	return smtp.SendMail(addr, auth, From, []string{to}, []byte(msg))
+	// Always go through our custom path so we can enforce STARTTLS. The
+	// stdlib smtp.SendMail will silently fall back to plaintext if the server
+	// does not advertise STARTTLS — unacceptable for credential transit.
+	// Local bridges use a self-signed cert (InsecureSkipVerify=true).
+	return sendWithSTARTTLS(addr, to, []byte(msg), IsLocalBridge())
 }
 
-func sendWithCustomTLS(addr, to string, msg []byte) error {
-	conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
+// sendWithSTARTTLS connects, requires STARTTLS (aborting if the server doesn't
+// advertise it), authenticates, and sends. Set localBridge=true to skip
+// hostname verification on self-signed certs (ProtonMail Bridge etc.).
+func sendWithSTARTTLS(addr, to string, msg []byte, localBridge bool) error {
+	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
 	if err != nil {
 		return err
 	}
@@ -73,10 +73,14 @@ func sendWithCustomTLS(addr, to string, msg []byte) error {
 	}
 	defer c.Close()
 
-	// STARTTLS with self-signed cert accepted
+	// STARTTLS is required — abort if the server does not advertise it.
+	if ok, _ := c.Extension("STARTTLS"); !ok {
+		return fmt.Errorf("SMTP server does not support STARTTLS — refusing to send credentials in plaintext")
+	}
 	tlsConfig := &tls.Config{
-		InsecureSkipVerify: true,
 		ServerName:         Host,
+		InsecureSkipVerify: localBridge, // only true for 127.0.0.1/localhost bridges
+		MinVersion:         tls.VersionTLS12,
 	}
 	if err := c.StartTLS(tlsConfig); err != nil {
 		return err

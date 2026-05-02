@@ -8,10 +8,14 @@ RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o playmore .
 
 # Run stage
 FROM alpine:3.19
-RUN apk --no-cache add ca-certificates
+RUN apk --no-cache add ca-certificates && \
+    adduser -D -u 1000 playmore && \
+    mkdir -p /app/data && \
+    chown -R playmore:playmore /app
 WORKDIR /app
-COPY --from=builder /app/playmore .
-EXPOSE 8080 443
+COPY --from=builder --chown=playmore:playmore /app/playmore .
+USER playmore
+EXPOSE 8080
 VOLUME ["/app/data"]
 ENTRYPOINT ["./playmore"]
 CMD ["--port", "8080", "--data", "/app/data"]

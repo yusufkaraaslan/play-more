@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -544,15 +545,35 @@ func ServeGameFiles(spaOrigin string) gin.HandlerFunc {
 	}
 	csp := "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; img-src * data: blob:; media-src * data: blob:; font-src * data:; connect-src *; frame-ancestors " + frameAncestors
 
+	// gameIDRe matches our game ID format (UUIDv4) — prevents Windows path
+	// traversal via gameID = ".." and bounds the lookup to plausible IDs.
+	gameIDRe := regexp.MustCompile(`^[a-zA-Z0-9-]{1,64}$`)
+
 	return func(c *gin.Context) {
 		gameID := c.Param("id")
-		filePath := c.Param("filepath")
-		if filePath == "" || filePath == "/" {
-			game, err := models.GetGameByID(gameID)
-			if err != nil {
+		if !gameIDRe.MatchString(gameID) {
+			c.String(http.StatusNotFound, "game not found")
+			return
+		}
+
+		// Always look up the game so we can enforce visibility on file serving,
+		// not just on the API endpoint. Unpublished games are reachable only by
+		// the developer.
+		game, err := models.GetGameByID(gameID)
+		if err != nil {
+			c.String(http.StatusNotFound, "game not found")
+			return
+		}
+		if !game.Published {
+			user := middleware.GetUser(c)
+			if user == nil || user.ID != game.DeveloperID {
 				c.String(http.StatusNotFound, "game not found")
 				return
 			}
+		}
+
+		filePath := c.Param("filepath")
+		if filePath == "" || filePath == "/" {
 			filePath = "/" + game.EntryFile
 		}
 

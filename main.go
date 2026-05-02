@@ -340,6 +340,22 @@ func main() {
 
 	r := server.New(frontendFS, *goatcounter, *gamesDomain, *baseURL, *trustedProxies)
 	addr := fmt.Sprintf(":%d", *port)
+
+	// Timeouts protect against slowloris and runaway connections.
+	// Game uploads can be large (up to 500 MiB) so WriteTimeout is generous;
+	// ReadHeaderTimeout is strict because headers should arrive in milliseconds.
+	makeServer := func(addr string) *http.Server {
+		return &http.Server{
+			Addr:              addr,
+			Handler:           r.Handler(),
+			ReadTimeout:       0, // disabled — body read time depends on upload size
+			ReadHeaderTimeout: 10 * time.Second,
+			WriteTimeout:      0, // disabled — large game files take time to stream
+			IdleTimeout:       120 * time.Second,
+			MaxHeaderBytes:    1 << 20, // 1 MiB
+		}
+	}
+
 	if *autoTLS {
 		certDir := filepath.Join(*dataDir, "certs")
 		m := &autocert.Manager{
@@ -347,12 +363,10 @@ func main() {
 			Prompt:     autocert.AcceptTOS,
 			HostPolicy: autocert.HostWhitelist(*domain),
 		}
-		s := &http.Server{
-			Addr:    ":443",
-			Handler: r.Handler(),
-			TLSConfig: &tls.Config{
-				GetCertificate: m.GetCertificate,
-			},
+		s := makeServer(":443")
+		s.TLSConfig = &tls.Config{
+			GetCertificate: m.GetCertificate,
+			MinVersion:     tls.VersionTLS12,
 		}
 		// HTTP challenge server + redirect on port 80
 		go func() {
@@ -363,18 +377,27 @@ func main() {
 				}
 				http.Redirect(w, r, target, http.StatusMovedPermanently)
 			}))
-			log.Fatal(http.ListenAndServe(":80", h))
+			redirectSrv := &http.Server{
+				Addr:              ":80",
+				Handler:           h,
+				ReadHeaderTimeout: 5 * time.Second,
+				IdleTimeout:       60 * time.Second,
+			}
+			log.Fatal(redirectSrv.ListenAndServe())
 		}()
 		fmt.Printf("Listening on :443 (auto-TLS) and :80 (redirect)\n")
 		if err := s.ListenAndServeTLS("", ""); err != nil {
 			log.Fatal("Server failed:", err)
 		}
 	} else if *tlsCert != "" {
-		if err := r.RunTLS(addr, *tlsCert, *tlsKey); err != nil {
+		s := makeServer(addr)
+		s.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+		if err := s.ListenAndServeTLS(*tlsCert, *tlsKey); err != nil {
 			log.Fatal("Server failed:", err)
 		}
 	} else {
-		if err := r.Run(addr); err != nil {
+		s := makeServer(addr)
+		if err := s.ListenAndServe(); err != nil {
 			log.Fatal("Server failed:", err)
 		}
 	}

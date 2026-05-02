@@ -1170,7 +1170,7 @@
                 '<div class="game-card-title">' + escapeHtml(g.title) + '</div>' +
                 '<div class="game-card-meta">' + escapeHtml(g.genre) + ' · ' + (g.play_count||0) + ' plays · ' + ((g.avg_rating||0) > 0 ? '★ ' + g.avg_rating.toFixed(1) : '') + '</div>' +
                 '<div class="game-card-footer">' +
-                '<button class="btn-accent" style="padding:5px 15px;font-size:12px;width:auto;" onclick="event.stopPropagation();playGame(\'' + g.id + '\',\'' + g.entry_file + '\')">Play</button>' +
+                '<button class="btn-accent" style="padding:5px 15px;font-size:12px;width:auto;" onclick="event.stopPropagation();playGame(\'' + esc(g.id) + '\',\'' + esc(g.entry_file) + '\')">Play</button>' +
                 '<button class="btn-secondary" style="padding:5px 10px;font-size:11px;" onclick="event.stopPropagation();removeFromLib(\'' + g.id + '\')">Remove</button>' +
                 '</div></div></div>';
         }
@@ -1537,7 +1537,7 @@
                 if (game.discount > 0) { html += '<span class="purchase-discount">-' + game.discount + '%</span><span class="purchase-original" style="text-decoration:line-through;color:var(--text-secondary);font-size:13px;">$' + game.price.toFixed(2) + '</span>'; }
                 html += '<span class="purchase-final">' + (game.price === 0 ? 'Free to Play' : '$' + (game.price * (1 - game.discount/100)).toFixed(2)) + '</span></div>';
                 html += '<div class="purchase-buttons">';
-                html += '<button class="btn-primary" onclick="playGame(\'' + game.id + '\',\'' + game.entry_file + '\')">Play Now</button>';
+                html += '<button class="btn-primary" onclick="playGame(\'' + esc(game.id) + '\',\'' + esc(game.entry_file) + '\')">Play Now</button>';
                 if (currentUser) {
                     html += '<button class="btn-secondary" id="lib-btn-' + game.id + '" onclick="toggleLib(\'' + game.id + '\')">Add to Library</button>';
                     html += '<button class="btn-wishlist" id="wish-btn-' + game.id + '" onclick="toggleWish(\'' + game.id + '\')">Add to Wishlist</button>';

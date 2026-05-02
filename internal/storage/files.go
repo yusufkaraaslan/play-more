@@ -44,7 +44,9 @@ func SaveGameFile(gameID string, fileName string, data []byte) error {
 }
 
 // SanitizeFileName collapses a multipart filename to its basename and rejects
-// anything containing path separators or traversal segments. Returns "" if unsafe.
+// anything containing path separators, traversal segments, or HTML-dangerous
+// characters that could XSS via the SPA's onclick interpolation.
+// Returns "" if unsafe.
 func SanitizeFileName(fileName string) string {
 	fileName = strings.ReplaceAll(fileName, "\\", "/")
 	fileName = filepath.Base(fileName)
@@ -52,6 +54,9 @@ func SanitizeFileName(fileName string) string {
 		return ""
 	}
 	if strings.ContainsAny(fileName, "/\\") || strings.Contains(fileName, "..") {
+		return ""
+	}
+	if !isSafePath(fileName) {
 		return ""
 	}
 	return fileName
@@ -198,12 +203,38 @@ func ExtractZip(gameID string, data []byte) (string, error) {
 	if entryFile == "" {
 		return "", fmt.Errorf("no HTML file found in ZIP")
 	}
-	// Final defense: refuse entry paths that would escape the game dir at serve time.
-	if strings.Contains(entryFile, "..") || strings.HasPrefix(entryFile, "/") {
-		return "", fmt.Errorf("invalid entry file path")
+	// Strict allowlist on entry path to prevent XSS via filename injection
+	// into the SPA's onclick handlers. Allow only [a-zA-Z0-9._/-] segments.
+	if !isSafePath(entryFile) {
+		return "", fmt.Errorf("invalid entry file path — only letters, digits, ., _, -, / allowed")
 	}
 
 	return entryFile, nil
+}
+
+// isSafePath ensures a relative path contains only safe characters and no
+// traversal segments. Used as a defense-in-depth check on game entry files
+// (which flow into HTML onclick attributes in the SPA).
+func isSafePath(p string) bool {
+	if p == "" || strings.HasPrefix(p, "/") || strings.HasPrefix(p, `\`) {
+		return false
+	}
+	if strings.Contains(p, "..") {
+		return false
+	}
+	for _, r := range p {
+		// Allow letters, digits, slash, dot, underscore, hyphen, space.
+		// Explicitly reject quotes, angle brackets, ampersand, backtick.
+		switch {
+		case r >= 'a' && r <= 'z':
+		case r >= 'A' && r <= 'Z':
+		case r >= '0' && r <= '9':
+		case r == '/' || r == '.' || r == '_' || r == '-' || r == ' ':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // GameDirSize returns total size of all files in a game directory in bytes.

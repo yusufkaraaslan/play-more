@@ -219,9 +219,9 @@ func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxi
 		api.DELETE("/collections/:id/games/:game_id", middleware.AuthRequired(), middleware.RateLimit(60, 300), handlers.RemoveFromCollection)
 	}
 
-	// Admin routes
-	admin := r.Group("/api/admin")
-	admin.Use(middleware.AuthOptional(), handlers.AdminRequired())
+	// Admin routes — under the /api group so AuthOptional + CSRFProtect apply.
+	admin := api.Group("/admin")
+	admin.Use(handlers.AdminRequired())
 	{
 		admin.GET("/stats", handlers.AdminStats)
 		admin.GET("/users", handlers.AdminListUsers)

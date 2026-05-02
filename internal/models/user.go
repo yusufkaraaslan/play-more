@@ -2,6 +2,7 @@ package models
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"time"
@@ -145,9 +146,18 @@ func (u *User) Update(username, bio, avatarURL, bannerURL, themeColor string, li
 }
 
 // Sessions
+//
+// Tokens are 32 bytes from crypto/rand. The raw token is sent to the client
+// in the session cookie; only the SHA-256 hash is stored in the DB. This means
+// a DB compromise (backup leak, SQL injection elsewhere, file-system access)
+// does NOT immediately hand attackers active sessions.
+
+func hashSessionToken(token string) string {
+	h := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(h[:])
+}
 
 func CreateSession(userID string) (string, error) {
-	// 32 bytes = 256 bits of entropy from crypto/rand
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
 		return "", err
@@ -156,7 +166,7 @@ func CreateSession(userID string) (string, error) {
 	expires := time.Now().Add(30 * 24 * time.Hour) // 30 days
 	_, err := storage.DB.Exec(
 		`INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)`,
-		token, userID, expires,
+		hashSessionToken(token), userID, expires,
 	)
 	return token, err
 }
@@ -165,7 +175,7 @@ func GetUserBySession(token string) (*User, error) {
 	var userID string
 	err := storage.DB.QueryRow(
 		`SELECT user_id FROM sessions WHERE token = ? AND expires_at > datetime('now')`,
-		token,
+		hashSessionToken(token),
 	).Scan(&userID)
 	if err != nil {
 		return nil, err
@@ -174,6 +184,6 @@ func GetUserBySession(token string) (*User, error) {
 }
 
 func DeleteSession(token string) error {
-	_, err := storage.DB.Exec(`DELETE FROM sessions WHERE token = ?`, token)
+	_, err := storage.DB.Exec(`DELETE FROM sessions WHERE token = ?`, hashSessionToken(token))
 	return err
 }
