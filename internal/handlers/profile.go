@@ -130,6 +130,14 @@ func RecordPlaytime(c *gin.Context) {
 		input.Seconds = 600
 	}
 
+	// Per-(user,game) rate limit: at most 12 calls per minute (one every 5s).
+	// Frontend heartbeats every ~minute, so this is generous; bots that
+	// firehose to inflate play_count get throttled.
+	if !middleware.AllowByKey("playtime:"+user.ID+":"+input.GameID, 12, 60) {
+		c.JSON(http.StatusTooManyRequests, gin.H{"error": "too many playtime updates"})
+		return
+	}
+
 	if err := models.RecordPlaytime(user.ID, input.GameID, input.Seconds); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to record playtime"})
 		return

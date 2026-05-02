@@ -843,9 +843,43 @@
             } catch (e) { document.getElementById('auth-error').textContent = e.message; }
         }
 
+        // Proof-of-work CAPTCHA: fetch challenge, find a nonce whose
+        // SHA-256(challenge + ":" + nonce) has `difficulty` leading zero bits.
+        // Difficulty 18 is ~1-3s on a laptop CPU. Runs synchronously to keep
+        // it simple — register button is the only user of this so blocking is fine.
+        async function solveCaptcha() {
+            const errEl = document.getElementById('auth-error');
+            errEl.textContent = 'Verifying you are human...';
+            const ch = await api('/auth/captcha');
+            const challenge = ch.challenge;
+            const difficulty = ch.difficulty;
+            const enc = new TextEncoder();
+            // Fully zero leading bytes
+            const fullBytes = Math.floor(difficulty / 8);
+            const remBits = difficulty % 8;
+            const mask = remBits === 0 ? 0 : (0xFF << (8 - remBits)) & 0xFF;
+            for (let n = 0; n < 1e9; n++) {
+                const buf = await crypto.subtle.digest('SHA-256', enc.encode(challenge + ':' + n));
+                const h = new Uint8Array(buf);
+                let ok = true;
+                for (let i = 0; i < fullBytes; i++) { if (h[i] !== 0) { ok = false; break; } }
+                if (ok && remBits > 0 && (h[fullBytes] & mask) !== 0) ok = false;
+                if (ok) { errEl.textContent = ''; return { challenge, nonce: String(n) }; }
+                if (n % 5000 === 0) await new Promise(r => setTimeout(r, 0)); // yield to keep UI responsive
+            }
+            throw new Error('captcha solver failed');
+        }
+
         async function doRegister() {
             try {
-                const data = await api('/auth/register', { method: 'POST', body: JSON.stringify({ username: document.getElementById('auth-username').value, email: document.getElementById('auth-email').value, password: document.getElementById('auth-password').value }) });
+                const sol = await solveCaptcha();
+                const data = await api('/auth/register', { method: 'POST', body: JSON.stringify({
+                    username: document.getElementById('auth-username').value,
+                    email: document.getElementById('auth-email').value,
+                    password: document.getElementById('auth-password').value,
+                    captcha_challenge: sol.challenge,
+                    captcha_nonce: sol.nonce,
+                }) });
                 currentUser = data.user; renderHeader(); navigate('store'); toast('Account created! Welcome to PlayMore.', 'success');
             } catch (e) { document.getElementById('auth-error').textContent = e.message; }
         }

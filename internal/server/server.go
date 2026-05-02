@@ -167,6 +167,7 @@ func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxi
 	{
 		// Auth (strict rate limits)
 		auth := api.Group("/auth")
+		auth.GET("/captcha", middleware.RateLimit(60, 60), handlers.IssueCaptcha)
 		auth.POST("/register", middleware.RateLimit(5, 3600), handlers.Register)
 		auth.POST("/login", middleware.RateLimit(10, 300), handlers.Login)
 		auth.POST("/logout", handlers.Logout)

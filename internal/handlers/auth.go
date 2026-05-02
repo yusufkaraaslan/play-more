@@ -20,9 +20,11 @@ import (
 )
 
 type registerInput struct {
-	Username string `json:"username" binding:"required,min=3,max=30"`
-	Email    string `json:"email" binding:"required,email"`
-	Password string `json:"password" binding:"required,min=10"`
+	Username         string `json:"username" binding:"required,min=3,max=30"`
+	Email            string `json:"email" binding:"required,email"`
+	Password         string `json:"password" binding:"required,min=10"`
+	CaptchaChallenge string `json:"captcha_challenge" binding:"required"`
+	CaptchaNonce     string `json:"captcha_nonce" binding:"required"`
 }
 
 // usernameRe is a strict allowlist for usernames — alphanumeric, underscore, hyphen only.
@@ -77,6 +79,15 @@ func Register(c *gin.Context) {
 
 	input.Username = strings.TrimSpace(input.Username)
 	input.Email = strings.ToLower(strings.TrimSpace(input.Email))
+
+	// CAPTCHA: verify proof-of-work BEFORE any expensive work (bcrypt, DB writes,
+	// email sends). This is the primary defense against automated registration
+	// abuse. The PoW takes ~1-3s of CPU on a modern client to solve; verification
+	// here is a single SHA-256 — cheap.
+	if err := VerifyCaptcha(cleanCaptchaInput(input.CaptchaChallenge), cleanCaptchaInput(input.CaptchaNonce)); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "captcha_failed": true})
+		return
+	}
 
 	// Per-email register cap stops attackers rotating IPs to spam a victim's
 	// inbox via the welcome/verification email path during signup.

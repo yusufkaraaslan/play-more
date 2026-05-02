@@ -209,6 +209,7 @@ func StartAnalyticsWriter() {
 			select {
 			case <-time.After(1 * time.Hour):
 				storage.DB.Exec(`DELETE FROM page_views WHERE created_at < datetime('now', '-90 days')`)
+				storage.DB.Exec(`DELETE FROM game_views WHERE created_at < datetime('now', '-365 days')`)
 				// Clean expired sessions from memory
 				sessions.Lock()
 				now := time.Now()

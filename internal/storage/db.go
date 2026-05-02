@@ -70,6 +70,14 @@ func migrate() error {
 			target_id TEXT,
 			ip TEXT,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`,
+		// Index for the view-dedup hot path (game_id + ip_hash lookup with
+		// recent created_at filter). Without this the dedup check would scan
+		// all views for a popular game.
+		`CREATE INDEX IF NOT EXISTS idx_game_views_game_iphash ON game_views(game_id, ip_hash, created_at)`,
+		// Retention cap: page_views older than 90 days are pruned hourly by
+		// analytics writer; game_views had no retention. Add an index on the
+		// date column so a future retention sweep is cheap.
+		`CREATE INDEX IF NOT EXISTS idx_game_views_created ON game_views(created_at)`,
 	}
 	for _, m := range migrations {
 		DB.Exec(m) // ignore errors (column already exists)

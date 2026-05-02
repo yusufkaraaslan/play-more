@@ -10,7 +10,9 @@ import (
 	"github.com/yusufkaraaslan/play-more/internal/storage"
 )
 
-// TrackView records a game page view.
+// TrackView records a game page view, deduplicated to one row per
+// (game_id, ip_hash) per hour. Refreshing or reopening within the window
+// does not inflate the count. Different IPs / next hour = new row.
 func TrackView(c *gin.Context) {
 	gameID := c.Param("id")
 	userID := ""
@@ -24,6 +26,21 @@ func TrackView(c *gin.Context) {
 	ipHash := fmt.Sprintf("%x", sha256.Sum256([]byte(ip+middleware.AnalyticsSalt())))[:16]
 
 	referrer := c.Query("ref")
+	if len(referrer) > 500 {
+		referrer = referrer[:500]
+	}
+
+	// Skip insert if this (game, ip) viewed in the last hour. Cheap query
+	// bounded by the (game_id, created_at) index that already exists.
+	var recent int
+	storage.DB.QueryRow(
+		`SELECT 1 FROM game_views WHERE game_id = ? AND ip_hash = ? AND created_at > datetime('now', '-1 hour') LIMIT 1`,
+		gameID, ipHash,
+	).Scan(&recent)
+	if recent == 1 {
+		c.JSON(http.StatusOK, gin.H{"ok": true, "deduped": true})
+		return
+	}
 
 	storage.DB.Exec(
 		`INSERT INTO game_views (game_id, user_id, ip_hash, referrer) VALUES (?, ?, ?, ?)`,
