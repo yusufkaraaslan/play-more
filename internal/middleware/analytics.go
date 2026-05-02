@@ -2,7 +2,9 @@ package middleware
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"strings"
@@ -13,6 +15,15 @@ import (
 	"github.com/yusufkaraaslan/play-more/internal/models"
 	"github.com/yusufkaraaslan/play-more/internal/storage"
 )
+
+// analyticsSalt is generated once per server start. IP hashes computed with
+// it cannot be correlated across restarts (or reverse-engineered with a
+// known plaintext like a corporate IP).
+var analyticsSalt = func() string {
+	b := make([]byte, 32)
+	rand.Read(b)
+	return hex.EncodeToString(b)
+}()
 
 type pageView struct {
 	Path       string
@@ -80,7 +91,7 @@ func TrackPageView() gin.HandlerFunc {
 		elapsed := time.Since(start).Milliseconds()
 
 		ip := c.ClientIP()
-		ipHash := fmt.Sprintf("%x", sha256.Sum256([]byte(ip+"playmore-salt")))[:16]
+		ipHash := fmt.Sprintf("%x", sha256.Sum256([]byte(ip+analyticsSalt)))[:16]
 
 		ua := c.Request.UserAgent()
 		if len(ua) > 200 {

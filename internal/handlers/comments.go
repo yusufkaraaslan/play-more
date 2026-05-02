@@ -45,7 +45,7 @@ func ListComments(c *gin.Context) {
 	rows, err := storage.DB.Query(
 		`SELECT c.id, c.devlog_id, c.user_id, c.parent_id, c.text, c.created_at, u.username, u.avatar_url
 		 FROM comments c JOIN users u ON c.user_id = u.id
-		 WHERE c.devlog_id = ? ORDER BY c.created_at ASC`, devlogID,
+		 WHERE c.devlog_id = ? ORDER BY c.created_at ASC LIMIT 500`, devlogID,
 	)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load comments"})

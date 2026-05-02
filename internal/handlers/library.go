@@ -27,7 +27,7 @@ func GetLibrary(c *gin.Context) {
 		 FROM library l
 		 JOIN games g ON l.game_id = g.id
 		 JOIN users u ON g.developer_id = u.id
-		 WHERE l.user_id = ? ORDER BY l.added_at DESC`, user.ID,
+		 WHERE l.user_id = ? ORDER BY l.added_at DESC LIMIT 500`, user.ID,
 	)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load library"})
@@ -112,7 +112,7 @@ func GetWishlist(c *gin.Context) {
 		 FROM wishlist w
 		 JOIN games g ON w.game_id = g.id
 		 JOIN users u ON g.developer_id = u.id
-		 WHERE w.user_id = ? ORDER BY w.added_at DESC`, user.ID,
+		 WHERE w.user_id = ? ORDER BY w.added_at DESC LIMIT 500`, user.ID,
 	)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load wishlist"})

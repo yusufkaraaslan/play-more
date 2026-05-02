@@ -3,11 +3,30 @@ package handlers
 import (
 	"log"
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/yusufkaraaslan/play-more/internal/middleware"
 	"github.com/yusufkaraaslan/play-more/internal/storage"
 )
+
+// paginationParams reads ?limit and ?offset from the request, clamping limit
+// to [1, max] (defaulting to def) and offset to [0, ∞). Returns SQL-ready
+// values; safe even with garbage input.
+func paginationParams(c *gin.Context, def, max int) (int, int) {
+	limit := def
+	if v, err := strconv.Atoi(c.Query("limit")); err == nil && v > 0 {
+		if v > max {
+			v = max
+		}
+		limit = v
+	}
+	offset := 0
+	if v, err := strconv.Atoi(c.Query("offset")); err == nil && v >= 0 {
+		offset = v
+	}
+	return limit, offset
+}
 
 func adminLog(c *gin.Context, action string) {
 	user := middleware.GetUser(c)
@@ -59,11 +78,12 @@ func AdminStats(c *gin.Context) {
 }
 
 func AdminListUsers(c *gin.Context) {
+	limit, offset := paginationParams(c, 100, 1000) // default 100, max 1000
 	rows, err := storage.DB.Query(
 		`SELECT u.id, u.username, u.email, u.is_developer, u.created_at,
 		        (SELECT COUNT(*) FROM games WHERE developer_id = u.id) as game_count,
 		        (SELECT COUNT(*) FROM reviews WHERE user_id = u.id) as review_count
-		 FROM users u ORDER BY u.created_at DESC`,
+		 FROM users u ORDER BY u.created_at DESC LIMIT ? OFFSET ?`, limit, offset,
 	)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list users"})
@@ -133,10 +153,11 @@ func AdminDeleteGame(c *gin.Context) {
 }
 
 func AdminListGames(c *gin.Context) {
+	limit, offset := paginationParams(c, 100, 1000)
 	rows, err := storage.DB.Query(
 		`SELECT g.id, g.title, g.genre, g.published, g.created_at, u.username,
 		        (SELECT COUNT(*) FROM reviews WHERE game_id = g.id) as review_count
-		 FROM games g JOIN users u ON g.developer_id = u.id ORDER BY g.created_at DESC`,
+		 FROM games g JOIN users u ON g.developer_id = u.id ORDER BY g.created_at DESC LIMIT ? OFFSET ?`, limit, offset,
 	)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list games"})
