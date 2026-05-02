@@ -1,6 +1,6 @@
 # PlayMore
 
-> **Your own Steam — for modern browser games.** Self-hosted. WebGPU-native. Indie-owned.
+> **Inspired by Steam. Powered by WebGPU. Hosted by you.** With customizable profile pages — a salute to the indie web.
 
 [![Status: Alpha](https://img.shields.io/badge/status-alpha-orange.svg)](#)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
