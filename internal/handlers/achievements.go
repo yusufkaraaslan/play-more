@@ -117,7 +117,7 @@ func GetUserAchievements(c *gin.Context) {
 	var userID string
 	err := storage.DB.QueryRow(`SELECT id FROM users WHERE username = ?`, username).Scan(&userID)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
 		return
 	}
 

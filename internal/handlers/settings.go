@@ -45,7 +45,7 @@ func DeleteAccount(c *gin.Context) {
 		return
 	}
 
-	// Delete all user data (CASCADE handles most)
+	// Delete all user data (CASCADE handles most, but some tables lack FKs)
 	storage.DB.Exec(`DELETE FROM api_keys WHERE user_id = ?`, user.ID)
 	storage.DB.Exec(`DELETE FROM sessions WHERE user_id = ?`, user.ID)
 	storage.DB.Exec(`DELETE FROM activity WHERE user_id = ?`, user.ID)
@@ -54,6 +54,11 @@ func DeleteAccount(c *gin.Context) {
 	storage.DB.Exec(`DELETE FROM library WHERE user_id = ?`, user.ID)
 	storage.DB.Exec(`DELETE FROM wishlist WHERE user_id = ?`, user.ID)
 	storage.DB.Exec(`DELETE FROM developer_pages WHERE user_id = ?`, user.ID)
+	// Tables without CASCADE FK constraints
+	storage.DB.Exec(`DELETE FROM game_views WHERE user_id = ?`, user.ID)
+	storage.DB.Exec(`DELETE FROM page_views WHERE user_id = ?`, user.ID)
+	storage.DB.Exec(`DELETE FROM follows WHERE follower_id = ? OR followed_id = ?`, user.ID, user.ID)
+	storage.DB.Exec(`DELETE FROM notifications WHERE user_id = ? OR from_user = ?`, user.ID, user.Username)
 
 	// Delete user's games and their files
 	rows, _ := storage.DB.Query(`SELECT id FROM games WHERE developer_id = ?`, user.ID)
@@ -69,6 +74,12 @@ func DeleteAccount(c *gin.Context) {
 
 	// Delete user
 	storage.DB.Exec(`DELETE FROM users WHERE id = ?`, user.ID)
+
+	// Audit log
+	storage.DB.Exec(
+		`INSERT INTO audit_log (actor_id, action, target_type, target_id, ip) VALUES (?, ?, ?, ?, ?)`,
+		user.ID, "delete_account", "user", user.ID, middleware.RealClientIP(c),
+	)
 
 	c.SetSameSite(http.SameSiteLaxMode)
 	c.SetCookie("session", "", -1, "/", "", middleware.IsSecure(c), true)
@@ -120,6 +131,12 @@ func ChangePassword(c *gin.Context) {
 	} else {
 		storage.DB.Exec(`DELETE FROM sessions WHERE user_id = ?`, user.ID)
 	}
+
+	// Audit log
+	storage.DB.Exec(
+		`INSERT INTO audit_log (actor_id, action, target_type, target_id, ip) VALUES (?, ?, ?, ?, ?)`,
+		user.ID, "change_password", "user", user.ID, middleware.RealClientIP(c),
+	)
 
 	c.JSON(http.StatusOK, gin.H{"message": "password changed"})
 }

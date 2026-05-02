@@ -51,6 +51,18 @@ func CreateReview(c *gin.Context) {
 	}
 
 	gameID := c.Param("id")
+
+	// Prevent developers from reviewing their own games.
+	game, err := models.GetGameByID(gameID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "game not found"})
+		return
+	}
+	if game.DeveloperID == user.ID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "you cannot review your own game"})
+		return
+	}
+
 	input.Text = SanitizePlain(input.Text)
 	review, err := models.CreateReview(gameID, user.ID, input.Rating, input.Text)
 	if err != nil {
@@ -60,9 +72,8 @@ func CreateReview(c *gin.Context) {
 
 	models.LogActivity(user.ID, "review", gameID, strconv.Itoa(input.Rating)+" stars")
 
-	// Notify game developer
-	game, _ := models.GetGameByID(gameID)
-	if game != nil && game.DeveloperID != user.ID {
+	// Notify game developer (re-use the game we already fetched above).
+	if game.DeveloperID != user.ID {
 		CreateNotification(game.DeveloperID, "review", SanitizePlain(user.Username)+" reviewed your game \""+SanitizePlain(game.Title)+"\"", gameID, user.Username)
 	}
 

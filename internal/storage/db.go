@@ -62,6 +62,14 @@ func migrate() error {
 		`CREATE INDEX IF NOT EXISTS idx_api_keys_prefix ON api_keys(key_prefix)`,
 		// Migrate existing video_url into videos array
 		`UPDATE games SET videos = '["' || video_url || '"]' WHERE video_url != '' AND videos = '[]'`,
+		`CREATE TABLE IF NOT EXISTS audit_log (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			actor_id TEXT NOT NULL,
+			action TEXT NOT NULL,
+			target_type TEXT,
+			target_id TEXT,
+			ip TEXT,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`,
 	}
 	for _, m := range migrations {
 		DB.Exec(m) // ignore errors (column already exists)
@@ -294,6 +302,18 @@ CREATE INDEX IF NOT EXISTS idx_game_views_date ON game_views(game_id, created_at
 CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, read);
 CREATE INDEX IF NOT EXISTS idx_devlogs_game ON devlogs(game_id);
 CREATE INDEX IF NOT EXISTS idx_follows_followed ON follows(followed_id);
+
+CREATE TABLE IF NOT EXISTS audit_log (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    actor_id    TEXT NOT NULL,
+    action      TEXT NOT NULL,
+    target_type TEXT,
+    target_id   TEXT,
+    ip          TEXT,
+    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_audit_log_actor ON audit_log(actor_id);
+CREATE INDEX IF NOT EXISTS idx_audit_log_created ON audit_log(created_at);
 CREATE VIRTUAL TABLE IF NOT EXISTS games_fts USING fts5(title, description, tags, content='games', content_rowid='rowid');
 
 CREATE TRIGGER IF NOT EXISTS games_fts_insert AFTER INSERT ON games BEGIN

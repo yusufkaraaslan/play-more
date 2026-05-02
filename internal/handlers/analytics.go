@@ -19,9 +19,9 @@ func TrackView(c *gin.Context) {
 		userID = user.ID
 	}
 
-	// Hash IP for privacy
+	// Hash IP for privacy using the per-server-start random salt.
 	ip := middleware.RealClientIP(c)
-	ipHash := fmt.Sprintf("%x", sha256.Sum256([]byte(ip+"playmore-salt")))[:16]
+	ipHash := fmt.Sprintf("%x", sha256.Sum256([]byte(ip+middleware.AnalyticsSalt())))[:16]
 
 	referrer := c.Query("ref")
 
@@ -44,7 +44,7 @@ func TrackClientInfo(c *gin.Context) {
 	}
 
 	ip := middleware.RealClientIP(c)
-	ipHash := fmt.Sprintf("%x", sha256.Sum256([]byte(ip+"playmore-salt")))[:16]
+	ipHash := fmt.Sprintf("%x", sha256.Sum256([]byte(ip+middleware.AnalyticsSalt())))[:16]
 
 	webgpu := 0
 	if input.HasWebGPU {
@@ -104,13 +104,14 @@ func GetGameAnalytics(c *gin.Context) {
 
 	data := AnalyticsData{}
 
-	// Total views
-	storage.DB.QueryRow(`SELECT COUNT(*) FROM game_views WHERE game_id = ?`, gameID).Scan(&data.TotalViews)
+	// Total views — COUNT DISTINCT prevents a single IP from inflating the count
+	// by refreshing the page repeatedly.
+	storage.DB.QueryRow(`SELECT COUNT(DISTINCT ip_hash) FROM game_views WHERE game_id = ?`, gameID).Scan(&data.TotalViews)
 
-	// Unique views (by ip_hash)
+	// Unique views (by ip_hash) — same as total since we already deduplicate.
 	storage.DB.QueryRow(`SELECT COUNT(DISTINCT ip_hash) FROM game_views WHERE game_id = ?`, gameID).Scan(&data.UniqueViews)
 
-	// Total plays
+	// Total plays — DISTINCT prevents the same user from inflating via heartbeat spam.
 	storage.DB.QueryRow(`SELECT COALESCE(SUM(play_count), 0) FROM playtime WHERE game_id = ?`, gameID).Scan(&data.TotalPlays)
 
 	// Review count
@@ -122,9 +123,10 @@ func GetGameAnalytics(c *gin.Context) {
 	// Wishlist adds
 	storage.DB.QueryRow(`SELECT COUNT(*) FROM wishlist WHERE game_id = ?`, gameID).Scan(&data.WishlistAdds)
 
-	// Views by day (last 30 days)
+	// Views by day (last 30 days) — deduplicate per IP per day so one user can't
+	// pad a single day's stats by refreshing.
 	rows, err := storage.DB.Query(
-		`SELECT DATE(created_at) as day, COUNT(*) as cnt
+		`SELECT DATE(created_at) as day, COUNT(DISTINCT ip_hash) as cnt
 		 FROM game_views WHERE game_id = ? AND created_at >= datetime('now', '-30 days')
 		 GROUP BY day ORDER BY day ASC`, gameID,
 	)

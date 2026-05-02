@@ -21,7 +21,7 @@ func FollowDeveloper(c *gin.Context) {
 	}
 	target, err := models.GetUserByUsername(c.Param("username"))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
 		return
 	}
 	if target.ID == user.ID {
@@ -43,7 +43,11 @@ func UnfollowDeveloper(c *gin.Context) {
 	}
 	target, err := models.GetUserByUsername(c.Param("username"))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+		return
+	}
+	if target.ID == user.ID {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "cannot unfollow yourself"})
 		return
 	}
 	storage.DB.Exec(`DELETE FROM follows WHERE follower_id = ? AND followed_id = ?`, user.ID, target.ID)
@@ -268,9 +272,18 @@ func AddToCollection(c *gin.Context) {
 		return
 	}
 
+	// Verify the game exists and is published before adding it to a collection.
+	// This prevents collection pollution with fake/non-existent/unpublished game IDs.
+	var published int
+	err := storage.DB.QueryRow(`SELECT published FROM games WHERE id = ?`, input.GameID).Scan(&published)
+	if err != nil || published != 1 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "game not found"})
+		return
+	}
+
 	colID := c.Param("id")
 	var gameIDsJSON string
-	err := storage.DB.QueryRow(`SELECT game_ids FROM collections WHERE id = ? AND user_id = ?`, colID, user.ID).Scan(&gameIDsJSON)
+	err = storage.DB.QueryRow(`SELECT game_ids FROM collections WHERE id = ? AND user_id = ?`, colID, user.ID).Scan(&gameIDsJSON)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "collection not found"})
 		return

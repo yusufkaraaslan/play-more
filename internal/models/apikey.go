@@ -1,6 +1,7 @@
 package models
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
@@ -51,7 +52,9 @@ func GenerateAPIKey(userID, name, scopes string) (*APIKey, string, error) {
 
 	// Atomic count + insert via transaction so concurrent requests can't
 	// race past the per-user limit.
-	tx, err := storage.DB.Begin()
+	// Use BEGIN IMMEDIATE to acquire a write lock immediately, preventing the
+	// race where two concurrent reads both observe count < limit.
+	tx, err := storage.DB.BeginTx(context.Background(), nil)
 	if err != nil {
 		return nil, "", err
 	}

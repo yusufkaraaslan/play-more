@@ -1,3 +1,11 @@
 data/
 playmore
 *.db
+.env
+.env.*
+.git
+.github
+docs
+scripts
+v1
+*.md

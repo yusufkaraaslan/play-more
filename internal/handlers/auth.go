@@ -147,11 +147,13 @@ func Login(c *gin.Context) {
 	if err != nil {
 		// Equalize timing with the password-mismatch path (cost-12 bcrypt).
 		bcrypt.CompareHashAndPassword(dummyBcryptHash, []byte(input.Password))
+		log.Printf("[AUTH] failed login attempt for email=%s ip=%s reason=no_such_user", emailKey, middleware.RealClientIP(c))
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
 		return
 	}
 
 	if !user.CheckPassword(input.Password) {
+		log.Printf("[AUTH] failed login attempt for user=%s ip=%s reason=wrong_password", user.Username, middleware.RealClientIP(c))
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
 		return
 	}
@@ -206,13 +208,12 @@ func hashToken(token string) string {
 }
 
 // RequireVerifiedEmail is a middleware that rejects unverified users.
-// Only enforced when SMTP is configured (otherwise users can't verify).
+// If SMTP is not configured users literally cannot verify, so we still
+// enforce the gate but return a message that tells the operator to set
+// up SMTP. This prevents the default fresh-install state from being an
+// open spam vector.
 func RequireVerifiedEmail() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if !email.Configured() {
-			c.Next()
-			return
-		}
 		user := middleware.GetUser(c)
 		if user == nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "not authenticated"})
@@ -220,10 +221,18 @@ func RequireVerifiedEmail() gin.HandlerFunc {
 			return
 		}
 		if !user.EmailVerified {
-			c.JSON(http.StatusForbidden, gin.H{
-				"error":              "Please verify your email address first. Check your inbox for the verification link.",
-				"email_verification": "required",
-			})
+			if !email.Configured() {
+				c.JSON(http.StatusForbidden, gin.H{
+					"error":              "Email verification is required, but the server has not configured SMTP. Please contact the administrator.",
+					"email_verification": "required",
+					"smtp_required":      true,
+				})
+			} else {
+				c.JSON(http.StatusForbidden, gin.H{
+					"error":              "Please verify your email address first. Check your inbox for the verification link.",
+					"email_verification": "required",
+				})
+			}
 			c.Abort()
 			return
 		}
@@ -270,8 +279,18 @@ func VerifyEmail(c *gin.Context) {
 		return
 	}
 	tokenHash := hashToken(input.Token)
+
+	// Wrap in a transaction to prevent race conditions where two concurrent
+	// requests with the same token both pass validation.
+	tx, err := storage.DB.Begin()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
+		return
+	}
+	defer tx.Rollback()
+
 	var userID, expiresAt string
-	err := storage.DB.QueryRow(
+	err = tx.QueryRow(
 		`SELECT user_id, expires_at FROM email_tokens WHERE token = ? AND type = 'verify'`, tokenHash,
 	).Scan(&userID, &expiresAt)
 	if err != nil {
@@ -280,14 +299,18 @@ func VerifyEmail(c *gin.Context) {
 	}
 	exp, _ := time.Parse(time.RFC3339, expiresAt)
 	if time.Now().After(exp) {
-		storage.DB.Exec(`DELETE FROM email_tokens WHERE token = ?`, tokenHash)
+		tx.Exec(`DELETE FROM email_tokens WHERE token = ?`, tokenHash)
+		tx.Commit()
 		c.JSON(http.StatusBadRequest, gin.H{"error": "token expired"})
 		return
 	}
-	if _, err := storage.DB.Exec(`UPDATE users SET email_verified = 1 WHERE id = ?`, userID); err != nil {
+	if _, err := tx.Exec(`UPDATE users SET email_verified = 1 WHERE id = ?`, userID); err != nil {
 		log.Printf("verify: failed to mark verified: %v", err)
 	}
-	storage.DB.Exec(`DELETE FROM email_tokens WHERE token = ?`, tokenHash)
+	tx.Exec(`DELETE FROM email_tokens WHERE token = ?`, tokenHash)
+	if err := tx.Commit(); err != nil {
+		log.Printf("verify: failed to commit: %v", err)
+	}
 	c.JSON(http.StatusOK, gin.H{"message": "email verified"})
 }
 
@@ -335,8 +358,17 @@ func ResetPassword(c *gin.Context) {
 		return
 	}
 	tokenHash := hashToken(input.Token)
+
+	// Transaction prevents concurrent token reuse.
+	tx, err := storage.DB.Begin()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
+		return
+	}
+	defer tx.Rollback()
+
 	var userID, expiresAt string
-	err := storage.DB.QueryRow(
+	err = tx.QueryRow(
 		`SELECT user_id, expires_at FROM email_tokens WHERE token = ? AND type = 'reset'`, tokenHash,
 	).Scan(&userID, &expiresAt)
 	if err != nil {
@@ -345,7 +377,8 @@ func ResetPassword(c *gin.Context) {
 	}
 	exp, _ := time.Parse(time.RFC3339, expiresAt)
 	if time.Now().After(exp) {
-		storage.DB.Exec(`DELETE FROM email_tokens WHERE token = ?`, tokenHash)
+		tx.Exec(`DELETE FROM email_tokens WHERE token = ?`, tokenHash)
+		tx.Commit()
 		c.JSON(http.StatusBadRequest, gin.H{"error": "token expired"})
 		return
 	}
@@ -358,11 +391,14 @@ func ResetPassword(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to set password"})
 		return
 	}
-	storage.DB.Exec(`DELETE FROM email_tokens WHERE token = ?`, tokenHash)
+	tx.Exec(`DELETE FROM email_tokens WHERE token = ?`, tokenHash)
 	// Invalidate all sessions AND all API keys — if the password was reset
 	// because the account was compromised, any keys generated by the attacker
 	// must stop working too.
-	storage.DB.Exec(`DELETE FROM sessions WHERE user_id = ?`, userID)
-	storage.DB.Exec(`DELETE FROM api_keys WHERE user_id = ?`, userID)
+	tx.Exec(`DELETE FROM sessions WHERE user_id = ?`, userID)
+	tx.Exec(`DELETE FROM api_keys WHERE user_id = ?`, userID)
+	if err := tx.Commit(); err != nil {
+		log.Printf("reset-password: failed to commit: %v", err)
+	}
 	c.JSON(http.StatusOK, gin.H{"message": "password reset successfully"})
 }

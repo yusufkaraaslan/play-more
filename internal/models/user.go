@@ -28,6 +28,14 @@ type User struct {
 	CreatedAt     string `json:"created_at"`
 }
 
+// PublicUser returns a copy of the user with the email field blanked out.
+// Use this for any API response that goes to a user other than the owner.
+func (u *User) PublicUser() User {
+	pub := *u
+	pub.Email = ""
+	return pub
+}
+
 type Link struct {
 	Label string `json:"label"`
 	URL   string `json:"url"`

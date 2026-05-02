@@ -21,9 +21,15 @@ import (
 // known plaintext like a corporate IP).
 var analyticsSalt = func() string {
 	b := make([]byte, 32)
-	rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		panic(fmt.Sprintf("failed to generate analytics salt: %v", err))
+	}
 	return hex.EncodeToString(b)
 }()
+
+// AnalyticsSalt returns the per-server-start random salt used for IP hashing
+// in analytics. Exported so handlers/analytics.go can use the same salt.
+func AnalyticsSalt() string { return analyticsSalt }
 
 type pageView struct {
 	Path       string

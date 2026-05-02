@@ -5,8 +5,16 @@ import (
 	"fmt"
 	"net"
 	"net/smtp"
+	"strings"
 	"time"
 )
+
+// sanitizeHeader strips CRLF from header values to prevent SMTP header injection.
+func sanitizeHeader(s string) string {
+	s = strings.ReplaceAll(s, "\r", "")
+	s = strings.ReplaceAll(s, "\n", "")
+	return s
+}
 
 var (
 	Host    string
@@ -48,7 +56,7 @@ func Send(to, subject, body string) error {
 	}
 
 	msg := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n%s",
-		From, to, subject, body)
+		sanitizeHeader(From), sanitizeHeader(to), sanitizeHeader(subject), body)
 
 	addr := fmt.Sprintf("%s:%d", Host, Port)
 
@@ -77,11 +85,11 @@ func sendWithSTARTTLS(addr, to string, msg []byte, localBridge bool) error {
 	if ok, _ := c.Extension("STARTTLS"); !ok {
 		return fmt.Errorf("SMTP server does not support STARTTLS — refusing to send credentials in plaintext")
 	}
-	tlsConfig := &tls.Config{
-		ServerName:         Host,
-		InsecureSkipVerify: localBridge, // only true for 127.0.0.1/localhost bridges
-		MinVersion:         tls.VersionTLS12,
-	}
+		tlsConfig := &tls.Config{
+			ServerName:         Host,
+			InsecureSkipVerify: localBridge, // only true for 127.0.0.1/localhost bridges
+			MinVersion:         tls.VersionTLS13,
+		}
 	if err := c.StartTLS(tlsConfig); err != nil {
 		return err
 	}

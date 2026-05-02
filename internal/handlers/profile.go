@@ -22,7 +22,7 @@ func GetProfile(c *gin.Context) {
 	activity, _ := models.ListActivity(user.ID, 10)
 
 	c.JSON(http.StatusOK, gin.H{
-		"user":     user,
+		"user":     user.PublicUser(),
 		"stats":    stats,
 		"activity": activity,
 	})

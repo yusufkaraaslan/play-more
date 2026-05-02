@@ -28,11 +28,17 @@ func paginationParams(c *gin.Context, def, max int) (int, int) {
 	return limit, offset
 }
 
-func adminLog(c *gin.Context, action string) {
+func adminLog(c *gin.Context, action, targetType, targetID string) {
 	user := middleware.GetUser(c)
-	if user != nil {
-		log.Printf("[ADMIN] user=%s action=%s ip=%s", user.Username, action, middleware.RealClientIP(c))
+	if user == nil {
+		return
 	}
+	ip := middleware.RealClientIP(c)
+	log.Printf("[ADMIN] user=%s action=%s target=%s/%s ip=%s", user.Username, action, targetType, targetID, ip)
+	storage.DB.Exec(
+		`INSERT INTO audit_log (actor_id, action, target_type, target_id, ip) VALUES (?, ?, ?, ?, ?)`,
+		user.ID, action, targetType, targetID, ip,
+	)
 }
 
 func isAdmin(c *gin.Context) bool {
@@ -140,7 +146,7 @@ func AdminDeleteUser(c *gin.Context) {
 		storage.DB.Exec(`DELETE FROM `+table+` WHERE `+col+` = ?`, userID)
 	}
 	storage.DB.Exec(`DELETE FROM users WHERE id = ?`, userID)
-	adminLog(c, "delete_user:"+userID)
+	adminLog(c, "delete_user", "user", userID)
 	c.JSON(http.StatusOK, gin.H{"message": "user deleted"})
 }
 
@@ -148,7 +154,7 @@ func AdminDeleteGame(c *gin.Context) {
 	gameID := c.Param("id")
 	storage.DeleteGameFiles(gameID)
 	storage.DB.Exec(`DELETE FROM games WHERE id = ?`, gameID)
-	adminLog(c, "delete_game:"+gameID)
+	adminLog(c, "delete_game", "game", gameID)
 	c.JSON(http.StatusOK, gin.H{"message": "game deleted"})
 }
 
@@ -186,6 +192,6 @@ func AdminListGames(c *gin.Context) {
 func AdminTogglePublish(c *gin.Context) {
 	gameID := c.Param("id")
 	storage.DB.Exec(`UPDATE games SET published = NOT published WHERE id = ?`, gameID)
-	adminLog(c, "toggle_publish:"+gameID)
+	adminLog(c, "toggle_publish", "game", gameID)
 	c.JSON(http.StatusOK, gin.H{"message": "publish status toggled"})
 }

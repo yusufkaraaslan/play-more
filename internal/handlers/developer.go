@@ -13,7 +13,7 @@ func GetDeveloperPage(c *gin.Context) {
 	username := c.Param("username")
 	user, err := models.GetUserByUsername(username)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "developer not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
 		return
 	}
 
@@ -30,7 +30,7 @@ func GetDeveloperPage(c *gin.Context) {
 	activity, _ := models.ListActivity(user.ID, 10)
 
 	c.JSON(http.StatusOK, gin.H{
-		"user":     user,
+		"user":     user.PublicUser(),
 		"page":     page,
 		"stats":    stats,
 		"games":    games,

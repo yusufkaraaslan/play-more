@@ -320,7 +320,9 @@ func main() {
 			fmt.Printf("✓  SMTP reachable at %s:%d\n", emailpkg.Host, emailpkg.Port)
 		}
 	} else {
-		fmt.Println("ℹ  SMTP not configured — email verification and password reset disabled")
+		fmt.Println("⚠  SMTP not configured — uploads, reviews, and devlogs are BLOCKED")
+		fmt.Println("    until users can verify their email. Configure SMTP in .env to allow")
+		fmt.Println("    user content. See docs/SETUP.md.")
 	}
 
 	middleware.StartRateLimitCleanup()
@@ -375,12 +377,18 @@ func main() {
 		s := makeServer(":443")
 		s.TLSConfig = &tls.Config{
 			GetCertificate: m.GetCertificate,
-			MinVersion:     tls.VersionTLS12,
+			MinVersion:     tls.VersionTLS13,
 		}
 		// HTTP challenge server + redirect on port 80
 		go func() {
 			h := m.HTTPHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				target := "https://" + r.Host + r.URL.Path
+				// Use the configured domain instead of r.Host to prevent open-redirect
+				// via Host-header injection on the HTTP challenge server.
+				host := *domain
+				if host == "" {
+					host = r.Host
+				}
+				target := "https://" + host + r.URL.Path
 				if len(r.URL.RawQuery) > 0 {
 					target += "?" + r.URL.RawQuery
 				}
@@ -400,7 +408,7 @@ func main() {
 		}
 	} else if *tlsCert != "" {
 		s := makeServer(addr)
-		s.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+		s.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS13}
 		if err := s.ListenAndServeTLS(*tlsCert, *tlsKey); err != nil {
 			log.Fatal("Server failed:", err)
 		}

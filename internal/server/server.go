@@ -43,9 +43,12 @@ func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxi
 	imageCap := int64(10 << 20)                          // 5 MiB image + form overhead
 	r.Use(gin.LoggerWithFormatter(func(p gin.LogFormatterParams) string {
 		// Path only, no RawQuery — tokens are passed via query in some flows.
+		// Sanitise control characters to prevent log injection (e.g. %0A in path).
+		path := strings.ReplaceAll(p.Path, "\n", "")
+		path = strings.ReplaceAll(path, "\r", "")
 		return fmt.Sprintf("%s | %3d | %13v | %15s | %-7s %s\n",
 			p.TimeStamp.Format("2006/01/02 - 15:04:05"),
-			p.StatusCode, p.Latency, p.ClientIP, p.Method, p.Path,
+			p.StatusCode, p.Latency, p.ClientIP, p.Method, path,
 		)
 	}))
 
@@ -79,9 +82,20 @@ func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxi
 	// HTTPS redirect middleware (before security headers).
 	// Only honor X-Forwarded-Proto when --trusted-proxies is set, otherwise
 	// any client can spoof the header to trigger redirects.
+	// We use baseURL (operator-configured) instead of c.Request.Host to prevent
+	// open-redirect via Host-header injection.
 	r.Use(func(c *gin.Context) {
 		if hasTrustedProxy && c.Request.Header.Get("X-Forwarded-Proto") == "http" {
-			target := "https://" + c.Request.Host + c.Request.URL.Path
+			scheme := "https"
+			host := c.Request.Host
+			// If baseURL is configured, use its host to prevent Host-header injection.
+			if baseURL != "" {
+				if i := strings.Index(baseURL, "://"); i != -1 {
+					host = baseURL[i+3:]
+					scheme = baseURL[:i]
+				}
+			}
+			target := scheme + "://" + host + c.Request.URL.Path
 			if len(c.Request.URL.RawQuery) > 0 {
 				target += "?" + c.Request.URL.RawQuery
 			}

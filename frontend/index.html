@@ -667,7 +667,7 @@
                 <button class="btn-secondary" onclick="closePlayer()">Close</button>
             </div>
         </div>
-        <iframe id="player-frame" allow="gamepad; fullscreen"></iframe>
+        <iframe id="player-frame" allow="gamepad; fullscreen" referrerpolicy="no-referrer"></iframe>
     </div>
 
     <div class="toast-container" id="toast-container"></div>
@@ -1122,7 +1122,7 @@
                 // User's own collection
                 toolbar.innerHTML = '<h2>' + escapeHtml(col.name) + '</h2><span class="lib-count-total">' + (col.game_ids||[]).length + ' games</span>' +
                     '<div style="margin-left:auto;display:flex;gap:6px;">' +
-                    '<button class="btn-secondary" style="padding:4px 12px;font-size:11px;" onclick="editList(\'' + col.id + '\',\'' + escapeHtml(col.name).replace(/'/g,"\\'") + '\',' + col.is_public + ',\'' + escapeHtml(col.description || '').replace(/'/g,"\\'") + '\')">Edit</button>' +
+                    '<button class="btn-secondary" style="padding:4px 12px;font-size:11px;" onclick="editList(\'' + esc(col.id) + '\',\'' + esc(col.name) + '\',' + col.is_public + ',\'' + esc(col.description || '') + '\')">Edit</button>' +
                     '<button class="btn-secondary" style="padding:4px 12px;font-size:11px;" onclick="copyListLink(\'' + col.id + '\')">Share</button>' +
                     '<button class="btn-secondary" style="padding:4px 12px;font-size:11px;color:var(--danger);" onclick="deleteCollection(\'' + col.id + '\')">Delete</button></div>';
                 // Resolve games
@@ -2433,7 +2433,7 @@
                         '<button class="dash-btn dash-btn-edit" onclick="showGameDetail(\'' + g.id + '\')">View</button>' +
                         '<button class="dash-btn dash-btn-edit" onclick="showAnalytics(\'' + g.id + '\')">Analytics</button>' +
                         '<button class="dash-btn dash-btn-edit" onclick="editGame(\'' + g.id + '\')">Edit</button>' +
-                        '<button class="dash-btn dash-btn-delete" onclick="deleteGame(\'' + g.id + '\',\'' + escapeHtml(g.title).replace(/'/g,"\\'") + '\')">Delete</button></div></div>';
+                        '<button class="dash-btn dash-btn-delete" onclick="deleteGame(\'' + esc(g.id) + '\',\'' + esc(g.title) + '\')">Delete</button></div></div>';
                 }).join('');
                 container.innerHTML = html;
             } catch (e) { console.error('Dashboard error:', e); }
@@ -2813,7 +2813,7 @@
                     return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border-color);">' +
                         '<div><strong>' + escapeHtml(k.name) + '</strong>' +
                         '<div style="font-size:11px;color:var(--text-secondary);margin-top:2px;"><code>' + escapeHtml(k.key_prefix) + '...</code> · ' + escapeHtml(k.scopes) + ' · ' + lastUsed + '</div></div>' +
-                        '<button class="btn-secondary" style="padding:3px 10px;font-size:11px;color:var(--danger);" onclick="revokeAPIKey(\'' + k.id + '\',\'' + escapeHtml(k.name).replace(/'/g, "\\'") + '\')">Revoke</button></div>';
+                        '<button class="btn-secondary" style="padding:3px 10px;font-size:11px;color:var(--danger);" onclick="revokeAPIKey(\'' + esc(k.id) + '\',\'' + esc(k.name) + '\')">Revoke</button></div>';
                 }).join('');
             } catch { el.innerHTML = '<span style="color:var(--danger);">Failed to load keys.</span>'; }
         }
@@ -3055,7 +3055,7 @@
                         html += '<div class="game-card-title">' + escapeHtml(u.username) + '</div>';
                         html += '<div class="dashboard-stats"><span>' + escapeHtml(u.email) + '</span><span>' + u.game_count + ' games</span><span>' + u.review_count + ' reviews</span><span>' + escapeHtml(u.created_at) + '</span></div>';
                         html += '</div><div class="dashboard-actions">';
-                        html += '<button class="dash-btn dash-btn-delete" onclick="adminDeleteUser(\'' + u.id + '\',\'' + escapeHtml(u.username).replace(/'/g, "\\'") + '\')">Delete</button></div></div>';
+                        html += '<button class="dash-btn dash-btn-delete" onclick="adminDeleteUser(\'' + esc(u.id) + '\',\'' + esc(u.username) + '\')">Delete</button></div></div>';
                     });
                 } else if (adminTab === 'games') {
                     const games = await api('/admin/games');
@@ -3065,7 +3065,7 @@
                         html += '<div class="dashboard-stats"><span>by ' + escapeHtml(g.developer) + '</span><span>' + escapeHtml(g.genre) + '</span><span>' + g.review_count + ' reviews</span><span>' + (g.published ? 'Published' : 'Hidden') + '</span></div>';
                         html += '</div><div class="dashboard-actions">';
                         html += '<button class="dash-btn dash-btn-edit" onclick="adminTogglePublish(\'' + g.id + '\')">' + (g.published ? 'Hide' : 'Publish') + '</button>';
-                        html += '<button class="dash-btn dash-btn-delete" onclick="adminDeleteGameA(\'' + g.id + '\',\'' + escapeHtml(g.title).replace(/'/g, "\\'") + '\')">Delete</button></div></div>';
+                        html += '<button class="dash-btn dash-btn-delete" onclick="adminDeleteGameA(\'' + esc(g.id) + '\',\'' + esc(g.title) + '\')">Delete</button></div></div>';
                     });
                 }
                 container.innerHTML = html;
