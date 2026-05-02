@@ -593,6 +593,66 @@ func ServeGameFiles(spaOrigin string) gin.HandlerFunc {
 		if ext == ".wasm" || ext == ".js" || ext == ".css" || ext == ".png" || ext == ".jpg" || ext == ".svg" || ext == ".ogg" || ext == ".mp3" {
 			c.Header("Cache-Control", "public, max-age=31536000, immutable")
 		}
+		// Force Content-Type from extension allowlist instead of letting
+		// http.ServeFile sniff bytes — prevents MIME confusion (e.g. a .png
+		// containing HTML being served as text/html).
+		if ct := contentTypeForExt(ext); ct != "" {
+			c.Header("Content-Type", ct)
+		}
+		// nosniff stops the browser from second-guessing our Content-Type.
+		c.Header("X-Content-Type-Options", "nosniff")
 		http.ServeFile(c.Writer, c.Request, fullPath)
 	}
+}
+
+// contentTypeForExt returns a strict Content-Type for known game asset
+// extensions. Returns "" for unknown extensions — http.ServeFile will then
+// sniff, but X-Content-Type-Options:nosniff prevents browsers from acting
+// on a sniff that disagrees with the extension.
+func contentTypeForExt(ext string) string {
+	switch ext {
+	case ".html", ".htm":
+		return "text/html; charset=utf-8"
+	case ".js", ".mjs":
+		return "application/javascript; charset=utf-8"
+	case ".css":
+		return "text/css; charset=utf-8"
+	case ".json":
+		return "application/json; charset=utf-8"
+	case ".wasm":
+		return "application/wasm"
+	case ".png":
+		return "image/png"
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".gif":
+		return "image/gif"
+	case ".webp":
+		return "image/webp"
+	case ".svg":
+		return "image/svg+xml"
+	case ".ico":
+		return "image/x-icon"
+	case ".ogg":
+		return "audio/ogg"
+	case ".mp3":
+		return "audio/mpeg"
+	case ".wav":
+		return "audio/wav"
+	case ".mp4":
+		return "video/mp4"
+	case ".webm":
+		return "video/webm"
+	case ".woff":
+		return "font/woff"
+	case ".woff2":
+		return "font/woff2"
+	case ".ttf":
+		return "font/ttf"
+	case ".txt":
+		return "text/plain; charset=utf-8"
+	case ".xml":
+		return "application/xml; charset=utf-8"
+	}
+	return ""
 }

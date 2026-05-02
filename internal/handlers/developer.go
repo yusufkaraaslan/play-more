@@ -83,6 +83,16 @@ func UpdateDeveloperPage(c *gin.Context) {
 	if input.PageLayout == nil {
 		input.PageLayout = []models.PageSection{}
 	}
+	// Clamp section heights to prevent CSS injection / layout abuse.
+	// Negative values would make CSS invalid; >2000 is clearly abusive.
+	for i := range input.PageLayout {
+		if input.PageLayout[i].Height < 0 {
+			input.PageLayout[i].Height = 0
+		}
+		if input.PageLayout[i].Height > 2000 {
+			input.PageLayout[i].Height = 2000
+		}
+	}
 
 	// Sanitize custom CSS — strip < and > to prevent </style> injection, then cap length
 	input.CustomCSS = strings.ReplaceAll(input.CustomCSS, "<", "")

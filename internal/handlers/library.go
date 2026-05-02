@@ -60,7 +60,17 @@ func AddToLibrary(c *gin.Context) {
 		return
 	}
 	gameID := c.Param("game_id")
-	_, err := storage.DB.Exec(
+	// Reject unpublished games (unless the caller is the developer)
+	game, err := models.GetGameByID(gameID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "game not found"})
+		return
+	}
+	if !game.Published && game.DeveloperID != user.ID {
+		c.JSON(http.StatusNotFound, gin.H{"error": "game not found"})
+		return
+	}
+	_, err = storage.DB.Exec(
 		`INSERT OR IGNORE INTO library (user_id, game_id) VALUES (?, ?)`,
 		user.ID, gameID,
 	)
@@ -135,6 +145,15 @@ func AddToWishlist(c *gin.Context) {
 		return
 	}
 	gameID := c.Param("game_id")
+	game, err := models.GetGameByID(gameID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "game not found"})
+		return
+	}
+	if !game.Published && game.DeveloperID != user.ID {
+		c.JSON(http.StatusNotFound, gin.H{"error": "game not found"})
+		return
+	}
 	storage.DB.Exec(`INSERT OR IGNORE INTO wishlist (user_id, game_id) VALUES (?, ?)`, user.ID, gameID)
 	c.JSON(http.StatusOK, gin.H{"message": "added to wishlist"})
 }

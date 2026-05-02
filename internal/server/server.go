@@ -49,22 +49,36 @@ func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxi
 		)
 	}))
 
-	// Trust proxies — by default trust nothing; operator must explicitly opt in
+	// Trust proxies — by default trust nothing; operator must explicitly opt in.
+	// Reject 0.0.0.0/0 (which would let anything spoof X-Forwarded-* headers).
+	hasTrustedProxy := false
 	if trustedProxies != "" {
 		proxies := []string{}
 		for _, p := range strings.Split(trustedProxies, ",") {
-			if p = strings.TrimSpace(p); p != "" {
-				proxies = append(proxies, p)
+			p = strings.TrimSpace(p)
+			if p == "" {
+				continue
 			}
+			if p == "0.0.0.0/0" || p == "::/0" {
+				panic("trusted-proxies must not include 0.0.0.0/0 or ::/0 — that allows ANY client to spoof X-Forwarded-* headers")
+			}
+			proxies = append(proxies, p)
 		}
-		r.SetTrustedProxies(proxies)
+		if len(proxies) > 0 {
+			r.SetTrustedProxies(proxies)
+			hasTrustedProxy = true
+		} else {
+			r.SetTrustedProxies(nil)
+		}
 	} else {
 		r.SetTrustedProxies(nil)
 	}
 
-	// HTTPS redirect middleware (before security headers)
+	// HTTPS redirect middleware (before security headers).
+	// Only honor X-Forwarded-Proto when --trusted-proxies is set, otherwise
+	// any client can spoof the header to trigger redirects.
 	r.Use(func(c *gin.Context) {
-		if c.Request.Header.Get("X-Forwarded-Proto") == "http" {
+		if hasTrustedProxy && c.Request.Header.Get("X-Forwarded-Proto") == "http" {
 			target := "https://" + c.Request.Host + c.Request.URL.Path
 			if len(c.Request.URL.RawQuery) > 0 {
 				target += "?" + c.Request.URL.RawQuery
@@ -112,6 +126,17 @@ func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxi
 		c.Next()
 	})
 
+	// Body size limit on JSON requests — multipart uploads use their own caps
+	// in handlers/games.go and handlers/uploads.go (storage.MaxFileSize / 5MB)
+	// because http.MaxBytesReader can't tell multipart from JSON at this layer.
+	r.Use(func(c *gin.Context) {
+		ct := c.GetHeader("Content-Type")
+		if strings.Contains(ct, "application/json") {
+			c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 1<<20) // 1 MiB JSON cap
+		}
+		c.Next()
+	})
+
 	// Gzip compression (skip game file serving — handled separately with Range support)
 	r.Use(gzip.Gzip(gzip.DefaultCompression, gzip.WithExcludedPaths([]string{"/play/"})))
 
@@ -139,11 +164,11 @@ func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxi
 		api.GET("/games", handlers.ListGames)
 		api.GET("/games/:id", handlers.GetGame)
 		api.POST("/games", middleware.AuthRequired(), handlers.RequireVerifiedEmail(), middleware.RateLimit(10, 3600), limitBody(uploadCap), handlers.UploadGame)
-		api.PUT("/games/:id", middleware.AuthRequired(), handlers.UpdateGame)
+		api.PUT("/games/:id", middleware.AuthRequired(), handlers.RequireVerifiedEmail(), handlers.UpdateGame)
 		api.DELETE("/games/:id", middleware.AuthRequired(), handlers.DeleteGame)
-		api.POST("/games/:id/reupload", middleware.AuthRequired(), middleware.RateLimit(10, 3600), limitBody(uploadCap), handlers.ReuploadGameFiles)
-		api.PUT("/games/:id/visibility", middleware.AuthRequired(), handlers.ToggleVisibility)
-		api.POST("/games/:id/screenshots", middleware.AuthRequired(), middleware.RateLimit(20, 3600), limitBody(uploadCap), handlers.ManageScreenshots)
+		api.POST("/games/:id/reupload", middleware.AuthRequired(), handlers.RequireVerifiedEmail(), middleware.RateLimit(10, 3600), limitBody(uploadCap), handlers.ReuploadGameFiles)
+		api.PUT("/games/:id/visibility", middleware.AuthRequired(), handlers.RequireVerifiedEmail(), handlers.ToggleVisibility)
+		api.POST("/games/:id/screenshots", middleware.AuthRequired(), handlers.RequireVerifiedEmail(), middleware.RateLimit(20, 3600), limitBody(uploadCap), handlers.ManageScreenshots)
 		api.DELETE("/games/:id/screenshots/:index", middleware.AuthRequired(), handlers.DeleteScreenshot)
 
 		// Reviews

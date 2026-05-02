@@ -147,8 +147,12 @@ func ListGames(p GameListParams) ([]Game, int, error) {
 		args = append(args, p.Genre)
 	}
 	if p.Search != "" {
+		// Cap search length to prevent FTS5 query DoS via huge inputs
+		if len(p.Search) > 100 {
+			p.Search = p.Search[:100]
+		}
 		where = append(where, "(g.rowid IN (SELECT rowid FROM games_fts WHERE games_fts MATCH ?) OR g.title LIKE ? OR g.tags LIKE ?)")
-		// Escape FTS special characters to prevent query injection
+		// Escape FTS special characters (incl. AND/OR/NOT keywords via space-stripping) to prevent query injection
 		safe := strings.Map(func(r rune) rune {
 			if strings.ContainsRune(`+-<>():*"^~`, r) {
 				return -1

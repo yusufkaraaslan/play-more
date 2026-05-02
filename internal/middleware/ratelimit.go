@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"net/http"
+	"sort"
 	"sync"
 	"time"
 
@@ -9,8 +10,9 @@ import (
 )
 
 // maxLimiterKeys caps the total number of tracked keys to bound memory under
-// IP-rotation attacks. When exceeded the map is dropped wholesale (next
-// requests start with a clean slate — better than running OOM).
+// IP-rotation attacks. When exceeded we evict the keys with the oldest most-
+// recent activity rather than wiping all keys — this preserves the rate-limit
+// state of currently-active legitimate users.
 const maxLimiterKeys = 100_000
 
 type rateLimiter struct {
@@ -20,6 +22,32 @@ type rateLimiter struct {
 
 var limiter = &rateLimiter{requests: make(map[string][]time.Time)}
 
+// evictOldest removes ~10% of keys with the oldest most-recent timestamp
+// when the map exceeds maxLimiterKeys. Caller must hold limiter.mu.
+func evictOldest() {
+	type entry struct {
+		key  string
+		last time.Time
+	}
+	all := make([]entry, 0, len(limiter.requests))
+	for k, ts := range limiter.requests {
+		var last time.Time
+		if n := len(ts); n > 0 {
+			last = ts[n-1]
+		}
+		all = append(all, entry{k, last})
+	}
+	// Sort ascending — oldest last-activity first.
+	sort.Slice(all, func(i, j int) bool { return all[i].last.Before(all[j].last) })
+	toEvict := len(all) / 10
+	if toEvict < 1 {
+		toEvict = 1
+	}
+	for i := 0; i < toEvict; i++ {
+		delete(limiter.requests, all[i].key)
+	}
+}
+
 // allowKey records a hit for key and returns false if the per-window quota
 // is exceeded. Used by both the IP-keyed middleware and handler-level
 // per-account/per-email guards.
@@ -28,7 +56,7 @@ func allowKey(key string, maxRequests int, window time.Duration) bool {
 	defer limiter.mu.Unlock()
 
 	if len(limiter.requests) > maxLimiterKeys {
-		limiter.requests = make(map[string][]time.Time)
+		evictOldest()
 	}
 
 	now := time.Now()

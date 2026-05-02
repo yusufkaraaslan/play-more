@@ -11,6 +11,19 @@ import (
 
 func ListReviews(c *gin.Context) {
 	gameID := c.Param("id")
+	// Don't leak reviews on unpublished games to non-developers.
+	game, err := models.GetGameByID(gameID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "game not found"})
+		return
+	}
+	if !game.Published {
+		user := middleware.GetUser(c)
+		if user == nil || user.ID != game.DeveloperID {
+			c.JSON(http.StatusNotFound, gin.H{"error": "game not found"})
+			return
+		}
+	}
 	reviews, err := models.ListReviews(gameID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load reviews"})

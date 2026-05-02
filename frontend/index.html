@@ -714,6 +714,26 @@
         ];
 
         // Simple markdown→HTML (bold, italic, links, headings, lists)
+        // Allowlist for generic iframe embeds in developer page sections.
+        // Anything not on this list is dropped — prevents arbitrary HTTPS iframes.
+        const EMBED_ALLOWED_HOSTS = [
+            'youtube.com', 'www.youtube.com', 'youtube-nocookie.com', 'www.youtube-nocookie.com',
+            'player.vimeo.com', 'vimeo.com',
+            'twitch.tv', 'www.twitch.tv', 'player.twitch.tv', 'clips.twitch.tv',
+            'soundcloud.com', 'w.soundcloud.com',
+            'open.spotify.com',
+            'itch.io', 'itch.zone',
+            'codepen.io',
+            'gist.github.com',
+        ];
+        function isAllowedEmbed(url) {
+            try {
+                const u = new URL(url);
+                if (u.protocol !== 'https:') return false;
+                return EMBED_ALLOWED_HOSTS.includes(u.hostname.toLowerCase());
+            } catch { return false; }
+        }
+
         function renderMarkdown(md) {
             if (!md) return '';
             return esc(md)
@@ -1845,8 +1865,8 @@
                             const serverId = embedUrl.replace(/[^0-9]/g, '') || embedUrl;
                             html += '<iframe src="https://discord.com/widget?id=' + esc(serverId) + '&theme=dark" width="100%" height="' + embedH + '" allowtransparency="true" frameborder="0" sandbox="allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts" style="border-radius:8px;"></iframe>';
                         }
-                        // Generic URL
-                        else if (embedUrl.startsWith('http')) {
+                        // Generic URL — only allow embeds from explicit allowlist
+                        else if (isAllowedEmbed(embedUrl)) {
                             html += '<iframe src="' + esc(embedUrl) + '" width="100%" height="' + embedH + '" frameborder="0" sandbox="allow-scripts" style="border-radius:8px;border:1px solid var(--border-color);"></iframe>';
                         }
                     }

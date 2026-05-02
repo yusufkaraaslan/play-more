@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/yusufkaraaslan/play-more/internal/middleware"
+	"github.com/yusufkaraaslan/play-more/internal/models"
 	"github.com/yusufkaraaslan/play-more/internal/storage"
 )
 
@@ -23,6 +24,24 @@ type Comment struct {
 
 func ListComments(c *gin.Context) {
 	devlogID := c.Param("id")
+	// Don't leak comments on devlogs that belong to unpublished games.
+	var gameID string
+	if err := storage.DB.QueryRow(`SELECT game_id FROM devlogs WHERE id = ?`, devlogID).Scan(&gameID); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "devlog not found"})
+		return
+	}
+	game, err := models.GetGameByID(gameID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "devlog not found"})
+		return
+	}
+	if !game.Published {
+		user := middleware.GetUser(c)
+		if user == nil || user.ID != game.DeveloperID {
+			c.JSON(http.StatusNotFound, gin.H{"error": "devlog not found"})
+			return
+		}
+	}
 	rows, err := storage.DB.Query(
 		`SELECT c.id, c.devlog_id, c.user_id, c.parent_id, c.text, c.created_at, u.username, u.avatar_url
 		 FROM comments c JOIN users u ON c.user_id = u.id

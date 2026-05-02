@@ -24,6 +24,19 @@ type Devlog struct {
 
 func ListDevlogs(c *gin.Context) {
 	gameID := c.Param("id")
+	// Don't leak devlogs on unpublished games to non-developers.
+	game, err := models.GetGameByID(gameID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "game not found"})
+		return
+	}
+	if !game.Published {
+		user := middleware.GetUser(c)
+		if user == nil || user.ID != game.DeveloperID {
+			c.JSON(http.StatusNotFound, gin.H{"error": "game not found"})
+			return
+		}
+	}
 	rows, err := storage.DB.Query(
 		`SELECT d.id, d.game_id, d.user_id, d.title, d.content, d.created_at, g.title, u.username
 		 FROM devlogs d JOIN games g ON d.game_id = g.id JOIN users u ON d.user_id = u.id

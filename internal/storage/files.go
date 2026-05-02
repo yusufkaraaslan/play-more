@@ -19,6 +19,27 @@ const (
 	MaxFileSize       = 500 << 20 // 500 MiB per file
 )
 
+// blockedExt are extensions we refuse to extract into game directories.
+// Server-side execution risk: even though we serve files as static, a
+// misconfigured reverse proxy or future feature could execute these.
+var blockedExt = map[string]bool{
+	".php": true, ".php3": true, ".php4": true, ".php5": true, ".phtml": true,
+	".asp": true, ".aspx": true, ".jsp": true, ".jspx": true, ".cgi": true,
+	".pl": true, ".py": true, ".rb": true, ".sh": true, ".bash": true,
+	".exe": true, ".bat": true, ".cmd": true, ".com": true, ".dll": true,
+	".so": true, ".dylib": true, ".bin": true, ".elf": true,
+	".htaccess": true, ".htpasswd": true,
+}
+
+func isBlockedExtension(name string) bool {
+	lower := strings.ToLower(name)
+	if blockedExt[lower] {
+		return true // .htaccess etc. (no real extension)
+	}
+	ext := strings.ToLower(filepath.Ext(name))
+	return blockedExt[ext]
+}
+
 func InitFileStorage(dataDir string) error {
 	GamesDir = filepath.Join(dataDir, "games")
 	return os.MkdirAll(GamesDir, 0755)
@@ -114,6 +135,10 @@ func ExtractZip(gameID string, data []byte) (string, error) {
 		if strings.Contains(name, "..") || strings.HasPrefix(name, "/") || strings.HasPrefix(name, `\`) {
 			continue
 		}
+		// Skip server-executable file types — we only host static HTML5 game assets.
+		if isBlockedExtension(filepath.Base(name)) {
+			continue
+		}
 		// Strip dotfiles and dot-directories (.git, .htaccess, .env, etc.).
 		skipDot := false
 		for _, seg := range strings.Split(filepath.ToSlash(name), "/") {
@@ -126,11 +151,13 @@ func ExtractZip(gameID string, data []byte) (string, error) {
 			continue
 		}
 
-		target := filepath.Join(dir, filepath.FromSlash(name))
-		// Prevent path traversal — must be inside dir, not just a string prefix match
+		target := filepath.Clean(filepath.Join(dir, filepath.FromSlash(name)))
+		// Prevent path traversal — must be inside dir after Clean (strips ./ and ..)
 		if target != dir && !strings.HasPrefix(target, dirWithSep) {
 			continue
 		}
+		// Reject hard links, char devices, etc. — only regular files and dirs.
+		// (Already filtered above for symlinks; tighten the same check here.)
 
 		// Reject symlinks and other non-regular file modes — only directories and
 		// regular files may be extracted. Stops symlink-out / hardlink attacks.
