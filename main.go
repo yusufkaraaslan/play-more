@@ -18,6 +18,7 @@ import (
 	"github.com/gin-gonic/gin"
 	emailpkg "github.com/yusufkaraaslan/play-more/internal/email"
 	"github.com/yusufkaraaslan/play-more/internal/middleware"
+	"github.com/yusufkaraaslan/play-more/internal/models"
 	"github.com/yusufkaraaslan/play-more/internal/server"
 	"github.com/yusufkaraaslan/play-more/internal/storage"
 	"golang.org/x/crypto/acme/autocert"
@@ -324,6 +325,14 @@ func main() {
 
 	middleware.StartRateLimitCleanup()
 	middleware.StartAnalyticsWriter()
+
+	// Periodic cleanup of expired sessions and email tokens
+	go func() {
+		for {
+			time.Sleep(1 * time.Hour)
+			models.CleanupExpiredSessions()
+		}
+	}()
 
 	scheme := "http"
 	if *tlsCert != "" || *autoTLS {

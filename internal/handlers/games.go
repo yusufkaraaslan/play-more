@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -131,18 +132,6 @@ func UploadGame(c *gin.Context) {
 		return
 	}
 
-	data, err := io.ReadAll(io.LimitReader(file, storage.MaxFileSize+1))
-	if err != nil {
-		game.Delete()
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read file"})
-		return
-	}
-	if int64(len(data)) > storage.MaxFileSize {
-		game.Delete()
-		c.JSON(http.StatusBadRequest, gin.H{"error": "file too large"})
-		return
-	}
-
 	fileName := storage.SanitizeFileName(header.Filename)
 	if fileName == "" {
 		game.Delete()
@@ -152,8 +141,29 @@ func UploadGame(c *gin.Context) {
 	lowerName := strings.ToLower(fileName)
 	entryFile := fileName
 
+	// Stream upload to a temp file rather than buffering in memory.
+	tmp, err := os.CreateTemp("", "pm-upload-*.bin")
+	if err != nil {
+		game.Delete()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read file"})
+		return
+	}
+	defer os.Remove(tmp.Name())
+	defer tmp.Close()
+	written, err := io.Copy(tmp, io.LimitReader(file, storage.MaxFileSize+1))
+	if err != nil || written > storage.MaxFileSize {
+		game.Delete()
+		c.JSON(http.StatusBadRequest, gin.H{"error": "file too large"})
+		return
+	}
+	if _, err := tmp.Seek(0, 0); err != nil {
+		game.Delete()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read file"})
+		return
+	}
+
 	if strings.HasSuffix(lowerName, ".zip") {
-		ef, err := storage.ExtractZip(game.ID, data)
+		ef, err := storage.ExtractZipFromReader(game.ID, tmp, written)
 		if err != nil {
 			game.Delete()
 			log.Printf("ZIP extraction failed for game %s: %v", game.ID, err)
@@ -162,7 +172,9 @@ func UploadGame(c *gin.Context) {
 		}
 		entryFile = ef
 	} else if strings.HasSuffix(lowerName, ".html") || strings.HasSuffix(lowerName, ".htm") {
-		if err := storage.SaveGameFile(game.ID, fileName, data); err != nil {
+		// Single HTML file is small enough to buffer
+		htmlData, _ := io.ReadAll(tmp)
+		if err := storage.SaveGameFile(game.ID, fileName, htmlData); err != nil {
 			game.Delete()
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save file"})
 			return
@@ -486,11 +498,6 @@ func ReuploadGameFiles(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "file too large"})
 		return
 	}
-	data, err := io.ReadAll(io.LimitReader(file, storage.MaxFileSize+1))
-	if err != nil || int64(len(data)) > storage.MaxFileSize {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "file too large"})
-		return
-	}
 	fileName := storage.SanitizeFileName(header.Filename)
 	if fileName == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid filename"})
@@ -499,11 +506,29 @@ func ReuploadGameFiles(c *gin.Context) {
 	lowerName := strings.ToLower(fileName)
 	entryFile := fileName
 
+	// Stream upload to a temp file rather than buffering in memory.
+	tmp, err := os.CreateTemp("", "pm-reupload-*.bin")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read file"})
+		return
+	}
+	defer os.Remove(tmp.Name())
+	defer tmp.Close()
+	written, err := io.Copy(tmp, io.LimitReader(file, storage.MaxFileSize+1))
+	if err != nil || written > storage.MaxFileSize {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "file too large"})
+		return
+	}
+	if _, err := tmp.Seek(0, 0); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read file"})
+		return
+	}
+
 	// Delete old files
 	storage.DeleteGameFiles(game.ID)
 
 	if strings.HasSuffix(lowerName, ".zip") {
-		ef, err := storage.ExtractZip(game.ID, data)
+		ef, err := storage.ExtractZipFromReader(game.ID, tmp, written)
 		if err != nil {
 			log.Printf("ZIP extraction failed for game %s: %v", game.ID, err)
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid game archive"})
@@ -511,7 +536,8 @@ func ReuploadGameFiles(c *gin.Context) {
 		}
 		entryFile = ef
 	} else if strings.HasSuffix(lowerName, ".html") || strings.HasSuffix(lowerName, ".htm") {
-		if err := storage.SaveGameFile(game.ID, fileName, data); err != nil {
+		htmlData, _ := io.ReadAll(tmp)
+		if err := storage.SaveGameFile(game.ID, fileName, htmlData); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save file"})
 			return
 		}

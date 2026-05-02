@@ -187,3 +187,10 @@ func DeleteSession(token string) error {
 	_, err := storage.DB.Exec(`DELETE FROM sessions WHERE token = ?`, hashSessionToken(token))
 	return err
 }
+
+// CleanupExpiredSessions removes session rows past their expires_at. Called
+// on a 1-hour timer from main.go so the sessions table doesn't grow forever.
+func CleanupExpiredSessions() {
+	storage.DB.Exec(`DELETE FROM sessions WHERE expires_at <= datetime('now')`)
+	storage.DB.Exec(`DELETE FROM email_tokens WHERE expires_at <= datetime('now')`)
+}

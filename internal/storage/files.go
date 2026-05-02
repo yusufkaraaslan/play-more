@@ -84,13 +84,21 @@ func SanitizeFileName(fileName string) string {
 }
 
 // ExtractZip extracts a ZIP file to the game directory and returns the entry file name.
+// Accepts the ZIP as bytes (legacy callers); prefer ExtractZipFromReader for
+// large uploads to avoid pulling the entire file into memory.
 func ExtractZip(gameID string, data []byte) (string, error) {
+	return ExtractZipFromReader(gameID, bytes.NewReader(data), int64(len(data)))
+}
+
+// ExtractZipFromReader extracts from a ReaderAt (typically a temp file) so
+// large game uploads don't have to be fully buffered in memory.
+func ExtractZipFromReader(gameID string, ra io.ReaderAt, size int64) (string, error) {
 	dir := GameDir(gameID)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return "", err
 	}
 
-	r, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	r, err := zip.NewReader(ra, size)
 	if err != nil {
 		return "", fmt.Errorf("open zip: %w", err)
 	}

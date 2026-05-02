@@ -37,7 +37,8 @@ type seedGame struct {
 func SeedData(c *gin.Context) {
 	// Seed is admin-only. To seed a fresh install, register first, then call this endpoint.
 	if !isAdmin(c) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "admin only"})
+		// Match admin endpoint convention — 404 hides admin/seed existence
+		c.JSON(http.StatusNotFound, gin.H{"error": "Not found"})
 		return
 	}
 

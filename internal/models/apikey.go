@@ -24,6 +24,14 @@ type APIKey struct {
 	CreatedAt  string  `json:"created_at"`
 }
 
+// MaxAPIKeysPerUser caps the number of active keys per account.
+const MaxAPIKeysPerUser = 10
+
+// errKeyLimitReached is returned when the user already has MaxAPIKeysPerUser keys.
+var errKeyLimitReached = fmt.Errorf("API key limit reached")
+
+func IsKeyLimitError(err error) bool { return err == errKeyLimitReached }
+
 func GenerateAPIKey(userID, name, scopes string) (*APIKey, string, error) {
 	if scopes == "" {
 		scopes = "all"
@@ -40,11 +48,30 @@ func GenerateAPIKey(userID, name, scopes string) (*APIKey, string, error) {
 	keyHash := hex.EncodeToString(hash[:])
 
 	id := uuid.New().String()
-	_, err := storage.DB.Exec(
+
+	// Atomic count + insert via transaction so concurrent requests can't
+	// race past the per-user limit.
+	tx, err := storage.DB.Begin()
+	if err != nil {
+		return nil, "", err
+	}
+	var count int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM api_keys WHERE user_id = ?`, userID).Scan(&count); err != nil {
+		tx.Rollback()
+		return nil, "", err
+	}
+	if count >= MaxAPIKeysPerUser {
+		tx.Rollback()
+		return nil, "", errKeyLimitReached
+	}
+	if _, err := tx.Exec(
 		`INSERT INTO api_keys (id, user_id, name, key_prefix, key_hash, scopes) VALUES (?, ?, ?, ?, ?, ?)`,
 		id, userID, name, prefix, keyHash, scopes,
-	)
-	if err != nil {
+	); err != nil {
+		tx.Rollback()
+		return nil, "", err
+	}
+	if err := tx.Commit(); err != nil {
 		return nil, "", err
 	}
 

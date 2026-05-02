@@ -42,21 +42,15 @@ func CreateAPIKeyHandler(c *gin.Context) {
 		return
 	}
 
-	count, err := models.CountAPIKeys(user.ID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to check key count"})
-		return
-	}
-	if count >= 10 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "maximum 10 API keys per account"})
-		return
-	}
-
 	// Force scopes to "all" — only supported value for now
 	input.Scopes = "all"
 
 	key, rawKey, err := models.GenerateAPIKey(user.ID, input.Name, input.Scopes)
 	if err != nil {
+		if models.IsKeyLimitError(err) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "maximum 10 API keys per account"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create key"})
 		return
 	}
