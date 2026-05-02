@@ -1,36 +1,95 @@
 # PlayMore
 
-A self-hosted publishing platform for **modern browser games** — WebGPU, WebAssembly, WebGL2. Think itch.io but you own the server, and it doesn't choke on the modern stack.
+> Self-hosted, WebGPU-first, Steam-style web gaming platform for the indie web.
 
-**Built for what other platforms struggle with:**
-- **WebGPU games** — first-class support, capability detection, per-game badges, analytics
-- **Large WebAssembly builds** — gzip + Range request streaming, no 50 MB upload limit (cap is 500 MiB)
-- **Modern engine exports** — Godot Web, Unity WebGL, Bevy, Babylon.js drop in directly
-- **Sandboxed game origins** — optional `--games-domain` for full origin isolation, iframe sandbox tuned for gamepad/fullscreen/pointer-lock
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Go Version](https://img.shields.io/badge/Go-1.26+-00ADD8?logo=go)](https://go.dev)
+[![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker)](docker-compose.yml)
+
+PlayMore is a **self-hosted game publishing platform** that gives indie developers their own storefront — think Steam, but you own the server, control the experience, and your games run natively in the browser with **WebGPU, WebAssembly, and WebGL2**.
+
+No walled gardens. No algorithm feeds. Just your games, your community, your platform.
+
+---
+
+## Screenshots
+
+<table>
+  <tr>
+    <td><img src="docs/screenshots/store.png" alt="Store" width="100%"></td>
+    <td><img src="docs/screenshots/game-detail.png" alt="Game Detail" width="100%"></td>
+  </tr>
+  <tr>
+    <td align="center"><b>Store</b> — Browse with search, filters, and WebGPU badges</td>
+    <td align="center"><b>Game Page</b> — Rich detail with reviews, trailers, and play button</td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/library.png" alt="Library" width="100%"></td>
+    <td><img src="docs/screenshots/profile.png" alt="Profile" width="100%"></td>
+  </tr>
+  <tr>
+    <td align="center"><b>Library</b> — Steam-style sidebar with collections</td>
+    <td align="center"><b>Profile</b> — Achievements, stats, and activity feed</td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/dev-page-editor.png" alt="Developer Page Editor" width="100%"></td>
+    <td><img src="docs/screenshots/settings.png" alt="Settings" width="100%"></td>
+  </tr>
+  <tr>
+    <td align="center"><b>Developer Page Editor</b> — Drag-and-drop storefront builder</td>
+    <td align="center"><b>Settings</b> — API keys, backups, and system info</td>
+  </tr>
+</table>
+
+---
 
 ## Features
 
-- **Game Store** — search (FTS5), genre/sort filters, hero banner, discounts
-- **Game Upload** — drag-and-drop `.html` or `.zip`, auto-extracts, WebGPU badge per title
-- **Game Player** — fullscreen iframe with session timer, FPS overlay, gamepad + WebGPU
-- **Developer Pages** — customizable storefront: banner, theme, custom CSS, links
-- **Reviews + Devlogs + Comments** — full content layer
-- **Library / Wishlist / Lists** — Steam-style sidebar with public + private collections
-- **Activity Feed** — aggregated timeline from followed developers
-- **Developer Platform** — API keys, CLI deploy script, automation-ready
-- **Email + Auth** — verification, password reset, per-account brute-force protection, PoW CAPTCHA
-- **Admin Panel** — first registered user becomes admin; moderation, analytics, audit log
-- **Operations** — single-binary deploy, Docker, Let's Encrypt auto-TLS, ProtonMail Bridge support
+### For Players
+
+- **Steam-like Store** — Search (FTS5), genre filters, sort options, hero banners, discounts
+- **Game Library** — Personal library, wishlist, and custom public/private collections
+- **Rich Game Pages** — Trailers, screenshots, reviews, devlogs, WebGPU capability badges
+- **Achievement System** — 12 unlockable achievements with progress tracking
+- **Activity Feed** — Timeline of plays, reviews, follows, and library adds
+- **Fullscreen Player** — Iframe with gamepad, pointer-lock, fullscreen, and session timer
+
+### For Developers
+
+- **Customizable Storefront** — Drag-and-drop page builder with themes, banners, and custom CSS
+- **Game Upload** — Drag-and-drop `.html` or `.zip`, auto-extracts, detects entry point
+- **WebGPU Badge** — Automatic capability detection and badge display per game
+- **Reviews & Devlogs** — Full content layer with comments
+- **Analytics Dashboard** — Views, plays, ratings, referrers, daily breakdown
+- **API Keys & CLI Deploy** — Deploy from command line or CI/CD pipelines
+- **Email Verification** — Built-in auth with verification, password reset, CAPTCHA
+
+### Platform
+
+- **Single Binary** — One `playmore` executable, zero runtime dependencies
+- **Embedded Frontend** — Entire SPA baked into the binary (`go:embed`)
+- **SQLite Database** — Single file, WAL mode, FTS5 search, zero config
+- **Sandboxed Games** — Optional `--games-domain` for full origin isolation
+- **Auto-TLS** — Let's Encrypt with single flag (`--auto-tls`)
+- **Docker Ready** — `docker-compose up -d` and you're live
+- **Dark/Light Mode** — Toggle themes with system preference support
+
+---
 
 ## Quick Start
 
 ```bash
+# Build
 go build -o playmore
-./playmore setup              # interactive wizard (HTTPS, email, etc.)
-./playmore                    # starts with config from .env
 
-# Or just run with defaults:
-./playmore                    # http://localhost:8080
+# Interactive setup wizard (creates .env)
+./playmore setup
+
+# Run with .env config
+./playmore
+
+# Or run with defaults (http://localhost:8080)
+./playmore
 
 # Seed demo data (4 games with reviews)
 curl -X POST http://localhost:8080/api/seed
@@ -41,13 +100,29 @@ curl -X POST http://localhost:8080/api/seed
 - [Developer Guide](docs/DEVELOPER.md) — API keys, deploy CLI, API reference
 - [ProtonMail Bridge](docs/SETUP_PROTONMAIL_BRIDGE.md) — email via Proton
 
-## Docker
+### Docker
 
 ```bash
 docker-compose up -d
 ```
 
-## Production Deployment (HTTPS)
+---
+
+## Why PlayMore?
+
+**Own your platform.** No algorithm deciding who sees your game. No platform fees. No sudden policy changes. Your server, your rules, your community.
+
+**WebGPU-first.** Modern browser games deserve modern APIs. PlayMore detects and badges WebGPU support, so players know what they're getting.
+
+**Indie web native.** Built for the open web — no app stores, no downloads, no gatekeepers. Players click and play instantly.
+
+**Fully customizable.** Developer pages support custom CSS, themes, banners, and drag-and-drop layouts. Make your storefront look like *you*.
+
+**Privacy by default.** Self-hosted means player data stays on your server. No third-party tracking (optional GoatCounter integration if you want analytics).
+
+---
+
+## Production Deployment
 
 ### Option 1: Reverse Proxy (Recommended)
 
@@ -84,43 +159,66 @@ Session cookies automatically get the `Secure` flag when `X-Forwarded-Proto: htt
 ./playmore --tls-cert cert.pem --tls-key key.pem --port 443
 ```
 
-Docker with TLS:
+### Option 3: Auto-TLS (Let's Encrypt)
+
 ```bash
-docker run -d \
-  -p 443:443 \
-  -v /path/to/certs:/certs:ro \
-  -v playmore-data:/app/data \
-  playmore --tls-cert /certs/cert.pem --tls-key /certs/key.pem --port 443
+./playmore --auto-tls --domain playmore.example.com
 ```
+
+---
 
 ## Tech Stack
 
-- **Backend**: Go + Gin + SQLite (pure Go, no CGO)
-- **Frontend**: Vanilla JS SPA (no framework, no build step, ~3500 lines)
-- **Database**: SQLite (single file, zero config, WAL mode, FTS5 search)
-- **Auth**: bcrypt (cost 12) + 256-bit session tokens (SHA-256 hashed at rest) + Bearer API keys + proof-of-work CAPTCHA
-- **Deploy**: Single binary with embedded frontend (`go:embed`), no external assets at runtime
+- **Backend:** Go 1.26+ + Gin + SQLite (pure Go, no CGO)
+- **Frontend:** Vanilla JS SPA (~3500 lines), no framework, no build step
+- **Database:** SQLite (single file, WAL mode, FTS5 full-text search)
+- **Auth:** bcrypt (cost 12) + 256-bit session tokens (SHA-256 hashed at rest) + Bearer API keys
+- **Deploy:** Single binary with embedded frontend (`go:embed`)
+
+---
 
 ## Game Compatibility
 
 Tested with games built using:
 
-- **Godot 4** (Web export with WebGPU/WebGL2)
-- **Unity 6** (WebGL build, including IL2CPP)
-- **Bevy** (`wasm-bindgen` output)
-- **Babylon.js** (WebGPU + WebXR)
-- **Three.js** (WebGL2 + WebGPU experimental)
-- Plain HTML/JS/Canvas games
+- **Godot 4** — Web export with WebGPU/WebGL2
+- **Unity 6** — WebGL build, including IL2CPP
+- **Bevy** — `wasm-bindgen` output
+- **Babylon.js** — WebGPU + WebXR
+- **Three.js** — WebGL2 + WebGPU experimental
+- **Plain HTML/JS/Canvas** — Drop in and play
 
-Range requests + immutable cache headers mean even 100+ MB WASM builds load fast on second visit.
+Range requests + immutable cache headers mean even 100+ MB WASM builds load fast on repeat visits.
 
-## v1
+---
 
-The original single-file HTML version is archived in `v1/`. Open `v1/index.html` in a browser — no server needed.
+## Security
+
+PlayMore is security-hardened with defense-in-depth:
+
+- **Passwords:** bcrypt cost-12 with automatic rehashing
+- **Sessions:** 256-bit tokens, SHA-256 hashed at rest, HTTP-only SameSite=Lax cookies
+- **CSRF:** Origin/Referer validation on all state-changing requests
+- **CSP:** Per-request nonce-based Content Security Policy
+- **Rate Limiting:** Per-IP and per-account limits on auth endpoints
+- **File Uploads:** Path traversal protection, ZIP bomb defense, extension filtering
+- **SQL Injection:** 100% parameterized queries throughout
+- **XSS:** Frontend HTML escaping + server-side sanitization
+- **Game Isolation:** Optional separate origin (`--games-domain`) + iframe sandbox
+
+See [SECURITY.md](SECURITY.md) for responsible disclosure.
+
+---
+
+## v1 Archive
+
+The original single-file HTML prototype is archived in `v1/`. Open `v1/index.html` in a browser — no server needed. Auto-deployed to GitHub Pages on pushes to `v1/**`.
+
+---
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for code style, security checklist, and conventions. Security issues: see [SECURITY.md](SECURITY.md) — please use the private disclosure flow, not public issues.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for code style, conventions, and how to submit changes.
 
 ## License
 
