@@ -1,13 +1,10 @@
 #!/usr/bin/env bash
-# One-time bootstrap: build playmore, install systemd units for playmore + cloudflared,
-# enable linger so the ProtonMail Bridge user service starts at boot.
+# One-time bootstrap: build playmore, install systemd units, set permissions.
 #
-# Prerequisites (not automated — require interactive/browser steps):
-#   - go, cloudflared installed
-#   - .env present in the repo root (copy .env.example if one exists, or follow docs/SETUP.md)
-#   - cloudflared tunnel login  (opens browser)
-#   - cloudflared tunnel create playmore
-#   - cloudflared tunnel route dns playmore <your-hostname>
+# Prerequisites:
+#   - go installed
+#   - reverse proxy (e.g. nginx, caddy, cloudflared) configured if needed
+#   - .env present in the repo root (copy .env.example)
 #
 # Safe to re-run. Uses the current user and this repo's location.
 
@@ -22,119 +19,85 @@ cd "$REPO_DIR"
 log() { printf '\n==> %s\n' "$*"; }
 
 # --- Checks ---
-command -v go >/dev/null          || { echo "go not found"; exit 1; }
-command -v cloudflared >/dev/null || { echo "cloudflared not found"; exit 1; }
-[[ -f .env ]]                     || { echo ".env missing — see docs/SETUP.md"; exit 1; }
+command -v go >/dev/null || { echo "go not found"; exit 1; }
+[[ -f .env ]] || { echo ".env missing — see docs/SETUP.md"; exit 1; }
 
-# Extract hostname from PLAYMORE_BASE_URL (e.g. https://playmore.world → playmore.world)
+# Extract hostname from PLAYMORE_BASE_URL
 HOSTNAME="$(grep -E '^PLAYMORE_BASE_URL=' .env | head -1 | cut -d= -f2- | sed -E "s|^['\"]?https?://||; s|/.*||; s|['\"]?$||")"
 [[ -n "$HOSTNAME" ]] || { echo "PLAYMORE_BASE_URL missing from .env"; exit 1; }
 
 # Optional games domain for sandbox isolation
 GAMES_DOMAIN="$(grep -E '^PLAYMORE_GAMES_DOMAIN=' .env | head -1 | cut -d= -f2- | sed -E "s|^['\"]?||; s|['\"]?$||")"
 
-# Find the tunnel credentials JSON (named <uuid>.json)
-CRED_SRC="$(ls -1 "$HOME"/.cloudflared/*.json 2>/dev/null | head -1 || true)"
-[[ -n "$CRED_SRC" ]] || { echo "No tunnel credentials in ~/.cloudflared — run: cloudflared tunnel create playmore"; exit 1; }
-TUNNEL_ID="$(basename "$CRED_SRC" .json)"
-
-log "Repo:     $REPO_DIR"
+log "Repo:    $REPO_DIR"
 log "User:    $USER_NAME"
 log "Host:    $HOSTNAME"
 [[ -n "$GAMES_DOMAIN" ]] && log "Games:   $GAMES_DOMAIN (separate origin for game sandbox)"
-log "Tunnel:  $TUNNEL_ID"
 
 # --- Secrets ---
 log "Tightening permissions on .env and data directory"
 chmod 600 "$REPO_DIR/.env"
 mkdir -p "$REPO_DIR/data"
 chmod 700 "$REPO_DIR/data"
-[[ -f "$REPO_DIR/data/playmore.db" ]] && chmod 600 "$REPO_DIR/data/playmore.db" || true
 
 # --- Build ---
 log "Building playmore binary"
-go build -o playmore
+go build -ldflags="-s -w" -o playmore .
 
-# --- playmore.service ---
-log "Installing /etc/systemd/system/playmore.service"
-sudo tee /etc/systemd/system/playmore.service >/dev/null <<EOF
+# --- systemd unit for playmore ---
+UNIT_FILE="$HOME/.config/systemd/user/playmore.service"
+mkdir -p "$HOME/.config/systemd/user"
+
+cat > "$UNIT_FILE" <<EOF
 [Unit]
-Description=PlayMore game publishing platform
-After=network.target
+Description=PlayMore game publishing server
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
-User=$USER_NAME
-Group=$GROUP_NAME
 WorkingDirectory=$REPO_DIR
-EnvironmentFile=$REPO_DIR/.env
 ExecStart=$REPO_DIR/playmore
 Restart=on-failure
-RestartSec=5s
+RestartSec=5
 
+# Hardening
 NoNewPrivileges=true
 PrivateTmp=true
-ProtectSystem=full
+ProtectSystem=strict
 ProtectHome=read-only
 ReadWritePaths=$REPO_DIR/data
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=default.target
 EOF
 
-# --- cloudflared config + service ---
-log "Installing /etc/cloudflared/ (config + credentials)"
-sudo mkdir -p /etc/cloudflared
-sudo cp "$CRED_SRC" /etc/cloudflared/
-sudo tee /etc/cloudflared/config.yml >/dev/null <<EOF
-tunnel: $TUNNEL_ID
-credentials-file: /etc/cloudflared/$TUNNEL_ID.json
+log "Installed user systemd unit: $UNIT_FILE"
+log "To start: systemctl --user start playmore"
+log "To enable at boot: systemctl --user enable playmore"
 
-ingress:
-  - hostname: $HOSTNAME
-    service: http://localhost:8080
-  - hostname: www.$HOSTNAME
-    service: http://localhost:8080
-$([[ -n "$GAMES_DOMAIN" ]] && echo "  - hostname: $GAMES_DOMAIN
-    service: http://localhost:8080")
-  - service: http_status:404
+# --- nginx / reverse proxy example ---
+NGINX_CONF="$REPO_DIR/scripts/nginx-example.conf"
+cat > "$NGINX_CONF" <<'EOF'
+# Example nginx reverse proxy configuration
+# Adjust server_name and SSL paths for your domain.
+
+server {
+    listen 443 ssl http2;
+    server_name example.com;
+
+    ssl_certificate /path/to/cert.pem;
+    ssl_certificate_key /path/to/key.pem;
+
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
 EOF
 
-# Auto-create DNS route for games subdomain (idempotent — silently no-ops if exists)
-if [[ -n "$GAMES_DOMAIN" ]]; then
-  log "Ensuring DNS route for $GAMES_DOMAIN"
-  cloudflared tunnel route dns "$TUNNEL_ID" "$GAMES_DOMAIN" 2>&1 | grep -v "An A, AAAA, or CNAME record" || true
-fi
-
-log "Installing cloudflared systemd service"
-if ! systemctl list-unit-files cloudflared.service >/dev/null 2>&1; then
-  sudo cloudflared service install
-fi
-
-# Bump start timeout — initial tunnel handshake can exceed the 15s default
-sudo mkdir -p /etc/systemd/system/cloudflared.service.d
-sudo tee /etc/systemd/system/cloudflared.service.d/override.conf >/dev/null <<'EOF'
-[Service]
-TimeoutStartSec=60
-EOF
-
-# --- Enable + start ---
-log "Enabling + starting services"
-sudo systemctl daemon-reload
-sudo systemctl enable --now playmore
-sudo systemctl restart cloudflared
-
-# --- Linger for user services (ProtonMail Bridge) ---
-log "Enabling linger for $USER_NAME (so user services run at boot without GUI login)"
-sudo loginctl enable-linger "$USER_NAME"
-
-# --- Verify ---
-log "Status"
-systemctl --no-pager --lines=0 status playmore cloudflared || true
-
-log "End-to-end check"
-sleep 3
-curl -sS -o /dev/null -w "https://$HOSTNAME → HTTP %{http_code} in %{time_total}s\n" --max-time 10 "https://$HOSTNAME/" || \
-  echo "(public check failed — DNS may still be propagating; run it again in a minute)"
-
-log "Done. Use scripts/deploy.sh for future code updates."
+log "Example nginx config written to: $NGINX_CONF"
+log "Done. Edit .env, then: systemctl --user start playmore"

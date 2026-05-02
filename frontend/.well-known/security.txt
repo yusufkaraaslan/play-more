@@ -1,14 +1,15 @@
 # Security Contact Information for PlayMore
 # ==========================================
+# Replace example.com with your actual domain before deploying.
 
 # Our security policy
-Policy: https://playmore.world/security-policy
+Policy: https://example.com/security-policy
 
 # How to contact us about security issues
-Contact: mailto:security@playmore.world
+Contact: mailto:security@example.com
 
 # Alternative contact (if email fails)
-Contact: https://playmore.world/contact
+Contact: https://example.com/contact
 
 # Preferred languages for communication
 Preferred-Languages: en
@@ -17,4 +18,4 @@ Preferred-Languages: en
 Expires: 2027-04-06T00:00:00.000Z
 
 # Canonical URL of this file
-Canonical: https://playmore.world/.well-known/security.txt
+Canonical: https://example.com/.well-known/security.txt

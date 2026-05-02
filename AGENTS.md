@@ -50,16 +50,14 @@ Gin defaults to release mode unless `GIN_MODE` is set.
 
 ## Database
 
-SQLite with WAL mode. Schema and migrations live in `internal/storage/db.go`. Migrations run automatically on startup via `ALTER TABLE` statements that silently fail if columns already exist. Key tables: users, sessions, games, reviews, library, wishlist, playtime, activity, developer_pages, devlogs, comments, follows, collections, notifications, game_views, page_views, user_achievements, api_keys.
-
-FTS5 full-text search on games via `games_fts` virtual table with automatic triggers.
+SQLite with WAL mode. Schema and migrations live in `internal/storage/db.go`. Migrations run automatically on startup.
 
 ## Authentication
 
 - **Sessions**: bcrypt passwords, 30-day session tokens in HTTP-only `session` cookies with SameSite=Lax.
-- **API Keys**: Bearer tokens prefixed `pm_k_`. API key auth skips CSRF checks. Some endpoints (password change, account deletion, API key management) require session auth and reject API keys.
-- **Email verification**: Required for uploading games, writing reviews, creating devlogs/comments. First registered user becomes admin (lowest `created_at`).
-- **Admin endpoints**: Return 404 (not 403) to hide existence from non-admins.
+- **API Keys**: Bearer tokens prefixed `pm_k_`. Some endpoints require session auth and reject API keys.
+- **Email verification**: Required for uploading games, writing reviews, creating devlogs/comments.
+- **Admin**: First registered user becomes admin.
 
 ## Code Conventions
 
@@ -74,16 +72,6 @@ FTS5 full-text search on games via `games_fts` virtual table with automatic trig
 - Escape user input with `escapeHtml()` before injecting into HTML.
 - Dark/light theme via `data-theme` attribute on `<html>`.
 
-## Security Model
-
-- CSRF: Origin/Referer validation on state-changing requests. JSON/multipart only.
-- Rate limiting: Per-IP, per-endpoint, in-memory. Cleanup every 5 minutes.
-- File uploads: Extension checks, path traversal protection in ZIP extraction.
-- SQL: Parameterized queries throughout.
-- XSS: Frontend uses `escapeHtml()` and `textContent`.
-- CSP: Nonce-based per-request CSP injected into inline `<style>` and `<script>` tags.
-- ZIP extraction looks for `index.html` as entry point.
-
 ## Testing
 
 No automated test suite. Manual testing:
@@ -94,11 +82,11 @@ No automated test suite. Manual testing:
 ## Important Files
 
 - `main.go` — entry point, CLI flags, `.env` loader, TLS setup
-- `internal/server/server.go` — Gin router, all routes, CSP nonce injection, SPA fallback
+- `internal/server/server.go` — Gin router, all routes, SPA fallback
 - `internal/storage/db.go` — SQLite init, schema, migrations
 - `internal/storage/files.go` — game file storage, ZIP extraction
 - `frontend/index.html` — entire SPA frontend
-- `docs/` — setup guides, API reference, operations
+- `docs/` — setup guides and API reference
 
 ## v1 Archive
 

@@ -1,3 +1,9 @@
 data/
 playmore
 .env
+.claude/
+*.db
+*.db-wal
+*.db-shm
+*.log
+

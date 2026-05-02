@@ -1,0 +1,35 @@
+PlayMore
+Copyright (c) 2026 Yusuf Karaaslan
+
+This product is licensed under the MIT License.
+
+Third-Party Dependencies
+========================
+
+This project uses the following open-source software:
+
+Go Runtime & Standard Library
+  Copyright (c) The Go Authors. BSD-3-Clause License.
+
+Gin Web Framework (github.com/gin-gonic/gin)
+  Copyright (c) Gin authors. MIT License.
+
+SQLite Driver (modernc.org/sqlite)
+  Public domain / SQLite blessing. No attribution required.
+
+UUID (github.com/google/uuid)
+  Copyright (c) Google LLC. BSD-3-Clause License.
+
+bcrypt (golang.org/x/crypto)
+  Copyright (c) The Go Authors. BSD-3-Clause License.
+
+GoatCounter (optional analytics integration)
+  Copyright (c) Martin Tournoij. EUPL-1.2 License.
+
+HashiCorp golang-lru (github.com/hashicorp/golang-lru/v2)
+  Copyright (c) HashiCorp, Inc. MPL-2.0 License.
+
+ByteDance Sonic JSON (github.com/bytedance/sonic)
+  Copyright (c) ByteDance Inc. Apache-2.0 License.
+
+For the complete list of dependencies and their licenses, see go.mod and go.sum.
