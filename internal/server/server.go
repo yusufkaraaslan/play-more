@@ -66,9 +66,11 @@ func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxi
 		}
 		if len(proxies) > 0 {
 			r.SetTrustedProxies(proxies)
+			middleware.SetTrustedProxies(proxies)
 			hasTrustedProxy = true
 		} else {
 			r.SetTrustedProxies(nil)
+			middleware.SetTrustedProxies(nil)
 		}
 	} else {
 		r.SetTrustedProxies(nil)

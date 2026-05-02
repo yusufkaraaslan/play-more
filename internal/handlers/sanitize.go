@@ -24,6 +24,15 @@ func SanitizePlain(input string) string {
 var (
 	hexColorRe = regexp.MustCompile(`^#[0-9a-fA-F]{3,8}$`)
 	fontNameRe = regexp.MustCompile(`^[a-zA-Z0-9 _-]{0,40}$`)
+
+	// CSS sanitisation — block data-exfiltration and XSS vectors.
+	cssImportRe      = regexp.MustCompile(`(?i)@import\b[^;]*;?`)
+	cssFontFaceRe    = regexp.MustCompile(`(?i)@font-face\b[^{]*\{[^}]*\}`)
+	cssExternalURLRe = regexp.MustCompile(`(?i)url\s*\(\s*['"]?\s*https?://[^)]+['"]?\s*\)`)
+	cssExpressionRe  = regexp.MustCompile(`(?i)expression\s*\(`)
+	cssBehaviorRe    = regexp.MustCompile(`(?i)behavior\s*:`)
+	cssMozBindingRe  = regexp.MustCompile(`(?i)-moz-binding\s*:`)
+	cssJSURLRe       = regexp.MustCompile(`(?i)javascript\s*:`)
 )
 
 // SanitizeColor returns input if it's a valid CSS hex color, else "".
@@ -60,4 +69,45 @@ func SanitizeWebURL(input string) string {
 		return input
 	}
 	return ""
+}
+
+// SanitizeCSS sanitises user-supplied custom CSS for developer pages.
+// It strips patterns that enable data exfiltration or XSS:
+//   • @import / @font-face  (external resource loading)
+//   • url(https://…)         (external URLs in backgrounds, cursors, etc.)
+//   • expression(…)          (IE legacy XSS)
+//   • behavior: / -moz-binding: (legacy XSS)
+//   • javascript:            (scheme-based XSS)
+//   • < >                    (</style> injection)
+//
+// This is a *server-side* layer — the frontend also runs its own sanitiser,
+// but an attacker could bypass the frontend by calling the API directly.
+func SanitizeCSS(css string) string {
+	if css == "" {
+		return ""
+	}
+
+	// Prevent </style> injection
+	css = strings.ReplaceAll(css, "<", "")
+	css = strings.ReplaceAll(css, ">", "")
+
+	// Block external resource loading via @import and @font-face
+	css = cssImportRe.ReplaceAllString(css, "")
+	css = cssFontFaceRe.ReplaceAllString(css, "")
+
+	// Block external URLs — only data: and relative/local refs remain safe
+	css = cssExternalURLRe.ReplaceAllString(css, "url()")
+
+	// Block IE/legacy XSS vectors
+	css = cssExpressionRe.ReplaceAllString(css, "/*expr*/(")
+	css = cssBehaviorRe.ReplaceAllString(css, "/*beh*/:")
+	css = cssMozBindingRe.ReplaceAllString(css, "/*moz*/:")
+	css = cssJSURLRe.ReplaceAllString(css, "/*js*/:")
+
+	// Cap length
+	if len(css) > 5000 {
+		css = css[:5000]
+	}
+
+	return css
 }

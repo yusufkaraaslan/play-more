@@ -3,7 +3,6 @@ package handlers
 import (
 	"log"
 	"net/http"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/yusufkaraaslan/play-more/internal/middleware"
@@ -94,12 +93,9 @@ func UpdateDeveloperPage(c *gin.Context) {
 		}
 	}
 
-	// Sanitize custom CSS — strip < and > to prevent </style> injection, then cap length
-	input.CustomCSS = strings.ReplaceAll(input.CustomCSS, "<", "")
-	input.CustomCSS = strings.ReplaceAll(input.CustomCSS, ">", "")
-	if len(input.CustomCSS) > 5000 {
-		input.CustomCSS = input.CustomCSS[:5000]
-	}
+	// Sanitize custom CSS server-side (blocks @import, external URLs,
+	// expression/behavior vectors, and </style> injection).
+	input.CustomCSS = SanitizeCSS(input.CustomCSS)
 
 	// Style fields flow into HTML style="" attributes — must be format-restricted server-side.
 	input.ThemeColor = SanitizeColor(input.ThemeColor)

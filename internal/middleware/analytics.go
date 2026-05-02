@@ -90,7 +90,7 @@ func TrackPageView() gin.HandlerFunc {
 		c.Next()
 		elapsed := time.Since(start).Milliseconds()
 
-		ip := c.ClientIP()
+		ip := RealClientIP(c)
 		ipHash := fmt.Sprintf("%x", sha256.Sum256([]byte(ip+analyticsSalt)))[:16]
 
 		ua := c.Request.UserAgent()

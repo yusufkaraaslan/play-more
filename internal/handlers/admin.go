@@ -31,7 +31,7 @@ func paginationParams(c *gin.Context, def, max int) (int, int) {
 func adminLog(c *gin.Context, action string) {
 	user := middleware.GetUser(c)
 	if user != nil {
-		log.Printf("[ADMIN] user=%s action=%s ip=%s", user.Username, action, c.ClientIP())
+		log.Printf("[ADMIN] user=%s action=%s ip=%s", user.Username, action, middleware.RealClientIP(c))
 	}
 }
 

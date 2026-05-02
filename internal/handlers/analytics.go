@@ -20,7 +20,7 @@ func TrackView(c *gin.Context) {
 	}
 
 	// Hash IP for privacy
-	ip := c.ClientIP()
+	ip := middleware.RealClientIP(c)
 	ipHash := fmt.Sprintf("%x", sha256.Sum256([]byte(ip+"playmore-salt")))[:16]
 
 	referrer := c.Query("ref")
@@ -43,7 +43,7 @@ func TrackClientInfo(c *gin.Context) {
 		return
 	}
 
-	ip := c.ClientIP()
+	ip := middleware.RealClientIP(c)
 	ipHash := fmt.Sprintf("%x", sha256.Sum256([]byte(ip+"playmore-salt")))[:16]
 
 	webgpu := 0

@@ -82,7 +82,7 @@ func allowKey(key string, maxRequests int, window time.Duration) bool {
 func RateLimit(maxRequests int, windowSeconds int) gin.HandlerFunc {
 	window := time.Duration(windowSeconds) * time.Second
 	return func(c *gin.Context) {
-		key := c.ClientIP() + ":" + c.FullPath()
+		key := RealClientIP(c) + ":" + c.FullPath()
 		if !allowKey(key, maxRequests, window) {
 			c.JSON(http.StatusTooManyRequests, gin.H{"error": "too many requests, please try again later"})
 			c.Abort()
