@@ -32,8 +32,13 @@ type Link struct {
 	URL   string `json:"url"`
 }
 
+// BcryptCost is the work factor for bcrypt. 12 is OWASP 2026 minimum for new
+// deployments. Older hashes (cost=10) are silently upgraded on next login via
+// CheckPassword → see RehashIfStale.
+const BcryptCost = 12
+
 func CreateUser(username, email, password string) (*User, error) {
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), BcryptCost)
 	if err != nil {
 		return nil, err
 	}
@@ -98,11 +103,31 @@ func GetUserByUsername(username string) (*User, error) {
 }
 
 func (u *User) CheckPassword(password string) bool {
-	return bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(password)) == nil
+	if bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(password)) != nil {
+		return false
+	}
+	// Opportunistic rehash: if the stored hash uses an older cost than the
+	// current target, regenerate at BcryptCost. Failure is non-fatal — the
+	// existing hash still validates the password.
+	if cost, err := bcrypt.Cost([]byte(u.Password)); err == nil && cost < BcryptCost {
+		go u.rehashAsync(password)
+	}
+	return true
+}
+
+// rehashAsync is called from CheckPassword on successful login when the stored
+// hash is older than BcryptCost. Bcrypt cost-12 takes ~150ms; we don't want to
+// block the login response, so it runs in a goroutine.
+func (u *User) rehashAsync(password string) {
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), BcryptCost)
+	if err != nil {
+		return
+	}
+	storage.DB.Exec(`UPDATE users SET password = ? WHERE id = ?`, string(hash), u.ID)
 }
 
 func (u *User) SetPassword(password string) error {
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), BcryptCost)
 	if err != nil {
 		return err
 	}

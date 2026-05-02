@@ -29,6 +29,21 @@ type registerInput struct {
 // Prevents XSS via username in JS-string-in-HTML-attribute contexts.
 var usernameRe = regexp.MustCompile(`^[a-zA-Z0-9_-]{3,30}$`)
 
+// dummyBcryptHash is generated once at startup at the current BcryptCost so
+// that the missing-user path in Login takes the same time as the
+// password-mismatch path. Prevents user enumeration via response timing.
+var dummyBcryptHash = mustGenDummyHash()
+
+func mustGenDummyHash() []byte {
+	h, err := bcrypt.GenerateFromPassword([]byte("dummy-password-for-timing-only"), models.BcryptCost)
+	if err != nil {
+		// crypto/rand failure at init — extremely unlikely; use a fallback hash
+		// rather than panicking the whole server.
+		return []byte("$2a$12$abcdefghijklmnopqrstuu6BfWAhBg9j/Lb8AScChyECkDsW3w8Aly")
+	}
+	return h
+}
+
 // reservedUsernames are usernames that collide with route names, system roles,
 // or are commonly impersonated. Checked case-insensitively.
 var reservedUsernames = map[string]bool{
@@ -130,12 +145,8 @@ func Login(c *gin.Context) {
 
 	user, err := models.GetUserByEmail(emailKey)
 	if err != nil {
-		// Run a dummy bcrypt comparison to equalize timing with the
-		// password-mismatch path, preventing user enumeration via timing.
-		bcrypt.CompareHashAndPassword(
-			[]byte("$2a$10$abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ012"),
-			[]byte(input.Password),
-		)
+		// Equalize timing with the password-mismatch path (cost-12 bcrypt).
+		bcrypt.CompareHashAndPassword(dummyBcryptHash, []byte(input.Password))
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
 		return
 	}

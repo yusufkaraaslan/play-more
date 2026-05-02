@@ -524,10 +524,23 @@ func ReuploadGameFiles(c *gin.Context) {
 
 // ServeGameFiles serves game files for the iframe player. spaOrigin (e.g. "https://playmore.world")
 // is the origin allowed to embed via CSP frame-ancestors; pass "" for legacy same-origin embed.
+//
+// frame-ancestors also includes the www.<host> variant so visitors who land on
+// www.<host> (cloudflared serves both ingresses) get a working game iframe.
 func ServeGameFiles(spaOrigin string) gin.HandlerFunc {
 	frameAncestors := "'self'"
 	if spaOrigin != "" {
 		frameAncestors = spaOrigin
+		// If the operator's baseURL is the apex (no www), also allow the www subdomain.
+		// If it already starts with https://www., also allow the apex.
+		if i := strings.Index(spaOrigin, "://"); i != -1 {
+			scheme, host := spaOrigin[:i+3], spaOrigin[i+3:]
+			if strings.HasPrefix(host, "www.") {
+				frameAncestors += " " + scheme + strings.TrimPrefix(host, "www.")
+			} else {
+				frameAncestors += " " + scheme + "www." + host
+			}
+		}
 	}
 	csp := "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; img-src * data: blob:; media-src * data: blob:; font-src * data:; connect-src *; frame-ancestors " + frameAncestors
 

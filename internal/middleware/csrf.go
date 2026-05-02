@@ -33,10 +33,9 @@ func CSRFProtect() gin.HandlerFunc {
 		referer := c.GetHeader("Referer")
 		host := c.Request.Host
 
-		// If Origin is present, validate it matches
+		// If Origin is present, validate it matches (case-insensitive, port-normalized)
 		if origin != "" {
-			originHost := extractHost(origin)
-			if originHost != host {
+			if !hostsMatch(extractHost(origin), host) {
 				c.JSON(http.StatusForbidden, gin.H{"error": "cross-origin request blocked"})
 				c.Abort()
 				return
@@ -47,8 +46,7 @@ func CSRFProtect() gin.HandlerFunc {
 
 		// Fall back to Referer check
 		if referer != "" {
-			refererHost := extractHost(referer)
-			if refererHost != host {
+			if !hostsMatch(extractHost(referer), host) {
 				c.JSON(http.StatusForbidden, gin.H{"error": "cross-origin request blocked"})
 				c.Abort()
 				return
@@ -79,5 +77,26 @@ func extractHost(urlStr string) string {
 	if i := strings.Index(urlStr, "/"); i != -1 {
 		urlStr = urlStr[:i]
 	}
+	// Strip user-info if present (browsers don't normally send it, but defensive)
+	if i := strings.LastIndex(urlStr, "@"); i != -1 {
+		urlStr = urlStr[i+1:]
+	}
 	return urlStr
+}
+
+// hostsMatch compares two host strings tolerating case differences and
+// default-port presence (e.g. "Example.com" matches "example.com:443" if
+// we strip 443/80 since those are HTTPS/HTTP defaults).
+func hostsMatch(a, b string) bool {
+	return strings.EqualFold(stripDefaultPort(a), stripDefaultPort(b))
+}
+
+func stripDefaultPort(host string) string {
+	if strings.HasSuffix(host, ":443") {
+		return host[:len(host)-4]
+	}
+	if strings.HasSuffix(host, ":80") {
+		return host[:len(host)-3]
+	}
+	return host
 }
