@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/smtp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -35,7 +36,7 @@ func HealthCheck() error {
 	if !Configured() {
 		return fmt.Errorf("SMTP not configured")
 	}
-	addr := fmt.Sprintf("%s:%d", Host, Port)
+	addr := net.JoinHostPort(Host, strconv.Itoa(Port))
 	conn, err := net.DialTimeout("tcp", addr, 3*time.Second)
 	if err != nil {
 		return err
@@ -58,7 +59,7 @@ func Send(to, subject, body string) error {
 	msg := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n%s",
 		sanitizeHeader(From), sanitizeHeader(to), sanitizeHeader(subject), body)
 
-	addr := fmt.Sprintf("%s:%d", Host, Port)
+	addr := net.JoinHostPort(Host, strconv.Itoa(Port))
 
 	// Always go through our custom path so we can enforce STARTTLS. The
 	// stdlib smtp.SendMail will silently fall back to plaintext if the server

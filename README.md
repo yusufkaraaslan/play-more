@@ -102,3 +102,11 @@ docker run -d \
 ## v1
 
 The original single-file HTML version is archived in `v1/`. Open `v1/index.html` in a browser — no server needed.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for code style, security checklist, and conventions. Security issues: see [SECURITY.md](SECURITY.md) — please use the private disclosure flow, not public issues.
+
+## License
+
+MIT — see [LICENSE](LICENSE). Third-party attributions in [NOTICE](NOTICE).
