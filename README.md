@@ -1,24 +1,26 @@
 # PlayMore
 
-A self-hosted game publishing platform for HTML5 games. Think Steam/itch.io but you own the server.
+A self-hosted publishing platform for **modern browser games** — WebGPU, WebAssembly, WebGL2. Think itch.io but you own the server, and it doesn't choke on the modern stack.
+
+**Built for what other platforms struggle with:**
+- **WebGPU games** — first-class support, capability detection, per-game badges, analytics
+- **Large WebAssembly builds** — gzip + Range request streaming, no 50 MB upload limit (cap is 500 MiB)
+- **Modern engine exports** — Godot Web, Unity WebGL, Bevy, Babylon.js drop in directly
+- **Sandboxed game origins** — optional `--games-domain` for full origin isolation, iframe sandbox tuned for gamepad/fullscreen/pointer-lock
 
 ## Features
 
-- **Game Store** — browse, search, filter, sort games with hero banner and special offers
-- **Game Upload** — drag-and-drop .html or .zip files, auto-extracts multi-file games
-- **Game Player** — fullscreen iframe player with session timer, WebGPU support
-- **Developer Pages** — customizable storefront with banner, bio, links, game grid
-- **Profile** — customizable with banner, theme color, bio, links, level badge
-- **Reviews** — star ratings, review summary stats, reviewer avatars
-- **Library & Wishlist** — add/remove games, search, sort by playtime/recent/A-Z
-- **Feed** — aggregated timeline from followed developers with type filters
-- **Devlogs** — blog posts tied to games
-- **Follow System** — follow developers, see their activity in your feed
-- **Collections** — user-created game groups
-- **Dashboard** — manage uploaded games (view/edit/delete)
-- **Admin Panel** — moderate users and games (first registered user = admin)
-- **Settings** — change password, export/import backup, delete account
-- **Docker** — multi-stage Dockerfile + docker-compose
+- **Game Store** — search (FTS5), genre/sort filters, hero banner, discounts
+- **Game Upload** — drag-and-drop `.html` or `.zip`, auto-extracts, WebGPU badge per title
+- **Game Player** — fullscreen iframe with session timer, FPS overlay, gamepad + WebGPU
+- **Developer Pages** — customizable storefront: banner, theme, custom CSS, links
+- **Reviews + Devlogs + Comments** — full content layer
+- **Library / Wishlist / Lists** — Steam-style sidebar with public + private collections
+- **Activity Feed** — aggregated timeline from followed developers
+- **Developer Platform** — API keys, CLI deploy script, automation-ready
+- **Email + Auth** — verification, password reset, per-account brute-force protection, PoW CAPTCHA
+- **Admin Panel** — first registered user becomes admin; moderation, analytics, audit log
+- **Operations** — single-binary deploy, Docker, Let's Encrypt auto-TLS, ProtonMail Bridge support
 
 ## Quick Start
 
@@ -94,10 +96,23 @@ docker run -d \
 ## Tech Stack
 
 - **Backend**: Go + Gin + SQLite (pure Go, no CGO)
-- **Frontend**: Vanilla JS SPA (no framework)
-- **Database**: SQLite (single file, zero config)
-- **Auth**: bcrypt + session cookies
-- **Deploy**: Single binary with embedded frontend (`go:embed`)
+- **Frontend**: Vanilla JS SPA (no framework, no build step, ~3500 lines)
+- **Database**: SQLite (single file, zero config, WAL mode, FTS5 search)
+- **Auth**: bcrypt (cost 12) + 256-bit session tokens (SHA-256 hashed at rest) + Bearer API keys + proof-of-work CAPTCHA
+- **Deploy**: Single binary with embedded frontend (`go:embed`), no external assets at runtime
+
+## Game Compatibility
+
+Tested with games built using:
+
+- **Godot 4** (Web export with WebGPU/WebGL2)
+- **Unity 6** (WebGL build, including IL2CPP)
+- **Bevy** (`wasm-bindgen` output)
+- **Babylon.js** (WebGPU + WebXR)
+- **Three.js** (WebGL2 + WebGPU experimental)
+- Plain HTML/JS/Canvas games
+
+Range requests + immutable cache headers mean even 100+ MB WASM builds load fast on second visit.
 
 ## v1
 
