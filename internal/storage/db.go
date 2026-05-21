@@ -78,6 +78,21 @@ func migrate() error {
 		// analytics writer; game_views had no retention. Add an index on the
 		// date column so a future retention sweep is cheap.
 		`CREATE INDEX IF NOT EXISTS idx_game_views_created ON game_views(created_at)`,
+		`CREATE TABLE IF NOT EXISTS upload_sessions (
+			id              TEXT PRIMARY KEY,
+			user_id         TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			game_id         TEXT REFERENCES games(id) ON DELETE CASCADE,
+			kind            TEXT NOT NULL,
+			filename        TEXT NOT NULL,
+			size            INTEGER NOT NULL,
+			received_ranges TEXT NOT NULL DEFAULT '[]',
+			metadata_json   TEXT NOT NULL DEFAULT '{}',
+			sha256_expected TEXT NOT NULL DEFAULT '',
+			status          TEXT NOT NULL DEFAULT 'open',
+			created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			expires_at      DATETIME NOT NULL)`,
+		`CREATE INDEX IF NOT EXISTS idx_upload_sessions_user    ON upload_sessions(user_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_upload_sessions_expires ON upload_sessions(expires_at)`,
 	}
 	for _, m := range migrations {
 		DB.Exec(m) // ignore errors (column already exists)
