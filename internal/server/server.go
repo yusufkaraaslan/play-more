@@ -188,18 +188,6 @@ func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxi
 		api.POST("/games/:id/screenshots", middleware.AuthRequired(), handlers.RequireVerifiedEmail(), middleware.RateLimit(20, 3600), limitBody(uploadCap), handlers.ManageScreenshots)
 		api.DELETE("/games/:id/screenshots/:index", middleware.AuthRequired(), handlers.DeleteScreenshot)
 
-		// Chunked uploads (temporary routes — consolidated in a later task)
-		api.POST("/uploads/init", middleware.AuthRequired(), handlers.RequireVerifiedEmail(),
-			middleware.RateLimit(20, 3600), limitBody(1<<20), handlers.InitUpload)
-		api.PUT("/uploads/:upload_id/chunks", middleware.AuthRequired(), handlers.RequireVerifiedEmail(),
-			middleware.RateLimit(2000, 3600), limitBody((8<<20)+(1<<20)), handlers.PutChunk)
-		api.GET("/uploads/:upload_id", middleware.AuthRequired(), handlers.RequireVerifiedEmail(),
-			middleware.RateLimit(600, 3600), handlers.GetUploadStatus)
-		api.DELETE("/uploads/:upload_id", middleware.AuthRequired(), handlers.RequireVerifiedEmail(),
-			middleware.RateLimit(60, 3600), handlers.CancelUpload)
-		api.POST("/uploads/:upload_id/finalize", middleware.AuthRequired(), handlers.RequireVerifiedEmail(),
-			middleware.RateLimit(20, 3600), limitBody(1<<20), handlers.FinalizeUpload)
-
 		// Reviews
 		api.GET("/games/:id/reviews", handlers.ListReviews)
 		api.POST("/games/:id/reviews", middleware.AuthRequired(), handlers.RequireVerifiedEmail(), middleware.RateLimit(20, 3600), handlers.CreateReview)
@@ -288,6 +276,14 @@ func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxi
 
 	// Image uploads
 	api.POST("/upload/image", middleware.AuthRequired(), middleware.RateLimit(20, 3600), limitBody(imageCap), handlers.UploadImage)
+
+	// Chunked upload pipeline — see docs/superpowers/specs/2026-05-21-chunked-upload-design.md
+	chunkPutCap := int64((8 << 20) + (1 << 20)) // 8 MiB chunk + 1 MiB headroom = 9 MiB
+	api.POST("/uploads/init", middleware.AuthRequired(), handlers.RequireVerifiedEmail(), middleware.RateLimit(20, 3600), limitBody(1<<20), handlers.InitUpload)
+	api.PUT("/uploads/:upload_id/chunks", middleware.AuthRequired(), handlers.RequireVerifiedEmail(), middleware.RateLimit(2000, 3600), limitBody(chunkPutCap), handlers.PutChunk)
+	api.GET("/uploads/:upload_id", middleware.AuthRequired(), handlers.RequireVerifiedEmail(), middleware.RateLimit(600, 3600), handlers.GetUploadStatus)
+	api.POST("/uploads/:upload_id/finalize", middleware.AuthRequired(), handlers.RequireVerifiedEmail(), middleware.RateLimit(20, 3600), limitBody(1<<20), handlers.FinalizeUpload)
+	api.DELETE("/uploads/:upload_id", middleware.AuthRequired(), handlers.RequireVerifiedEmail(), middleware.RateLimit(60, 3600), handlers.CancelUpload)
 
 	// Serve uploaded images. r.Static would expose directory listings
 	// (http.FileServer behavior); wrap with a handler that 404s any path
