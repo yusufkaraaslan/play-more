@@ -282,7 +282,7 @@ cmd_push() {
 #       For kind=reupload: env var TARGET_GAME_ID
 chunked_push() {
     local file="$1" size="$2" sha="$3" kind="$4"
-    local upload_id chunk_size
+    local upload_id="" chunk_size=""
 
     # If we have a stashed UPLOAD_ID from a prior run, try to resume against it.
     local resume_id="${UPLOAD_ID:-}"
