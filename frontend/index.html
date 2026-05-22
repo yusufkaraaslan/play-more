@@ -865,6 +865,38 @@
             return finalized;
         }
 
+        // Progress bar UI for chunked uploads. Distinct from the existing
+        // `#upload-progress` element (which is the FileReader-stage bar in
+        // handleUploadFile) — uses id `chunked-upload-progress` to avoid clash.
+        function showUploadProgress(fraction) {
+            let el = document.getElementById('chunked-upload-progress');
+            if (!el) {
+                const anchor = document.getElementById('upload-status') ||
+                               document.getElementById('upload-section') ||
+                               document.body;
+                const wrap = document.createElement('div');
+                wrap.id = 'chunked-upload-progress-wrap';
+                wrap.style.cssText = 'margin-top:1em;';
+                wrap.innerHTML =
+                    '<div style="background:#222;border-radius:4px;overflow:hidden;height:8px;">' +
+                    '  <div id="chunked-upload-progress" style="background:#4caf50;height:100%;width:0%;transition:width .2s"></div>' +
+                    '</div>' +
+                    '<div id="chunked-upload-progress-label" style="text-align:center;font-size:.85em;margin-top:.25em">0%</div>';
+                anchor.appendChild(wrap);
+                el = document.getElementById('chunked-upload-progress');
+            }
+            const pct = Math.round(fraction * 100);
+            el.style.width = pct + '%';
+            const label = document.getElementById('chunked-upload-progress-label');
+            if (label) label.textContent = pct + '%';
+            if (fraction >= 1) {
+                setTimeout(() => {
+                    const w = document.getElementById('chunked-upload-progress-wrap');
+                    if (w) w.remove();
+                }, 1000);
+            }
+        }
+
         /* ============ Toast Notifications ============ */
         function toast(msg, type = 'info') {
             const container = document.getElementById('toast-container');
@@ -1351,30 +1383,92 @@
             if (!pendingFile) { showStatus('Please select a game file first.', 'error'); return; }
             const title = document.getElementById('upload-title').value.trim();
             if (!title) { showStatus('Please enter a game title.', 'error'); return; }
-            const formData = new FormData();
-            formData.append('game_file', pendingFile);
-            formData.append('title', title);
-            formData.append('genre', document.getElementById('upload-genre').value);
-            formData.append('description', document.getElementById('upload-description').value);
-            formData.append('tags', document.getElementById('upload-tags').value);
-            formData.append('is_webgpu', document.getElementById('upload-webgpu').checked ? 'true' : 'false');
-            const videoUrl = document.getElementById('upload-video').value.trim();
-            if (videoUrl) formData.append('video_url', videoUrl);
-            const coverFile = document.getElementById('upload-cover').files[0];
-            if (coverFile) formData.append('cover', coverFile);
-            const ssFiles = document.getElementById('upload-screenshots').files;
-            for (let i = 0; i < ssFiles.length; i++) formData.append('screenshots', ssFiles[i]);
             try {
-                showStatus('Uploading...', 'success');
-                const res = await fetch('/api/games', { method: 'POST', body: formData, credentials: 'same-origin' });
-                const data = await res.json();
-                if (!res.ok) throw new Error(data.error);
-                pendingFile = null;
-                document.getElementById('upload-title').value = '';
-                document.getElementById('upload-description').value = '';
-                document.getElementById('upload-tags').value = '';
-                showStatus('', '');
-                toast('"' + title + '" uploaded successfully!', 'success');
+                if (pendingFile.size > CHUNKED_THRESHOLD) {
+                    // Chunked path — large files use init/chunks/finalize, then cover/screenshots/
+                    // video_url are attached out-of-band against the created game.
+                    const tagsStr = document.getElementById('upload-tags').value;
+                    const metadata = {
+                        title: title,
+                        genre: document.getElementById('upload-genre').value,
+                        description: document.getElementById('upload-description').value,
+                        tags: tagsStr.split(',').map(s => s.trim()).filter(Boolean),
+                        is_webgpu: document.getElementById('upload-webgpu').checked,
+                    };
+                    showStatus('Uploading (chunked)...', 'success');
+                    showUploadProgress(0);
+                    const finalized = await uploadGameChunked(
+                        pendingFile,
+                        { kind: 'new_game', metadata },
+                        p => showUploadProgress(p)
+                    );
+                    const gameId = finalized.game_id;
+
+                    // Out-of-band: cover image (PUT cover_url on the game).
+                    const coverFile = document.getElementById('upload-cover').files[0];
+                    if (coverFile) {
+                        const coverFD = new FormData();
+                        coverFD.append('image', coverFile);
+                        const coverRes = await fetch('/api/upload/image', { method: 'POST', body: coverFD, credentials: 'same-origin' });
+                        const coverData = await coverRes.json();
+                        if (coverRes.ok && coverData.url) {
+                            await api('/games/' + gameId, {
+                                method: 'PUT',
+                                body: JSON.stringify({ cover_url: coverData.url })
+                            });
+                        }
+                    }
+
+                    // Out-of-band: screenshots (POST to /api/games/:id/screenshots).
+                    const ssFiles = document.getElementById('upload-screenshots').files;
+                    if (ssFiles && ssFiles.length > 0) {
+                        const ssFD = new FormData();
+                        for (let i = 0; i < ssFiles.length; i++) ssFD.append('screenshots', ssFiles[i]);
+                        const ssRes = await fetch('/api/games/' + gameId + '/screenshots', { method: 'POST', body: ssFD, credentials: 'same-origin' });
+                        if (!ssRes.ok) { const d = await ssRes.json().catch(() => ({})); throw new Error(d.error || 'Screenshot upload failed'); }
+                    }
+
+                    // Out-of-band: video URL (PUT video_url on the game).
+                    const videoUrl = document.getElementById('upload-video').value.trim();
+                    if (videoUrl) {
+                        await api('/games/' + gameId, {
+                            method: 'PUT',
+                            body: JSON.stringify({ video_url: videoUrl })
+                        });
+                    }
+
+                    pendingFile = null;
+                    document.getElementById('upload-title').value = '';
+                    document.getElementById('upload-description').value = '';
+                    document.getElementById('upload-tags').value = '';
+                    showStatus('', '');
+                    toast('"' + title + '" uploaded successfully!', 'success');
+                } else {
+                    // Single-shot path — unchanged.
+                    const formData = new FormData();
+                    formData.append('game_file', pendingFile);
+                    formData.append('title', title);
+                    formData.append('genre', document.getElementById('upload-genre').value);
+                    formData.append('description', document.getElementById('upload-description').value);
+                    formData.append('tags', document.getElementById('upload-tags').value);
+                    formData.append('is_webgpu', document.getElementById('upload-webgpu').checked ? 'true' : 'false');
+                    const videoUrl = document.getElementById('upload-video').value.trim();
+                    if (videoUrl) formData.append('video_url', videoUrl);
+                    const coverFile = document.getElementById('upload-cover').files[0];
+                    if (coverFile) formData.append('cover', coverFile);
+                    const ssFiles = document.getElementById('upload-screenshots').files;
+                    for (let i = 0; i < ssFiles.length; i++) formData.append('screenshots', ssFiles[i]);
+                    showStatus('Uploading...', 'success');
+                    const res = await fetch('/api/games', { method: 'POST', body: formData, credentials: 'same-origin' });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.error);
+                    pendingFile = null;
+                    document.getElementById('upload-title').value = '';
+                    document.getElementById('upload-description').value = '';
+                    document.getElementById('upload-tags').value = '';
+                    showStatus('', '');
+                    toast('"' + title + '" uploaded successfully!', 'success');
+                }
             } catch (e) { showStatus('Upload failed: ' + e.message, 'error'); }
         }
 
