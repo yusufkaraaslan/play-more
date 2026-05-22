@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"crypto/tls"
 	"embed"
 	"flag"
@@ -21,6 +22,7 @@ import (
 	"github.com/yusufkaraaslan/play-more/internal/models"
 	"github.com/yusufkaraaslan/play-more/internal/server"
 	"github.com/yusufkaraaslan/play-more/internal/storage"
+	"github.com/yusufkaraaslan/play-more/internal/uploadgc"
 	"golang.org/x/crypto/acme/autocert"
 )
 
@@ -327,6 +329,7 @@ func main() {
 
 	middleware.StartRateLimitCleanup()
 	middleware.StartAnalyticsWriter()
+	uploadgc.Start(context.Background())
 
 	// Periodic cleanup of expired sessions and email tokens
 	go func() {
