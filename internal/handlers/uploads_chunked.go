@@ -1,11 +1,14 @@
 package handlers
 
 import (
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -299,5 +302,216 @@ func CancelUpload(c *gin.Context) {
 	_ = storage.DeletePartial(id)
 	_ = models.DeleteUploadSession(id)
 	sessionLocks.Delete(id)
+	c.Status(http.StatusNoContent)
+}
+
+// finalizeReq is the JSON body of POST /api/uploads/:upload_id/finalize.
+type finalizeReq struct {
+	SHA256 string `json:"sha256,omitempty"`
+}
+
+// finalizeResp is the success body for kind=new_game.
+type finalizeResp struct {
+	GameID string `json:"game_id"`
+}
+
+// FinalizeUpload handles POST /api/uploads/:upload_id/finalize.
+//
+// State transitions:
+//   - On entry, the session must be status='open' with all bytes received.
+//   - MarkFinalizing atomically flips open→finalizing (one DB UPDATE WHERE
+//     status='open'). Only one caller can win.
+//   - On success: status='done' briefly, then row is deleted + partial file
+//     removed.
+//   - On any post-MarkFinalizing failure: status='failed' (row preserved as
+//     audit trail; GC will sweep eventually), partial file removed.
+func FinalizeUpload(c *gin.Context) {
+	user := middleware.GetUser(c)
+	if user == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "not authenticated"})
+		return
+	}
+
+	id := c.Param("upload_id")
+
+	var req finalizeReq
+	_ = c.ShouldBindJSON(&req) // body is optional
+
+	// Acquire session lock to prevent races with PUT/cancel.
+	lock := sessionLock(id)
+	lock.Lock()
+	defer lock.Unlock()
+	// Note: don't sessionLocks.Delete(id) here — keep the entry briefly so a
+	// late retry doesn't create a new lock and race; the GC pass handles cleanup.
+
+	s, err := models.GetUploadSession(id)
+	if err == sql.ErrNoRows || s == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "lookup failed"})
+		return
+	}
+	if s.UserID != user.ID {
+		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+		return
+	}
+	if !models.IsComplete(s.ReceivedRanges, s.Size) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "upload incomplete"})
+		return
+	}
+
+	// Atomic open → finalizing. Whoever wins owns the rest of this function.
+	won, err := models.MarkFinalizing(id, req.SHA256)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "state update failed"})
+		return
+	}
+	if !won {
+		c.JSON(http.StatusConflict, gin.H{"error": "session not open"})
+		return
+	}
+
+	// On any error from here, mark failed + clean up partial bytes.
+	failFinalize := func(code int, msg string) {
+		_ = models.MarkStatus(id, "failed")
+		_ = storage.DeletePartial(id)
+		c.JSON(code, gin.H{"error": msg})
+	}
+
+	// Optional sha256 verification.
+	if req.SHA256 != "" {
+		hf, err := storage.OpenPartial(id)
+		if err != nil {
+			failFinalize(http.StatusInternalServerError, "open partial failed")
+			return
+		}
+		h := sha256.New()
+		if _, err := io.Copy(h, hf); err != nil {
+			hf.Close()
+			failFinalize(http.StatusInternalServerError, "hash failed")
+			return
+		}
+		hf.Close()
+		got := hex.EncodeToString(h.Sum(nil))
+		if got != strings.ToLower(req.SHA256) {
+			failFinalize(http.StatusBadRequest, "sha256 mismatch")
+			return
+		}
+	}
+
+	// Open the partial again for ZIP extraction (also a ReaderAt).
+	f, err := storage.OpenPartial(id)
+	if err != nil {
+		failFinalize(http.StatusInternalServerError, "open partial failed")
+		return
+	}
+	defer f.Close()
+
+	var meta gameMetadata
+	if s.Kind == "new_game" {
+		if err := json.Unmarshal([]byte(s.MetadataJSON), &meta); err != nil {
+			failFinalize(http.StatusInternalServerError, "metadata decode failed")
+			return
+		}
+	}
+
+	// Decide game target: existing (reupload) or new (created here).
+	var targetGameID string
+	var newGame *models.Game // only set on kind=new_game; rollback target on failure
+	if s.Kind == "reupload" {
+		targetGameID = s.GameID.String
+		// Wipe old game dir before extracting so leftover files don't shadow new ones.
+		_ = storage.DeleteGameFiles(targetGameID)
+	} else {
+		// new_game — create the row using the existing CreateGame signature.
+		price := 0.0
+		g, err := models.CreateGame(meta.Title, meta.Genre, meta.Description, user.ID, price, meta.Tags, meta.IsWebGPU)
+		if err != nil || g == nil {
+			failFinalize(http.StatusInternalServerError, "create game failed")
+			return
+		}
+		newGame = g
+		targetGameID = g.ID
+	}
+
+	// Extract or place the uploaded file.
+	lowerName := strings.ToLower(s.Filename)
+	var entryFile string
+	switch {
+	case strings.HasSuffix(lowerName, ".zip"):
+		ef, err := storage.ExtractZipFromReader(targetGameID, f, s.Size)
+		if err != nil {
+			if newGame != nil {
+				_ = newGame.Delete()
+			}
+			failFinalize(http.StatusBadRequest, "invalid game file")
+			return
+		}
+		entryFile = ef
+	case strings.HasSuffix(lowerName, ".html"), strings.HasSuffix(lowerName, ".htm"):
+		if _, err := f.Seek(0, 0); err != nil {
+			if newGame != nil {
+				_ = newGame.Delete()
+			}
+			failFinalize(http.StatusInternalServerError, "seek partial failed")
+			return
+		}
+		htmlData, err := io.ReadAll(f)
+		if err != nil {
+			if newGame != nil {
+				_ = newGame.Delete()
+			}
+			failFinalize(http.StatusInternalServerError, "read partial failed")
+			return
+		}
+		if err := storage.SaveGameFile(targetGameID, s.Filename, htmlData); err != nil {
+			if newGame != nil {
+				_ = newGame.Delete()
+			}
+			failFinalize(http.StatusInternalServerError, "save file failed")
+			return
+		}
+		entryFile = s.Filename
+	default:
+		if newGame != nil {
+			_ = newGame.Delete()
+		}
+		failFinalize(http.StatusBadRequest, "game file must be .html, .htm, or .zip")
+		return
+	}
+
+	// Update the game record with files info using the existing instance method.
+	// For reupload, fetch the Game first (ownership was already verified at init time).
+	var gameForUpdate *models.Game
+	if newGame != nil {
+		gameForUpdate = newGame
+	} else {
+		gameForUpdate, _ = models.GetGameByID(targetGameID)
+	}
+	if gameForUpdate != nil {
+		if err := gameForUpdate.UpdateFiles(storage.GameDir(targetGameID), entryFile); err != nil {
+			// File bytes are on disk but record update failed — for new_game,
+			// roll back the row and game dir; for reupload, the dir holds the
+			// new bytes but file_path/entry_file may be stale (best-effort cleanup).
+			if newGame != nil {
+				_ = storage.DeleteGameFiles(targetGameID)
+				_ = newGame.Delete()
+			}
+			failFinalize(http.StatusInternalServerError, "update game files failed")
+			return
+		}
+	}
+
+	// Success — clean up session + partial.
+	_ = models.MarkStatus(id, "done")
+	_ = storage.DeletePartial(id)
+	_ = models.DeleteUploadSession(id)
+
+	if s.Kind == "new_game" {
+		c.JSON(http.StatusOK, finalizeResp{GameID: targetGameID})
+		return
+	}
 	c.Status(http.StatusNoContent)
 }

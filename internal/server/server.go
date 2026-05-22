@@ -197,6 +197,8 @@ func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxi
 			middleware.RateLimit(600, 3600), handlers.GetUploadStatus)
 		api.DELETE("/uploads/:upload_id", middleware.AuthRequired(), handlers.RequireVerifiedEmail(),
 			middleware.RateLimit(60, 3600), handlers.CancelUpload)
+		api.POST("/uploads/:upload_id/finalize", middleware.AuthRequired(), handlers.RequireVerifiedEmail(),
+			middleware.RateLimit(20, 3600), limitBody(1<<20), handlers.FinalizeUpload)
 
 		// Reviews
 		api.GET("/games/:id/reviews", handlers.ListReviews)
