@@ -275,3 +275,75 @@ All endpoints accept two auth methods:
   - Write devlogs
   - Post comments
 - When SMTP is not configured, all actions are allowed without verification
+
+## Chunked uploads
+
+For files larger than 64 MiB (or behind a reverse proxy with a smaller body cap, like Cloudflare Free/Pro at 100 MiB), use the chunked upload pipeline instead of the single-shot `POST /api/games`.
+
+### Endpoints
+
+- `POST /api/uploads/init` — create an upload session
+- `PUT /api/uploads/:upload_id/chunks?offset=N` — write bytes at a byte offset
+- `GET /api/uploads/:upload_id` — check progress / find missing bytes (for resume)
+- `POST /api/uploads/:upload_id/finalize` — assemble + extract + create or update the game
+- `DELETE /api/uploads/:upload_id` — cancel and clean up
+
+### Full curl example (new game)
+
+```bash
+FILE=/path/to/game.zip
+SIZE=$(stat -c%s "$FILE" 2>/dev/null || stat -f%z "$FILE")
+SHA=$(sha256sum "$FILE" | awk '{print $1}')
+
+# 1. Init
+INIT=$(curl -s -X POST "$SERVER/api/uploads/init" \
+  -H "Authorization: Bearer $KEY" \
+  -H "Content-Type: application/json" \
+  -d "{\"filename\":\"game.zip\",\"size\":$SIZE,\"kind\":\"new_game\",
+       \"metadata\":{\"title\":\"My Game\",\"genre\":\"action\",
+                     \"description\":\"Hi\",\"tags\":[\"foo\"],\"is_webgpu\":false}}")
+UPLOAD_ID=$(echo "$INIT" | jq -r .upload_id)
+CHUNK=$(echo "$INIT" | jq -r .chunk_size)
+
+# 2. PUT chunks
+OFFSET=0
+while [ $OFFSET -lt $SIZE ]; do
+    dd if="$FILE" bs="$CHUNK" skip=$((OFFSET/CHUNK)) count=1 status=none | \
+      curl -s -X PUT --data-binary @- \
+        -H "Authorization: Bearer $KEY" \
+        -H "Content-Type: application/octet-stream" \
+        "$SERVER/api/uploads/$UPLOAD_ID/chunks?offset=$OFFSET"
+    OFFSET=$((OFFSET + CHUNK))
+done
+
+# 3. Finalize
+curl -s -X POST "$SERVER/api/uploads/$UPLOAD_ID/finalize" \
+  -H "Authorization: Bearer $KEY" \
+  -H "Content-Type: application/json" \
+  -d "{\"sha256\":\"$SHA\"}"
+# → {"game_id":"<uuid>"}
+```
+
+### Resume
+
+If a PUT fails or the client disconnects:
+
+```bash
+STATUS=$(curl -s -H "Authorization: Bearer $KEY" "$SERVER/api/uploads/$UPLOAD_ID")
+# STATUS includes received_ranges; compute the gaps and re-PUT those bytes only.
+```
+
+### Limits
+
+| Endpoint     | Rate limit (per user) | Body cap |
+| ------------ | --------------------- | -------- |
+| `init`       | 20/hr                 | 1 MiB    |
+| `PUT chunks` | 2000/hr               | 9 MiB    |
+| `GET status` | 600/hr                | n/a      |
+| `finalize`   | 20/hr                 | 1 MiB    |
+| `cancel`     | 60/hr                 | n/a      |
+
+- `sha256` field on finalize is optional; if present, server verifies and rejects on mismatch.
+- Upload sessions expire 24 h from creation; expired sessions and partial files are GC'd every 10 minutes.
+- Max session size: 500 MiB (same as the existing single-shot limit).
+- Below 64 MiB, prefer the existing single-shot `POST /api/games` for fewer round-trips.
