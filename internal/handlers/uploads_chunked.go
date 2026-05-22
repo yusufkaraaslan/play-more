@@ -227,3 +227,77 @@ func PutChunk(c *gin.Context) {
 
 	c.JSON(http.StatusOK, putChunkResp{ReceivedBytes: models.ReceivedBytes(newRanges)})
 }
+
+// statusResp is the JSON returned from GET /api/uploads/:upload_id.
+type statusResp struct {
+	Size           int64      `json:"size"`
+	ReceivedRanges [][2]int64 `json:"received_ranges"`
+	ExpiresAt      time.Time  `json:"expires_at"`
+	Status         string     `json:"status"`
+}
+
+// GetUploadStatus handles GET /api/uploads/:upload_id.
+func GetUploadStatus(c *gin.Context) {
+	user := middleware.GetUser(c)
+	if user == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "not authenticated"})
+		return
+	}
+
+	id := c.Param("upload_id")
+	s, err := models.GetUploadSession(id)
+	if err == sql.ErrNoRows || s == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "lookup failed"})
+		return
+	}
+	if s.UserID != user.ID {
+		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, statusResp{
+		Size:           s.Size,
+		ReceivedRanges: s.ReceivedRanges,
+		ExpiresAt:      s.ExpiresAt,
+		Status:         s.Status,
+	})
+}
+
+// CancelUpload handles DELETE /api/uploads/:upload_id.
+func CancelUpload(c *gin.Context) {
+	user := middleware.GetUser(c)
+	if user == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "not authenticated"})
+		return
+	}
+
+	id := c.Param("upload_id")
+
+	// Acquire the session lock to prevent racing with a concurrent PUT/finalize.
+	lock := sessionLock(id)
+	lock.Lock()
+	defer lock.Unlock()
+
+	s, err := models.GetUploadSession(id)
+	if err == sql.ErrNoRows || s == nil {
+		c.Status(http.StatusNoContent) // idempotent — already gone
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "lookup failed"})
+		return
+	}
+	if s.UserID != user.ID {
+		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+		return
+	}
+
+	_ = storage.DeletePartial(id)
+	_ = models.DeleteUploadSession(id)
+	sessionLocks.Delete(id)
+	c.Status(http.StatusNoContent)
+}
