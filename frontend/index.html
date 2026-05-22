@@ -786,6 +786,85 @@
             return data;
         }
 
+        /* ============ Chunked Upload Helper ============ */
+        const CHUNKED_THRESHOLD = 64 * 1024 * 1024; // 64 MiB
+
+        // missingRanges computes [start, end) gaps in [0, size) not covered by `ranges`.
+        // Shared between upload start (resume detection) and the resume-on-load banner.
+        function missingRanges(ranges, size) {
+            const out = []; let cur = 0;
+            for (const [s, e] of ranges) {
+                if (s > cur) out.push([cur, s]);
+                if (e > cur) cur = e;
+            }
+            if (cur < size) out.push([cur, size]);
+            return out;
+        }
+
+        async function putChunkWithRetry(uploadId, offset, slice) {
+            const url = `/api/uploads/${uploadId}/chunks?offset=${offset}`;
+            let lastErr;
+            for (let attempt = 0; attempt < 4; attempt++) {
+                try {
+                    const res = await fetch(url, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/octet-stream' },
+                        body: slice,
+                        credentials: 'same-origin',
+                    });
+                    if (!res.ok) {
+                        const body = await res.json().catch(() => ({}));
+                        throw new Error(body.error || `HTTP ${res.status}`);
+                    }
+                    return await res.json();
+                } catch (e) {
+                    lastErr = e;
+                    if (attempt < 3) await new Promise(r => setTimeout(r, 1000 * (1 << attempt)));
+                }
+            }
+            throw lastErr;
+        }
+
+        async function uploadGameChunked(file, { kind, gameId, metadata }, onProgress) {
+            const initBody = { filename: file.name, size: file.size, kind };
+            if (kind === 'reupload') initBody.game_id = gameId;
+            if (kind === 'new_game') initBody.metadata = metadata;
+
+            const init = await api('/uploads/init', {
+                method: 'POST',
+                body: JSON.stringify(initBody),
+            });
+            const { upload_id, chunk_size } = init;
+            sessionStorage.setItem('playmore_upload_id', upload_id);
+
+            // Check for partial state (resume case)
+            let receivedRanges = [];
+            try {
+                const status = await api(`/uploads/${upload_id}`);
+                receivedRanges = status.received_ranges || [];
+            } catch (e) { /* fresh upload */ }
+
+            // Walk the missing ranges in chunk_size steps
+            const toSend = missingRanges(receivedRanges, file.size);
+            let sentBytes = receivedRanges.reduce((acc, [s, e]) => acc + Math.max(0, e - s), 0);
+            for (const [start, end] of toSend) {
+                for (let offset = start; offset < end; offset += chunk_size) {
+                    const sliceEnd = Math.min(offset + chunk_size, end);
+                    const slice = file.slice(offset, sliceEnd);
+                    await putChunkWithRetry(upload_id, offset, slice);
+                    sentBytes += (sliceEnd - offset);
+                    if (onProgress) onProgress(sentBytes / file.size);
+                }
+            }
+
+            const finalized = await api(`/uploads/${upload_id}/finalize`, {
+                method: 'POST',
+                body: JSON.stringify({}), // SPA omits sha256
+            });
+            sessionStorage.removeItem('playmore_upload_id');
+            return finalized;
+        }
+
         /* ============ Toast Notifications ============ */
         function toast(msg, type = 'info') {
             const container = document.getElementById('toast-container');
