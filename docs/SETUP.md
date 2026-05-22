@@ -97,6 +97,10 @@ playmore.example.com {
 }
 ```
 
+## Reverse proxy body limits
+
+**Game uploads use chunked PUTs (≤ 9 MiB per request) above 64 MiB**, so any reverse proxy with a body cap ≥ 9 MiB will work — including Cloudflare Free/Pro (100 MiB). Set `client_max_body_size 16m` (nginx) or equivalent. Below 64 MiB, the legacy single-shot path is used and the proxy must allow the full file in one request.
+
 ## Running as a systemd service
 
 `/etc/systemd/system/playmore.service`:
