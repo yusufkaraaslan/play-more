@@ -208,38 +208,65 @@ cmd_push() {
 
     [[ -f "$file" ]] || die "File not found: $file"
 
+    local size sha
+    size=$(file_size "$file")
+    local THRESHOLD=$((64*1024*1024))
+
     if [[ -n "$GAME_ID" ]]; then
-        # Re-upload existing game
-        info "Re-uploading files to game $GAME_ID..."
-        local result
-        result=$(api_call POST "/api/games/$GAME_ID/reupload" \
-            -F "game_file=@$file") || exit 1
-        success "Game files updated!"
+        if [[ $size -gt $THRESHOLD ]]; then
+            info "Re-uploading via chunked pipeline ($size bytes)..."
+            sha=$(file_sha256 "$file")
+            TARGET_GAME_ID="$GAME_ID" \
+                chunked_push "$file" "$size" "$sha" "reupload"
+        else
+            # Existing single-shot reupload path (unchanged)
+            info "Re-uploading files to game $GAME_ID..."
+            local result
+            result=$(api_call POST "/api/games/$GAME_ID/reupload" \
+                -F "game_file=@$file") || exit 1
+            success "Game files updated!"
+        fi
     else
-        # New upload
         [[ -n "$title" ]] || read -rp "Game title: " title
         [[ -n "$genre" ]] || read -rp "Genre (action/adventure/rpg/strategy/puzzle/racing/horror/experimental): " genre
         [[ -n "$title" ]] || die "Title is required"
         [[ -n "$genre" ]] || die "Genre is required"
 
-        info "Uploading new game: $title..."
-        local curl_args=(-F "game_file=@$file" -F "title=$title" -F "genre=$genre" -F "is_webgpu=$webgpu")
-        [[ -n "$desc" ]] && curl_args+=(-F "description=$desc")
-        [[ -n "$tags" ]] && curl_args+=(-F "tags=$tags")
-        [[ -n "$cover" && -f "$cover" ]] && curl_args+=(-F "cover=@$cover")
-
-        local result
-        result=$(api_call POST "/api/games" "${curl_args[@]}") || exit 1
-
-        # Extract game ID from response
-        local new_id
-        new_id=$(json_val "$result" "id")
-        if [[ -n "$new_id" ]]; then
-            GAME_ID="$new_id"
-            save_config
-            success "Game uploaded! ID: $GAME_ID"
+        if [[ $size -gt $THRESHOLD ]]; then
+            info "Uploading new game via chunked pipeline: $title ($size bytes)..."
+            sha=$(file_sha256 "$file")
+            TITLE="$title" GENRE="$genre" DESC="$desc" TAGS="$tags" IS_WEBGPU="$webgpu" \
+                chunked_push "$file" "$size" "$sha" "new_game"
+            # Cover image (if specified) — out-of-band after finalize
+            if [[ -n "$cover" && -f "$cover" ]]; then
+                info "Uploading cover image..."
+                local cover_res cover_url
+                cover_res=$(api_call POST "/api/upload/image" -F "image=@$cover") || warn "cover upload failed"
+                cover_url=$(json_val "$cover_res" "url")
+                [[ -n "$cover_url" ]] && api_call PUT "/api/games/$GAME_ID" \
+                    -H "Content-Type: application/json" \
+                    -d "{\"cover_url\":\"$cover_url\"}" > /dev/null
+            fi
         else
-            success "Game uploaded!"
+            # Existing single-shot new-game path (unchanged)
+            info "Uploading new game: $title..."
+            local curl_args=(-F "game_file=@$file" -F "title=$title" -F "genre=$genre" -F "is_webgpu=$webgpu")
+            [[ -n "$desc" ]] && curl_args+=(-F "description=$desc")
+            [[ -n "$tags" ]] && curl_args+=(-F "tags=$tags")
+            [[ -n "$cover" && -f "$cover" ]] && curl_args+=(-F "cover=@$cover")
+
+            local result
+            result=$(api_call POST "/api/games" "${curl_args[@]}") || exit 1
+
+            local new_id
+            new_id=$(json_val "$result" "id")
+            if [[ -n "$new_id" ]]; then
+                GAME_ID="$new_id"
+                save_config
+                success "Game uploaded! ID: $GAME_ID"
+            else
+                success "Game uploaded!"
+            fi
         fi
     fi
 
