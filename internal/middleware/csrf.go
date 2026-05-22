@@ -58,6 +58,13 @@ func CSRFProtect() gin.HandlerFunc {
 		// If neither Origin nor Referer is present:
 		// - JSON is safe (cross-origin form posts can't send application/json without preflight)
 		// - multipart/form-data is a CORS-simple type, so we must NOT allow it without Origin/Referer
+		// - application/octet-stream requires preflight in browsers, so it's safe — but only
+		//   narrowly allow it on PUT /api/uploads/:upload_id/chunks (the chunked-upload data path).
+		//   Any other path with octet-stream falls through to the JSON-only check.
+		if isChunkUploadPUT(c.Request.Method, c.Request.URL.Path) && strings.Contains(ct, "application/octet-stream") {
+			c.Next()
+			return
+		}
 		if !strings.Contains(ct, "application/json") {
 			c.JSON(http.StatusForbidden, gin.H{"error": "missing origin header"})
 			c.Abort()
@@ -99,4 +106,25 @@ func stripDefaultPort(host string) string {
 		return host[:len(host)-3]
 	}
 	return host
+}
+
+// isChunkUploadPUT reports whether (method, path) names the chunked-upload data
+// endpoint — the only route on which application/octet-stream is acceptable.
+// The check is intentionally tight: PUT, path begins with /api/uploads/, ends
+// with /chunks, and has exactly one path segment between them (the upload_id).
+func isChunkUploadPUT(method, path string) bool {
+	if method != http.MethodPut {
+		return false
+	}
+	const prefix = "/api/uploads/"
+	const suffix = "/chunks"
+	if !strings.HasPrefix(path, prefix) || !strings.HasSuffix(path, suffix) {
+		return false
+	}
+	// Exclude /api/uploads/.../chunks/extra — only a single segment for upload_id.
+	mid := path[len(prefix) : len(path)-len(suffix)]
+	if mid == "" || strings.Contains(mid, "/") {
+		return false
+	}
+	return true
 }

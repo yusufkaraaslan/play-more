@@ -188,9 +188,11 @@ func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxi
 		api.POST("/games/:id/screenshots", middleware.AuthRequired(), handlers.RequireVerifiedEmail(), middleware.RateLimit(20, 3600), limitBody(uploadCap), handlers.ManageScreenshots)
 		api.DELETE("/games/:id/screenshots/:index", middleware.AuthRequired(), handlers.DeleteScreenshot)
 
-		// Chunked uploads (temporary route — consolidated in a later task)
+		// Chunked uploads (temporary routes — consolidated in a later task)
 		api.POST("/uploads/init", middleware.AuthRequired(), handlers.RequireVerifiedEmail(),
 			middleware.RateLimit(20, 3600), limitBody(1<<20), handlers.InitUpload)
+		api.PUT("/uploads/:upload_id/chunks", middleware.AuthRequired(), handlers.RequireVerifiedEmail(),
+			middleware.RateLimit(2000, 3600), limitBody((8<<20)+(1<<20)), handlers.PutChunk)
 
 		// Reviews
 		api.GET("/games/:id/reviews", handlers.ListReviews)

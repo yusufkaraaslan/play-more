@@ -3,7 +3,9 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
+	"io"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -142,4 +144,86 @@ func InitUpload(c *gin.Context) {
 		ChunkSize: ChunkSize,
 		ExpiresAt: s.ExpiresAt,
 	})
+}
+
+// putChunkResp is the JSON returned from a successful PUT chunk.
+type putChunkResp struct {
+	ReceivedBytes int64 `json:"received_bytes"`
+}
+
+// PutChunk handles PUT /api/uploads/:upload_id/chunks?offset=N.
+//
+// Body is the raw chunk bytes (application/octet-stream). The route layer
+// wraps the body in http.MaxBytesReader at (ChunkSize + 1 MiB headroom), so
+// oversized chunks are rejected before reaching this handler.
+//
+// Concurrency: a per-session mutex serializes the read-modify-write of
+// received_ranges. Without it, two concurrent PUTs could race and lose
+// range updates.
+func PutChunk(c *gin.Context) {
+	user := middleware.GetUser(c)
+	if user == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "not authenticated"})
+		return
+	}
+
+	id := c.Param("upload_id")
+	offsetStr := c.Query("offset")
+	offset, err := strconv.ParseInt(offsetStr, 10, 64)
+	if err != nil || offset < 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid offset"})
+		return
+	}
+
+	// Per-session lock for the read-modify-write of received_ranges.
+	lock := sessionLock(id)
+	lock.Lock()
+	defer lock.Unlock()
+
+	s, err := models.GetUploadSession(id)
+	if err == sql.ErrNoRows || s == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "session lookup failed"})
+		return
+	}
+	if s.UserID != user.ID {
+		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+		return
+	}
+	if s.Status != "open" {
+		c.JSON(http.StatusConflict, gin.H{"error": "session not open"})
+		return
+	}
+
+	// Body is already capped by http.MaxBytesReader at the route layer.
+	buf, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "chunk too large"})
+		return
+	}
+	n := int64(len(buf))
+	if n == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "empty body"})
+		return
+	}
+	if offset+n > s.Size {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "chunk exceeds declared size"})
+		return
+	}
+
+	if err := storage.WritePartialAt(id, offset, buf); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "write failed"})
+		return
+	}
+
+	newRanges := models.AddRange(s.ReceivedRanges, offset, offset+n)
+	if _, err := models.UpdateReceivedRanges(id, newRanges); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "range update failed"})
+		return
+	}
+
+	c.JSON(http.StatusOK, putChunkResp{ReceivedBytes: models.ReceivedBytes(newRanges)})
 }
