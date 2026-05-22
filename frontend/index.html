@@ -2790,10 +2790,20 @@
                 // Re-upload game file if selected
                 const fileInput = document.getElementById('edit-game-file');
                 if (fileInput?.files?.length > 0) {
-                    const formData = new FormData();
-                    formData.append('game_file', fileInput.files[0]);
-                    const res = await fetch('/api/games/' + id + '/reupload', { method: 'POST', body: formData, credentials: 'same-origin' });
-                    if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'File upload failed'); }
+                    const file = fileInput.files[0];
+                    if (file.size > CHUNKED_THRESHOLD) {
+                        showUploadProgress(0);
+                        await uploadGameChunked(
+                            file,
+                            { kind: 'reupload', gameId: id },
+                            p => showUploadProgress(p)
+                        );
+                    } else {
+                        const formData = new FormData();
+                        formData.append('game_file', file);
+                        const res = await fetch('/api/games/' + id + '/reupload', { method: 'POST', body: formData, credentials: 'same-origin' });
+                        if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'File upload failed'); }
+                    }
                 }
                 // Upload new cover if selected
                 const coverInput = document.getElementById('edit-game-cover');
