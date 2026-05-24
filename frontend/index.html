@@ -1302,9 +1302,14 @@
         }
 
         function editList(id, name, isPublic, desc) {
+            // name/desc arrive as raw user input (the onclick jsEsc round-trip
+            // gives us the literal string). showModal writes the html via
+            // innerHTML, so we must HTML-escape both before concatenating into
+            // attribute values — otherwise a name like '"><img onerror=...>'
+            // breaks out of value="" and injects markup.
             showModal('Edit List',
-                '<div class="form-group"><label class="form-label">Name</label><input type="text" class="form-input" id="edit-list-name" value="' + name + '"></div>' +
-                '<div class="form-group"><label class="form-label">Description</label><input type="text" class="form-input" id="edit-list-desc" value="' + desc + '"></div>' +
+                '<div class="form-group"><label class="form-label">Name</label><input type="text" class="form-input" id="edit-list-name" value="' + esc(name) + '"></div>' +
+                '<div class="form-group"><label class="form-label">Description</label><input type="text" class="form-input" id="edit-list-desc" value="' + esc(desc) + '"></div>' +
                 '<div class="form-group"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--text-secondary);"><input type="checkbox" id="edit-list-public"' + (isPublic ? ' checked' : '') + ' style="width:16px;height:16px;"> Make public (anyone can view)</label></div>',
                 async () => {
                     try {
@@ -3069,7 +3074,7 @@
         }
 
         async function revokeAPIKey(id, name) {
-            showModal('Revoke API Key', 'Revoke <strong>' + name + '</strong>? Any scripts using this key will stop working immediately.', async () => {
+            showModal('Revoke API Key', 'Revoke <strong>' + escapeHtml(name) + '</strong>? Any scripts using this key will stop working immediately.', async () => {
                 try { await api('/api-keys/' + id, { method: 'DELETE' }); closeModal(); toast('Key revoked.', 'info'); loadAPIKeys(); } catch (e) { toast(e.message, 'error'); closeModal(); }
             });
         }
@@ -3414,12 +3419,12 @@
         }
 
         async function adminDeleteUser(id, name) {
-            showModal('Delete User', 'Delete user "' + name + '" and all their data?', async () => {
+            showModal('Delete User', 'Delete user "' + escapeHtml(name) + '" and all their data?', async () => {
                 try { await api('/admin/users/' + id, { method: 'DELETE' }); closeModal(); toast('User deleted.', 'info'); loadAdmin(); } catch (e) { toast(e.message, 'error'); closeModal(); }
             });
         }
         async function adminDeleteGameA(id, title) {
-            showModal('Delete Game', 'Delete "' + title + '"?', async () => {
+            showModal('Delete Game', 'Delete "' + escapeHtml(title) + '"?', async () => {
                 try { await api('/admin/games/' + id, { method: 'DELETE' }); closeModal(); toast('Game deleted.', 'info'); loadAdmin(); } catch (e) { toast(e.message, 'error'); closeModal(); }
             });
         }
