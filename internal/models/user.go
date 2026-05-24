@@ -160,7 +160,7 @@ func (u *User) Update(username, bio, avatarURL, bannerURL, themeColor string, li
 // a DB compromise (backup leak, SQL injection elsewhere, file-system access)
 // does NOT immediately hand attackers active sessions.
 
-func hashSessionToken(token string) string {
+func HashSessionToken(token string) string {
 	h := sha256.Sum256([]byte(token))
 	return hex.EncodeToString(h[:])
 }
@@ -174,7 +174,7 @@ func CreateSession(userID string) (string, error) {
 	expires := time.Now().Add(30 * 24 * time.Hour) // 30 days
 	_, err := storage.DB.Exec(
 		`INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)`,
-		hashSessionToken(token), userID, expires,
+		HashSessionToken(token), userID, expires,
 	)
 	return token, err
 }
@@ -183,7 +183,7 @@ func GetUserBySession(token string) (*User, error) {
 	var userID string
 	err := storage.DB.QueryRow(
 		`SELECT user_id FROM sessions WHERE token = ? AND expires_at > datetime('now')`,
-		hashSessionToken(token),
+		HashSessionToken(token),
 	).Scan(&userID)
 	if err != nil {
 		return nil, err
@@ -192,7 +192,7 @@ func GetUserBySession(token string) (*User, error) {
 }
 
 func DeleteSession(token string) error {
-	_, err := storage.DB.Exec(`DELETE FROM sessions WHERE token = ?`, hashSessionToken(token))
+	_, err := storage.DB.Exec(`DELETE FROM sessions WHERE token = ?`, HashSessionToken(token))
 	return err
 }
 

@@ -124,10 +124,13 @@ func ChangePassword(c *gin.Context) {
 		return
 	}
 
-	// Invalidate all OTHER sessions (keep the current one alive so user stays logged in)
+	// Invalidate all OTHER sessions (keep the current one alive so user stays logged in).
+	// The sessions table stores SHA-256 hashes of tokens, not the raw values;
+	// compare hashes, not the raw cookie, otherwise the != never matches and
+	// we delete EVERY session (including the one we're trying to preserve).
 	currentToken, _ := c.Cookie("session")
 	if currentToken != "" {
-		storage.DB.Exec(`DELETE FROM sessions WHERE user_id = ? AND token != ?`, user.ID, currentToken)
+		storage.DB.Exec(`DELETE FROM sessions WHERE user_id = ? AND token != ?`, user.ID, models.HashSessionToken(currentToken))
 	} else {
 		storage.DB.Exec(`DELETE FROM sessions WHERE user_id = ?`, user.ID)
 	}
