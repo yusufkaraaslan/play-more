@@ -265,9 +265,9 @@ func UpdateGame(c *gin.Context) {
 	}
 
 	var input struct {
-		Title       string   `json:"title"`
-		Genre       string   `json:"genre"`
-		Description string   `json:"description"`
+		Title       string   `json:"title" binding:"max=120"`
+		Genre       string   `json:"genre" binding:"max=40"`
+		Description string   `json:"description" binding:"max=10000"`
 		Price       float64  `json:"price"`
 		Discount    *int     `json:"discount"`
 		Tags        []string `json:"tags"`

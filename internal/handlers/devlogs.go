@@ -58,8 +58,8 @@ func ListDevlogs(c *gin.Context) {
 }
 
 type devlogInput struct {
-	Title   string `json:"title" binding:"required"`
-	Content string `json:"content" binding:"required"`
+	Title   string `json:"title" binding:"required,max=200"`
+	Content string `json:"content" binding:"required,max=20000"`
 }
 
 func CreateDevlog(c *gin.Context) {

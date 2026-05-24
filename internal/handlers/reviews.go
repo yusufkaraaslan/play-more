@@ -34,7 +34,7 @@ func ListReviews(c *gin.Context) {
 
 type reviewInput struct {
 	Rating int    `json:"rating" binding:"required,min=1,max=5"`
-	Text   string `json:"text" binding:"required,min=1"`
+	Text   string `json:"text" binding:"required,min=1,max=5000"`
 }
 
 func CreateReview(c *gin.Context) {

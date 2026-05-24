@@ -82,7 +82,7 @@ func ListComments(c *gin.Context) {
 }
 
 type commentInput struct {
-	Text     string `json:"text" binding:"required,min=1"`
+	Text     string `json:"text" binding:"required,min=1,max=2000"`
 	ParentID string `json:"parent_id"`
 }
 

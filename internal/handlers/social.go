@@ -234,8 +234,8 @@ func UpdateCollection(c *gin.Context) {
 }
 
 type collectionInput struct {
-	Name        string `json:"name" binding:"required"`
-	Description string `json:"description"`
+	Name        string `json:"name" binding:"required,max=100"`
+	Description string `json:"description" binding:"max=1000"`
 	IsPublic    bool   `json:"is_public"`
 }
 
