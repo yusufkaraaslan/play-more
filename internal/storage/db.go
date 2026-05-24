@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	_ "modernc.org/sqlite"
 )
@@ -108,9 +109,32 @@ func migrate() error {
 		`CREATE INDEX IF NOT EXISTS idx_upload_sessions_expires ON upload_sessions(expires_at)`,
 	}
 	for _, m := range migrations {
-		DB.Exec(m) // ignore errors (column already exists)
+		if _, err := DB.Exec(m); err != nil {
+			// Idempotent migrations re-running over an established DB naturally
+			// produce these two errors — that's expected, swallow them silently.
+			if isIdempotentMigrationError(err) {
+				continue
+			}
+			// Anything else (disk full, locked table, syntax error in a new
+			// migration, FK violation) is a real failure. Surface it so a
+			// botched deploy doesn't silently leave the DB in an undefined state.
+			return fmt.Errorf("migration failed: %w (sql=%q)", err, m)
+		}
 	}
 	return nil
+}
+
+// isIdempotentMigrationError is true for the specific sqlite errors that
+// CREATE-IF-NOT-EXISTS / ADD-COLUMN-already-present migrations produce
+// when re-run against a DB that already has the change. Anything else
+// is a real problem that should not be silently swallowed.
+func isIdempotentMigrationError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "duplicate column") ||
+		strings.Contains(msg, "already exists")
 }
 
 const schema = `
