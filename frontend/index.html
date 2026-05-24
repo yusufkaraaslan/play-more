@@ -1267,7 +1267,7 @@
                 // User's own collection
                 toolbar.innerHTML = '<h2>' + escapeHtml(col.name) + '</h2><span class="lib-count-total">' + (col.game_ids||[]).length + ' games</span>' +
                     '<div style="margin-left:auto;display:flex;gap:6px;">' +
-                    '<button class="btn-secondary" style="padding:4px 12px;font-size:11px;" onclick="editList(\'' + esc(col.id) + '\',\'' + esc(col.name) + '\',' + col.is_public + ',\'' + esc(col.description || '') + '\')">Edit</button>' +
+                    '<button class="btn-secondary" style="padding:4px 12px;font-size:11px;" onclick="editList(\'' + jsEsc(col.id) + '\',\'' + jsEsc(col.name) + '\',' + col.is_public + ',\'' + jsEsc(col.description || '') + '\')">Edit</button>' +
                     '<button class="btn-secondary" style="padding:4px 12px;font-size:11px;" onclick="copyListLink(\'' + col.id + '\')">Share</button>' +
                     '<button class="btn-secondary" style="padding:4px 12px;font-size:11px;color:var(--danger);" onclick="deleteCollection(\'' + col.id + '\')">Delete</button></div>';
                 // Resolve games
@@ -1335,7 +1335,7 @@
                 '<div class="game-card-title">' + escapeHtml(g.title) + '</div>' +
                 '<div class="game-card-meta">' + escapeHtml(g.genre) + ' · ' + (g.play_count||0) + ' plays · ' + ((g.avg_rating||0) > 0 ? '★ ' + g.avg_rating.toFixed(1) : '') + '</div>' +
                 '<div class="game-card-footer">' +
-                '<button class="btn-accent" style="padding:5px 15px;font-size:12px;width:auto;" onclick="event.stopPropagation();playGame(\'' + esc(g.id) + '\',\'' + esc(g.entry_file) + '\')">Play</button>' +
+                '<button class="btn-accent" style="padding:5px 15px;font-size:12px;width:auto;" onclick="event.stopPropagation();playGame(\'' + jsEsc(g.id) + '\',\'' + jsEsc(g.entry_file) + '\')">Play</button>' +
                 '<button class="btn-secondary" style="padding:5px 10px;font-size:11px;" onclick="event.stopPropagation();removeFromLib(\'' + g.id + '\')">Remove</button>' +
                 '</div></div></div>';
         }
@@ -1554,6 +1554,25 @@
         // and Settings page (navigate('settings')) — no separate profile editor needed
 
         function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+        // jsEsc escapes a string for safe embedding INSIDE a single-quoted
+        // JS string that itself sits INSIDE an HTML attribute (e.g.
+        //     onclick="fn('<jsEsc-output>')").
+        // The HTML attribute parser decodes entities BEFORE the JS interpreter
+        // runs, so esc()'s &#39; turns back into ' and breaks out of the JS
+        // string — this is the real DOM-XSS path that survived the &#39;
+        // encoding. Use backslash escapes that survive both passes.
+        function jsEsc(s) {
+            return String(s)
+                .replace(/\\/g, '\\\\')
+                .replace(/'/g, "\\'")
+                .replace(/\r/g, '\\r')
+                .replace(/\n/g, '\\n')
+                .replace(/\u2028/g, '\\u2028')
+                .replace(/\u2029/g, '\\u2029')
+                .replace(/</g, '\\x3c')
+                .replace(/>/g, '\\x3e')
+                .replace(/&/g, '\\x26');
+        }
         function avatarUrl(u) {
             if (u.avatar_url) return esc(u.avatar_url);
             const name = u.username || u.name || 'user';
@@ -1758,7 +1777,7 @@
                 if (game.discount > 0) { html += '<span class="purchase-discount">-' + game.discount + '%</span><span class="purchase-original" style="text-decoration:line-through;color:var(--text-secondary);font-size:13px;">$' + game.price.toFixed(2) + '</span>'; }
                 html += '<span class="purchase-final">' + (game.price === 0 ? 'Free to Play' : '$' + (game.price * (1 - game.discount/100)).toFixed(2)) + '</span></div>';
                 html += '<div class="purchase-buttons">';
-                html += '<button class="btn-primary" onclick="playGame(\'' + esc(game.id) + '\',\'' + esc(game.entry_file) + '\')">Play Now</button>';
+                html += '<button class="btn-primary" onclick="playGame(\'' + jsEsc(game.id) + '\',\'' + jsEsc(game.entry_file) + '\')">Play Now</button>';
                 if (currentUser) {
                     html += '<button class="btn-secondary" id="lib-btn-' + game.id + '" onclick="toggleLib(\'' + game.id + '\')">Add to Library</button>';
                     html += '<button class="btn-wishlist" id="wish-btn-' + game.id + '" onclick="toggleWish(\'' + game.id + '\')">Add to Wishlist</button>';
@@ -2634,7 +2653,7 @@
                         '<button class="dash-btn dash-btn-edit" onclick="showGameDetail(\'' + g.id + '\')">View</button>' +
                         '<button class="dash-btn dash-btn-edit" onclick="showAnalytics(\'' + g.id + '\')">Analytics</button>' +
                         '<button class="dash-btn dash-btn-edit" onclick="editGame(\'' + g.id + '\')">Edit</button>' +
-                        '<button class="dash-btn dash-btn-delete" onclick="deleteGame(\'' + esc(g.id) + '\',\'' + esc(g.title) + '\')">Delete</button></div></div>';
+                        '<button class="dash-btn dash-btn-delete" onclick="deleteGame(\'' + jsEsc(g.id) + '\',\'' + jsEsc(g.title) + '\')">Delete</button></div></div>';
                 }).join('');
                 container.innerHTML = html;
             } catch (e) { console.error('Dashboard error:', e); }
@@ -3023,7 +3042,7 @@
                     return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border-color);">' +
                         '<div><strong>' + escapeHtml(k.name) + '</strong>' +
                         '<div style="font-size:11px;color:var(--text-secondary);margin-top:2px;"><code>' + escapeHtml(k.key_prefix) + '...</code> · ' + escapeHtml(k.scopes) + ' · ' + lastUsed + '</div></div>' +
-                        '<button class="btn-secondary" style="padding:3px 10px;font-size:11px;color:var(--danger);" onclick="revokeAPIKey(\'' + esc(k.id) + '\',\'' + esc(k.name) + '\')">Revoke</button></div>';
+                        '<button class="btn-secondary" style="padding:3px 10px;font-size:11px;color:var(--danger);" onclick="revokeAPIKey(\'' + jsEsc(k.id) + '\',\'' + jsEsc(k.name) + '\')">Revoke</button></div>';
                 }).join('');
             } catch { el.innerHTML = '<span style="color:var(--danger);">Failed to load keys.</span>'; }
         }
@@ -3265,7 +3284,7 @@
                         html += '<div class="game-card-title">' + escapeHtml(u.username) + '</div>';
                         html += '<div class="dashboard-stats"><span>' + escapeHtml(u.email) + '</span><span>' + u.game_count + ' games</span><span>' + u.review_count + ' reviews</span><span>' + escapeHtml(u.created_at) + '</span></div>';
                         html += '</div><div class="dashboard-actions">';
-                        html += '<button class="dash-btn dash-btn-delete" onclick="adminDeleteUser(\'' + esc(u.id) + '\',\'' + esc(u.username) + '\')">Delete</button></div></div>';
+                        html += '<button class="dash-btn dash-btn-delete" onclick="adminDeleteUser(\'' + jsEsc(u.id) + '\',\'' + jsEsc(u.username) + '\')">Delete</button></div></div>';
                     });
                 } else if (adminTab === 'games') {
                     const games = await api('/admin/games');
@@ -3275,7 +3294,7 @@
                         html += '<div class="dashboard-stats"><span>by ' + escapeHtml(g.developer) + '</span><span>' + escapeHtml(g.genre) + '</span><span>' + g.review_count + ' reviews</span><span>' + (g.published ? 'Published' : 'Hidden') + '</span></div>';
                         html += '</div><div class="dashboard-actions">';
                         html += '<button class="dash-btn dash-btn-edit" onclick="adminTogglePublish(\'' + g.id + '\')">' + (g.published ? 'Hide' : 'Publish') + '</button>';
-                        html += '<button class="dash-btn dash-btn-delete" onclick="adminDeleteGameA(\'' + esc(g.id) + '\',\'' + esc(g.title) + '\')">Delete</button></div></div>';
+                        html += '<button class="dash-btn dash-btn-delete" onclick="adminDeleteGameA(\'' + jsEsc(g.id) + '\',\'' + jsEsc(g.title) + '\')">Delete</button></div></div>';
                     });
                 }
                 container.innerHTML = html;
@@ -3597,7 +3616,7 @@
                     html += '<div style="flex:1;">';
                     html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">';
                     html += '<span style="font-size:11px;padding:2px 8px;background:rgba(102,192,244,0.15);color:var(--accent);border-radius:2px;">' + esc(feedLabels[item.type] || item.type) + '</span>';
-                    if (item.username) html += '<span style="font-size:12px;color:var(--text-secondary);">by <a style="color:var(--accent);cursor:pointer;" onclick="event.stopPropagation();showDeveloper(\'' + esc(item.username) + '\')">' + esc(item.username) + '</a></span>';
+                    if (item.username) html += '<span style="font-size:12px;color:var(--text-secondary);">by <a style="color:var(--accent);cursor:pointer;" onclick="event.stopPropagation();showDeveloper(\'' + jsEsc(item.username) + '\')">' + esc(item.username) + '</a></span>';
                     html += '</div>';
                     if (item.type === 'devlog') {
                         html += '<div style="font-size:15px;font-weight:bold;margin-bottom:4px;">' + esc(item.title) + '</div>';
