@@ -79,6 +79,16 @@ func InitUpload(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid filename"})
 		return
 	}
+	// Reject non-allowed extensions up front, before any disk allocation or
+	// chunk traffic — finalize would reject the same extensions anyway, but
+	// only after the client has wasted upload bandwidth + sparse-file slots.
+	lowerName := strings.ToLower(safe)
+	if !strings.HasSuffix(lowerName, ".zip") &&
+		!strings.HasSuffix(lowerName, ".html") &&
+		!strings.HasSuffix(lowerName, ".htm") {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "filename must end in .zip, .html, or .htm"})
+		return
+	}
 	if req.Size <= 0 || req.Size > storage.MaxFileSize {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "size out of range"})
 		return
