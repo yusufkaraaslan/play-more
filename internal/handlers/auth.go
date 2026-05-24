@@ -393,12 +393,22 @@ func ResetPassword(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "token expired"})
 		return
 	}
-	user, err := models.GetUserByID(userID)
-	if err != nil {
+	if _, err := models.GetUserByID(userID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "user not found"})
 		return
 	}
-	if err := user.SetPassword(input.Password); err != nil {
+	// Hash the new password INSIDE the tx so a Commit failure rolls back
+	// the password update too. Previously SetPassword used storage.DB
+	// directly, so the password was durable even when the rest of the
+	// reset (token delete, session/key invalidation) was rolled back —
+	// inverted-state risk: password changed but reset token still valid
+	// and old sessions still alive.
+	hash, err := bcrypt.GenerateFromPassword([]byte(input.Password), models.BcryptCost)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to hash password"})
+		return
+	}
+	if _, err := tx.Exec(`UPDATE users SET password = ? WHERE id = ?`, string(hash), userID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to set password"})
 		return
 	}
@@ -410,6 +420,11 @@ func ResetPassword(c *gin.Context) {
 	tx.Exec(`DELETE FROM api_keys WHERE user_id = ?`, userID)
 	if err := tx.Commit(); err != nil {
 		log.Printf("reset-password: failed to commit: %v", err)
+		// Tx auto-rolls back on the deferred Rollback. Return 500 so the
+		// client knows to retry — otherwise they'd see "success" while
+		// the password change was actually rolled back.
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to commit password reset"})
+		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "password reset successfully"})
 }
