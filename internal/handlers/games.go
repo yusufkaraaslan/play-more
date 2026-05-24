@@ -287,6 +287,13 @@ func UpdateGame(c *gin.Context) {
 		return
 	}
 
+	// Price must be non-negative — negative prices break checkout math and
+	// the storefront UI. Clamp rather than reject so the rest of the update
+	// still applies; a client sending a bad value gets the field zeroed.
+	if input.Price < 0 {
+		input.Price = 0
+	}
+
 	if err := game.Update(input.Title, input.Genre, input.Description, input.Price, input.Tags, input.IsWebGPU); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update"})
 		return
@@ -311,7 +318,16 @@ func UpdateGame(c *gin.Context) {
 		storage.DB.Exec(`UPDATE games SET video_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, *input.VideoURL, game.ID)
 	}
 	if input.Discount != nil {
-		storage.DB.Exec(`UPDATE games SET discount = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, *input.Discount, game.ID)
+		// Discount is a percent — clamp to [0, 100]. Without this a client
+		// could store "999% off" and break price-display math, or "-50%"
+		// to inflate the price shown.
+		d := *input.Discount
+		if d < 0 {
+			d = 0
+		} else if d > 100 {
+			d = 100
+		}
+		storage.DB.Exec(`UPDATE games SET discount = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, d, game.ID)
 	}
 	if input.ThemeColor != nil {
 		// Validate hex color — flows into style="" attributes on the game page.
