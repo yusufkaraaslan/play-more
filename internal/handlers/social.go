@@ -307,6 +307,13 @@ func AddToCollection(c *gin.Context) {
 			return
 		}
 	}
+	// Cap collection size at 100. GetCollection does N+1 queries (one per game),
+	// so an unbounded collection turns viewing into a server-side DoS.
+	const maxCollectionSize = 100
+	if len(gameIDs) >= maxCollectionSize {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "collection is full (max 100 games)"})
+		return
+	}
 	gameIDs = append(gameIDs, input.GameID)
 	updated, _ := json.Marshal(gameIDs)
 	storage.DB.Exec(`UPDATE collections SET game_ids = ? WHERE id = ?`, string(updated), colID)
