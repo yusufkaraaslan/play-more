@@ -8,6 +8,7 @@ import (
 	_ "image/jpeg"
 	_ "image/png"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -90,7 +91,12 @@ func UploadImage(c *gin.Context) {
 
 	data, ext, err := ValidateImageBytes(file, declaredExt, maxImageSize)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		// Log the raw error server-side for debugging, return a generic
+		// user-facing message. ValidateImageBytes' own errors are safe
+		// strings, but io.ReadAll on a MaxBytesReader can produce errors
+		// that may include internal state — don't pass through verbatim.
+		log.Printf("UploadImage validate failed: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid image"})
 		return
 	}
 
