@@ -29,13 +29,16 @@ func GetFeed(c *gin.Context) {
 
 	items := []FeedItem{}
 
-	// 1. Devlogs from games by followed developers
+	// 1. Devlogs from games by followed developers.
+	// Filter g.published = 1 — a devlog about an unpublished game shouldn't
+	// surface its title/cover to followers before the game itself is public.
 	rows1, err := storage.DB.Query(
 		`SELECT 'devlog', d.title, d.content, d.game_id, g.title, g.cover_path, u.username, u.avatar_url, d.created_at
 		 FROM devlogs d
 		 JOIN games g ON d.game_id = g.id
 		 JOIN users u ON d.user_id = u.id
 		 WHERE d.user_id IN (SELECT followed_id FROM follows WHERE follower_id = ?)
+		   AND g.published = 1
 		 ORDER BY d.created_at DESC LIMIT 10`, user.ID,
 	)
 	if err == nil {
@@ -65,7 +68,9 @@ func GetFeed(c *gin.Context) {
 		}
 	}
 
-	// 3. New reviews on games you own
+	// 3. New reviews on games you own.
+	// Filter g.published = 1 — defensive: a review on a game that got
+	// unpublished after the fact shouldn't keep surfacing in feeds.
 	rows3, err := storage.DB.Query(
 		`SELECT 'review', r.text, '', r.game_id, g.title, g.cover_path, u.username, u.avatar_url, r.created_at
 		 FROM reviews r
@@ -73,6 +78,7 @@ func GetFeed(c *gin.Context) {
 		 JOIN users u ON r.user_id = u.id
 		 WHERE r.game_id IN (SELECT game_id FROM library WHERE user_id = ?)
 		   AND r.user_id != ?
+		   AND g.published = 1
 		 ORDER BY r.created_at DESC LIMIT 10`, user.ID, user.ID,
 	)
 	if err == nil {
@@ -84,13 +90,18 @@ func GetFeed(c *gin.Context) {
 		}
 	}
 
-	// 4. Activity from followed developers (uploads, plays)
+	// 4. Activity from followed developers (uploads, plays).
+	// Filter out activity rows tied to unpublished games — an "uploaded
+	// Secret Project X" line right after the upload (before publication)
+	// leaks the title to followers. Activity rows with NULL game_id (e.g.
+	// follows) pass through via the LEFT JOIN + IS NULL check.
 	rows4, err := storage.DB.Query(
 		`SELECT a.type, a.detail, '', COALESCE(a.game_id,''), COALESCE(g.title,''), COALESCE(g.cover_path,''), u.username, u.avatar_url, a.created_at
 		 FROM activity a
 		 JOIN users u ON a.user_id = u.id
 		 LEFT JOIN games g ON a.game_id = g.id
 		 WHERE a.user_id IN (SELECT followed_id FROM follows WHERE follower_id = ?)
+		   AND (g.id IS NULL OR g.published = 1)
 		 ORDER BY a.created_at DESC LIMIT 10`, user.ID,
 	)
 	if err == nil {
