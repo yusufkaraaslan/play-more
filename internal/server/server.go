@@ -161,6 +161,12 @@ func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxi
 
 	// API routes
 	api := r.Group("/api")
+	// Global per-IP rate limit on the entire /api surface — catches attackers
+	// who rotate between endpoints to dodge per-route limits. Generous enough
+	// (600/5min ≈ 2 req/sec sustained) that normal SPA usage doesn't trip it.
+	// Per-route limits stack on top of this and remain the tighter constraint
+	// for specific actions (login, upload, etc.).
+	api.Use(middleware.GlobalRateLimit(600, 300))
 	api.Use(middleware.AuthOptional())
 	// CSRF after auth so we can check auth_method (API keys skip CSRF)
 	api.Use(middleware.CSRFProtect())

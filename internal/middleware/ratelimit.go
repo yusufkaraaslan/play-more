@@ -102,6 +102,26 @@ func AllowByKey(key string, maxRequests int, windowSeconds int) bool {
 	return allowKey(key, maxRequests, time.Duration(windowSeconds)*time.Second)
 }
 
+// GlobalRateLimit returns middleware that limits TOTAL requests per IP across
+// every endpoint, regardless of which route is being hit. Acts as a safety
+// net against attackers rotating across endpoints to dodge per-path limits.
+//
+// The key is just the client IP (no FullPath suffix), so it accumulates hits
+// from every route the IP touches. Use a generous limit — this should only
+// trip on clearly abusive traffic, not normal browsing.
+func GlobalRateLimit(maxRequests int, windowSeconds int) gin.HandlerFunc {
+	window := time.Duration(windowSeconds) * time.Second
+	return func(c *gin.Context) {
+		key := "global:" + RealClientIP(c)
+		if !allowKey(key, maxRequests, window) {
+			c.JSON(http.StatusTooManyRequests, gin.H{"error": "too many requests, please slow down"})
+			c.Abort()
+			return
+		}
+		c.Next()
+	}
+}
+
 // Cleanup removes stale entries periodically. Call once at startup.
 func StartRateLimitCleanup() {
 	go func() {
