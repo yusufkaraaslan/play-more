@@ -61,7 +61,7 @@ No walled gardens. No algorithm feeds. No 30% cut. Just your games, your communi
 
 - **Customizable Storefront** — Drag-and-drop page builder with themes, banners, and custom CSS
 - **Game Upload** — Drag-and-drop `.html` or `.zip`, auto-extracts, detects entry point
-- **Chunked uploads** — ship games up to 500 MiB behind Cloudflare Free/Pro or any 9 MiB+ body cap.
+- **Chunked Uploads** — Ship games up to 500 MiB with auto-resume on flaky connections. Works behind Cloudflare and other reverse proxies.
 - **WebGPU Badge** — Automatic capability detection and badge display per game
 - **Reviews & Devlogs** — Full content layer with comments
 - **Analytics Dashboard** — Views, plays, ratings, referrers, daily breakdown
