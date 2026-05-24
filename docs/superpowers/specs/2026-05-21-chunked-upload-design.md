@@ -118,7 +118,7 @@ CREATE INDEX IF NOT EXISTS idx_upload_sessions_expires ON upload_sessions(expire
   - `cancel`: 60/hr
 - **Size invariants** enforced on each PUT: `offset + len <= session.size`, `len <= chunk_size + headroom`, `session.size <= storage.MaxFileSize` (500 MiB) at init. Reject with 400/413; never silently resize.
 - **`sha256_expected`** optional on finalize. If present, server streams the partial file through `sha256.New()` and rejects on mismatch. If absent, server skips hashing entirely.
-- **Race protection on finalize**: `UPDATE upload_sessions SET status='finalizing' WHERE id=? AND status='open'`. Only the row that flipped wins; concurrent finalizes get 409.
+- **Race protection on finalize**: `UPDATE upload_sessions SET status='finalizing' WHERE id=? AND status='open'`. Only the row that flipped wins. In the narrow window before the winner deletes the session row, a concurrent finalize gets `409 Conflict`. After the winner deletes the row (which is the common case — finalize is fast), a concurrent finalize gets `404 Not Found`. Both signal "stop retrying" to the client.
 - **Cleanup on failure**: any finalize error path → row marked `failed`, partial file deleted, no game record created.
 - **`received_ranges` race**: per-session `sync.Mutex` keyed by `upload_id` (in-memory map) around the read-modify-write of the JSON column.
 
@@ -236,7 +236,7 @@ playmore has no automated test suite. The following 18 manual cases must pass be
 | 5 | Resume — SPA tab close                | Start 200 MiB upload, close tab at ~50%, reopen, click "Resume"                                | `GET /api/uploads/:id` returns partial `received_ranges`; only missing bytes sent.                          |
 | 6 | Resume — CLI Ctrl-C                   | Ctrl-C mid-upload, re-run `playmore-deploy push`                                               | CLI reads `UPLOAD_ID` from `.playmore`, calls status, resumes from missing offset.                          |
 | 7 | SHA mismatch                          | CLI: pass wrong `--sha256` or modify file between hash + upload                                | Finalize returns 400 `sha256 mismatch`. Session `failed`. Partial file deleted.                            |
-| 8 | Concurrent finalize                   | Two terminals POST finalize same `upload_id`                                                   | One returns `{game_id}`, the other 409. One `games` row created.                                            |
+| 8 | Concurrent finalize                   | Two terminals POST finalize same `upload_id`                                                   | One returns `{game_id}`. The other returns 409 (lost the open→finalizing CAS) or 404 (winner already deleted the row) — both signal "stop retrying". One `games` row created. |
 | 9 | Body cap                              | `curl PUT --data-binary @big.bin …/chunks?offset=0` where big=20 MiB                          | 413.                                                                                                       |
 | 10 | Offset overrun                        | PUT with `offset=499000000, total=500MiB`, body=10 MiB                                         | 400 `chunk exceeds declared size`. No write.                                                                |
 | 11 | Cross-user attempt                    | User A inits; User B `PUT chunks` with same upload_id                                          | 404 (existence-hiding). Nothing written.                                                                    |
