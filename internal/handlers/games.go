@@ -324,17 +324,26 @@ func UpdateGame(c *gin.Context) {
 		storage.DB.Exec(`UPDATE games SET header_image = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, safe, game.ID)
 	}
 	if input.CustomAbout != nil {
-		storage.DB.Exec(`UPDATE games SET custom_about = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, *input.CustomAbout, game.ID)
+		safe := SanitizePlain(*input.CustomAbout)
+		storage.DB.Exec(`UPDATE games SET custom_about = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, safe, game.ID)
 	}
 	if input.Features != nil {
-		featJSON, _ := json.Marshal(input.Features)
+		// Sanitize each feature string before serializing — they flow into the
+		// game-page features list which the SPA renders.
+		safe := make([]string, 0, len(input.Features))
+		for _, f := range input.Features {
+			safe = append(safe, SanitizePlain(f))
+		}
+		featJSON, _ := json.Marshal(safe)
 		storage.DB.Exec(`UPDATE games SET features = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, string(featJSON), game.ID)
 	}
 	if input.SysReqMin != nil {
-		storage.DB.Exec(`UPDATE games SET sys_req_min = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, *input.SysReqMin, game.ID)
+		safe := SanitizePlain(*input.SysReqMin)
+		storage.DB.Exec(`UPDATE games SET sys_req_min = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, safe, game.ID)
 	}
 	if input.SysReqRec != nil {
-		storage.DB.Exec(`UPDATE games SET sys_req_rec = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, *input.SysReqRec, game.ID)
+		safe := SanitizePlain(*input.SysReqRec)
+		storage.DB.Exec(`UPDATE games SET sys_req_rec = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, safe, game.ID)
 	}
 
 	// Re-fetch updated game
