@@ -23,23 +23,18 @@ if [ ! -f "$DB_FILE" ]; then
     exit 1
 fi
 
-# SQLite online backup (copies the DB safely even while in use)
+# SQLite online backup. The .backup command takes a consistent snapshot
+# that already incorporates any in-flight WAL contents — the resulting
+# .db file is fully self-contained and can be restored standalone. Do NOT
+# also copy the live WAL/SHM files: writes between the .backup snapshot
+# and the cp would yield a backup whose .db is consistent but whose
+# accompanying WAL is stale, causing replay corruption on restore.
 sqlite3 "$DB_FILE" ".backup '$BACKUP_FILE'"
-
-# Also backup WAL/shm if they exist
-if [ -f "$DATA_DIR/playmore.db-wal" ]; then
-    cp "$DATA_DIR/playmore.db-wal" "$BACKUP_DIR/playmore_$TIMESTAMP.db-wal"
-fi
-if [ -f "$DATA_DIR/playmore.db-shm" ]; then
-    cp "$DATA_DIR/playmore.db-shm" "$BACKUP_DIR/playmore_$TIMESTAMP.db-shm"
-fi
 
 # Encrypt if GPG recipient is configured
 if [ -n "$GPG_RECIPIENT" ] && command -v gpg &> /dev/null; then
     gpg --batch --yes --recipient "$GPG_RECIPIENT" --encrypt --output "$BACKUP_FILE.gpg" "$BACKUP_FILE"
     rm -f "$BACKUP_FILE"
-    [ -f "$BACKUP_DIR/playmore_$TIMESTAMP.db-wal" ] && rm -f "$BACKUP_DIR/playmore_$TIMESTAMP.db-wal"
-    [ -f "$BACKUP_DIR/playmore_$TIMESTAMP.db-shm" ] && rm -f "$BACKUP_DIR/playmore_$TIMESTAMP.db-shm"
     echo "Encrypted backup created: $BACKUP_FILE.gpg"
 else
     echo "Backup created: $BACKUP_FILE"
