@@ -246,6 +246,7 @@ type statusResp struct {
 	ReceivedRanges [][2]int64 `json:"received_ranges"`
 	ExpiresAt      time.Time  `json:"expires_at"`
 	Status         string     `json:"status"`
+	ChunkSize      int64      `json:"chunk_size"`
 }
 
 // GetUploadStatus handles GET /api/uploads/:upload_id.
@@ -276,6 +277,7 @@ func GetUploadStatus(c *gin.Context) {
 		ReceivedRanges: s.ReceivedRanges,
 		ExpiresAt:      s.ExpiresAt,
 		Status:         s.Status,
+		ChunkSize:      ChunkSize,
 	})
 }
 

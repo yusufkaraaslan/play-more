@@ -3823,7 +3823,7 @@
                         }
                         showUploadProgress(0);
                         try {
-                            const chunk_size = 8 * 1024 * 1024;
+                            const chunk_size = status.chunk_size || (8 * 1024 * 1024);
                             const toSend = missingRanges(status.received_ranges || [], file.size);
                             let sentBytes = (status.received_ranges || []).reduce((a, [s, e]) => a + Math.max(0, e - s), 0);
                             for (const [start, end] of toSend) {
