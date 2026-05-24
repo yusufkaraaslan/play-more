@@ -223,8 +223,17 @@ func PutChunk(c *gin.Context) {
 	}
 
 	newRanges := models.AddRange(s.ReceivedRanges, offset, offset+n)
-	if _, err := models.UpdateReceivedRanges(id, newRanges); err != nil {
+	rows, err := models.UpdateReceivedRanges(id, newRanges)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "range update failed"})
+		return
+	}
+	if rows == 0 {
+		// Session was deleted between GetUploadSession and UpdateReceivedRanges
+		// (GC sweep of an expired session, or a concurrent cancel). The bytes we
+		// wrote to the partial file are now orphaned and will be swept by the
+		// next GC pass. Tell the client this upload no longer exists.
+		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
 		return
 	}
 
