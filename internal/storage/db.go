@@ -18,12 +18,25 @@ func InitDB(dataDir string) error {
 
 	dbPath := filepath.Join(dataDir, "playmore.db")
 	var err error
-	DB, err = sql.Open("sqlite", dbPath+"?_journal_mode=WAL&_busy_timeout=5000")
+	// _pragma=foreign_keys(1) enables FK enforcement at the driver level so
+	// every ON DELETE CASCADE in the schema actually fires. SQLite defaults
+	// to OFF; without this, cascade clauses are dead code.
+	DB, err = sql.Open("sqlite", dbPath+"?_journal_mode=WAL&_busy_timeout=5000&_pragma=foreign_keys(1)")
 	if err != nil {
 		return fmt.Errorf("open db: %w", err)
 	}
 
 	DB.SetMaxOpenConns(1)
+
+	// Belt-and-suspenders: also issue the PRAGMA explicitly so we fail loud
+	// if the driver ever silently ignores the DSN parameter.
+	if _, err := DB.Exec(`PRAGMA foreign_keys = ON`); err != nil {
+		return fmt.Errorf("enable foreign_keys: %w", err)
+	}
+	var fkOn int
+	if err := DB.QueryRow(`PRAGMA foreign_keys`).Scan(&fkOn); err != nil || fkOn != 1 {
+		return fmt.Errorf("foreign_keys PRAGMA didn't stick (on=%d err=%v)", fkOn, err)
+	}
 
 	if err := migrate(); err != nil {
 		return fmt.Errorf("migrate: %w", err)
