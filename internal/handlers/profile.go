@@ -64,6 +64,11 @@ func UpdateProfile(c *gin.Context) {
 	}
 
 	input.Bio = SanitizePlain(input.Bio)
+	// Avatar/Banner URLs flow into <img src="..."> in the SPA. SanitizeWebURL
+	// strips javascript:/data:/vbscript: and other non-http(s) schemes so a
+	// malicious URL can't fire via image-error handlers or browser quirks.
+	input.AvatarURL = SanitizeWebURL(input.AvatarURL)
+	input.BannerURL = SanitizeWebURL(input.BannerURL)
 
 	autoplay := user.AutoplayMedia
 	if input.AutoplayMedia != nil {
