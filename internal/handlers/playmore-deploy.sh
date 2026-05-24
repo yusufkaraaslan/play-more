@@ -240,12 +240,7 @@ cmd_push() {
             # Cover image (if specified) — out-of-band after finalize
             if [[ -n "$cover" && -f "$cover" ]]; then
                 info "Uploading cover image..."
-                local cover_res cover_url
-                cover_res=$(api_call POST "/api/upload/image" -F "image=@$cover") || warn "cover upload failed"
-                cover_url=$(json_val "$cover_res" "url")
-                [[ -n "$cover_url" ]] && api_call PUT "/api/games/$GAME_ID" \
-                    -H "Content-Type: application/json" \
-                    -d "{\"cover_url\":\"$cover_url\"}" > /dev/null
+                api_call POST "/api/games/$GAME_ID/cover" -F "image=@$cover" > /dev/null || warn "cover upload failed"
             fi
         else
             # Existing single-shot new-game path (unchanged)

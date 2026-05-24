@@ -1404,19 +1404,13 @@
                     );
                     const gameId = finalized.game_id;
 
-                    // Out-of-band: cover image (PUT cover_url on the game).
+                    // Out-of-band: cover image (POST to /api/games/:id/cover).
                     const coverFile = document.getElementById('upload-cover').files[0];
                     if (coverFile) {
                         const coverFD = new FormData();
                         coverFD.append('image', coverFile);
-                        const coverRes = await fetch('/api/upload/image', { method: 'POST', body: coverFD, credentials: 'same-origin' });
-                        const coverData = await coverRes.json();
-                        if (coverRes.ok && coverData.url) {
-                            await api('/games/' + gameId, {
-                                method: 'PUT',
-                                body: JSON.stringify({ cover_url: coverData.url })
-                            });
-                        }
+                        const coverRes = await fetch('/api/games/' + gameId + '/cover', { method: 'POST', body: coverFD, credentials: 'same-origin' });
+                        if (!coverRes.ok) { const d = await coverRes.json().catch(() => ({})); throw new Error(d.error || 'Cover upload failed'); }
                     }
 
                     // Out-of-band: screenshots (POST to /api/games/:id/screenshots).
@@ -2809,10 +2803,9 @@
                 const coverInput = document.getElementById('edit-game-cover');
                 if (coverInput?.files?.length > 0) {
                     const formData = new FormData();
-                    formData.append('cover', coverInput.files[0]);
-                    formData.append('game_file', new Blob(), '');
-                    formData.append('title', document.getElementById('edit-game-title').value);
-                    formData.append('genre', document.getElementById('edit-game-genre').value);
+                    formData.append('image', coverInput.files[0]);
+                    const res = await fetch('/api/games/' + id + '/cover', { method: 'POST', body: formData, credentials: 'same-origin' });
+                    if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Cover upload failed'); }
                 }
                 // Upload new screenshots if selected
                 const ssInput = document.getElementById('edit-game-screenshots');

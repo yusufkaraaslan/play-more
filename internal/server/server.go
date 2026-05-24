@@ -185,6 +185,7 @@ func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxi
 		api.DELETE("/games/:id", middleware.AuthRequired(), handlers.DeleteGame)
 		api.POST("/games/:id/reupload", middleware.AuthRequired(), handlers.RequireVerifiedEmail(), middleware.RateLimit(10, 3600), limitBody(uploadCap), handlers.ReuploadGameFiles)
 		api.PUT("/games/:id/visibility", middleware.AuthRequired(), handlers.RequireVerifiedEmail(), handlers.ToggleVisibility)
+		api.POST("/games/:id/cover", middleware.AuthRequired(), handlers.RequireVerifiedEmail(), middleware.RateLimit(20, 3600), limitBody((5<<20)+(1<<20)), handlers.UpdateCoverImage)
 		api.POST("/games/:id/screenshots", middleware.AuthRequired(), handlers.RequireVerifiedEmail(), middleware.RateLimit(20, 3600), limitBody(uploadCap), handlers.ManageScreenshots)
 		api.DELETE("/games/:id/screenshots/:index", middleware.AuthRequired(), handlers.DeleteScreenshot)
 

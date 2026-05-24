@@ -373,6 +373,56 @@ func ToggleVisibility(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"published": input.Published})
 }
 
+// UpdateCoverImage replaces a game's cover image. Multipart form field "image"
+// is validated as a real image, saved as cover.<ext> in the game directory, and
+// game.cover_path is updated to /play/<game.ID>/cover.<ext>. Same storage layout
+// as the create-time multipart cover flow, so chunked-upload covers don't end up
+// in a separate /uploads/ tree.
+func UpdateCoverImage(c *gin.Context) {
+	user := middleware.GetUser(c)
+	if user == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "not authenticated"})
+		return
+	}
+	game, err := models.GetGameByID(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "game not found"})
+		return
+	}
+	if game.DeveloperID != user.ID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "not your game"})
+		return
+	}
+
+	file, header, err := c.Request.FormFile("image")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "image file required"})
+		return
+	}
+	defer file.Close()
+	if header.Size > maxImageSize {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "image must be under 5MB"})
+		return
+	}
+	declared := strings.ToLower(filepath.Ext(header.Filename))
+	data, ext, vErr := ValidateImageBytes(file, declared, maxImageSize)
+	if vErr != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": vErr.Error()})
+		return
+	}
+	coverName := "cover" + ext
+	if err := storage.SaveGameFile(game.ID, coverName, data); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save cover"})
+		return
+	}
+	coverPath := "/play/" + game.ID + "/" + coverName
+	if err := game.UpdateCover(coverPath); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update cover"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"cover_path": coverPath})
+}
+
 // ManageScreenshots handles adding/removing screenshots for an existing game.
 func ManageScreenshots(c *gin.Context) {
 	user := middleware.GetUser(c)
