@@ -181,18 +181,18 @@ func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxi
 		api.GET("/games", handlers.ListGames)
 		api.GET("/games/:id", handlers.GetGame)
 		api.POST("/games", middleware.AuthRequired(), handlers.RequireVerifiedEmail(), middleware.RateLimit(10, 3600), limitBody(uploadCap), handlers.UploadGame)
-		api.PUT("/games/:id", middleware.AuthRequired(), handlers.RequireVerifiedEmail(), handlers.UpdateGame)
-		api.DELETE("/games/:id", middleware.AuthRequired(), handlers.DeleteGame)
+		api.PUT("/games/:id", middleware.AuthRequired(), handlers.RequireVerifiedEmail(), middleware.RateLimit(60, 3600), handlers.UpdateGame)
+		api.DELETE("/games/:id", middleware.AuthRequired(), middleware.RateLimit(10, 3600), handlers.DeleteGame)
 		api.POST("/games/:id/reupload", middleware.AuthRequired(), handlers.RequireVerifiedEmail(), middleware.RateLimit(10, 3600), limitBody(uploadCap), handlers.ReuploadGameFiles)
-		api.PUT("/games/:id/visibility", middleware.AuthRequired(), handlers.RequireVerifiedEmail(), handlers.ToggleVisibility)
+		api.PUT("/games/:id/visibility", middleware.AuthRequired(), handlers.RequireVerifiedEmail(), middleware.RateLimit(30, 3600), handlers.ToggleVisibility)
 		api.POST("/games/:id/cover", middleware.AuthRequired(), handlers.RequireVerifiedEmail(), middleware.RateLimit(20, 3600), limitBody((5<<20)+(1<<20)), handlers.UpdateCoverImage)
 		api.POST("/games/:id/screenshots", middleware.AuthRequired(), handlers.RequireVerifiedEmail(), middleware.RateLimit(20, 3600), limitBody(uploadCap), handlers.ManageScreenshots)
-		api.DELETE("/games/:id/screenshots/:index", middleware.AuthRequired(), handlers.DeleteScreenshot)
+		api.DELETE("/games/:id/screenshots/:index", middleware.AuthRequired(), middleware.RateLimit(60, 3600), handlers.DeleteScreenshot)
 
 		// Reviews
 		api.GET("/games/:id/reviews", handlers.ListReviews)
 		api.POST("/games/:id/reviews", middleware.AuthRequired(), handlers.RequireVerifiedEmail(), middleware.RateLimit(20, 3600), handlers.CreateReview)
-		api.DELETE("/reviews/:id", middleware.AuthRequired(), handlers.DeleteReview)
+		api.DELETE("/reviews/:id", middleware.AuthRequired(), middleware.RateLimit(30, 3600), handlers.DeleteReview)
 
 		// Library
 		api.GET("/library", middleware.AuthRequired(), handlers.GetLibrary)
@@ -238,12 +238,12 @@ func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxi
 		// Devlogs
 		api.GET("/games/:id/devlogs", handlers.ListDevlogs)
 		api.POST("/games/:id/devlogs", middleware.AuthRequired(), handlers.RequireVerifiedEmail(), middleware.RateLimit(20, 3600), handlers.CreateDevlog)
-		api.DELETE("/devlogs/:id", middleware.AuthRequired(), handlers.DeleteDevlog)
+		api.DELETE("/devlogs/:id", middleware.AuthRequired(), middleware.RateLimit(30, 3600), handlers.DeleteDevlog)
 
 		// Comments on devlogs
 		api.GET("/devlogs/:id/comments", handlers.ListComments)
 		api.POST("/devlogs/:id/comments", middleware.AuthRequired(), handlers.RequireVerifiedEmail(), middleware.RateLimit(30, 3600), handlers.CreateComment)
-		api.DELETE("/comments/:id", middleware.AuthRequired(), handlers.DeleteComment)
+		api.DELETE("/comments/:id", middleware.AuthRequired(), middleware.RateLimit(60, 3600), handlers.DeleteComment)
 
 		// Follows
 		api.POST("/follow/:username", middleware.AuthRequired(), middleware.RateLimit(30, 3600), handlers.FollowDeveloper)
@@ -266,13 +266,13 @@ func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxi
 	admin := api.Group("/admin")
 	admin.Use(handlers.AdminRequired())
 	{
-		admin.GET("/stats", handlers.AdminStats)
-		admin.GET("/users", handlers.AdminListUsers)
+		admin.GET("/stats", middleware.RateLimit(120, 3600), handlers.AdminStats)
+		admin.GET("/users", middleware.RateLimit(120, 3600), handlers.AdminListUsers)
 		admin.DELETE("/users/:id", middleware.RateLimit(10, 3600), handlers.AdminDeleteUser)
-		admin.GET("/games", handlers.AdminListGames)
+		admin.GET("/games", middleware.RateLimit(120, 3600), handlers.AdminListGames)
 		admin.DELETE("/games/:id", middleware.RateLimit(10, 3600), handlers.AdminDeleteGame)
-		admin.PUT("/games/:id/publish", handlers.AdminTogglePublish)
-		admin.GET("/analytics", handlers.AdminSiteAnalytics)
+		admin.PUT("/games/:id/publish", middleware.RateLimit(30, 3600), handlers.AdminTogglePublish)
+		admin.GET("/analytics", middleware.RateLimit(120, 3600), handlers.AdminSiteAnalytics)
 	}
 
 	// Image uploads
@@ -317,7 +317,7 @@ func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxi
 	// API Keys
 	api.GET("/api-keys", middleware.AuthRequired(), handlers.ListAPIKeysHandler)
 	api.POST("/api-keys", middleware.AuthRequired(), middleware.RateLimit(10, 3600), handlers.CreateAPIKeyHandler)
-	api.DELETE("/api-keys/:id", middleware.AuthRequired(), handlers.DeleteAPIKeyHandler)
+	api.DELETE("/api-keys/:id", middleware.AuthRequired(), middleware.RateLimit(30, 3600), handlers.DeleteAPIKeyHandler)
 
 	// Self-hosted avatar generation
 	r.GET("/avatar/:username", middleware.RateLimit(120, 60), handlers.GetAvatar)
