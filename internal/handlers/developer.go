@@ -113,6 +113,11 @@ func UpdateDeveloperPage(c *gin.Context) {
 	}
 	input.Links = cleanLinks
 
+	// DisplayName flows into onclick handlers + page headings in the SPA.
+	// HTML-escape on the write path so a missed render-time escape can't
+	// become stored XSS.
+	input.DisplayName = SanitizePlain(input.DisplayName)
+
 	if err := models.UpsertDeveloperPage(
 		user.ID, input.DisplayName, input.BannerURL, input.ThemeColor, input.ThemePreset,
 		input.About, input.FontHeading, input.FontBody, input.CustomCSS, input.Links, input.FeaturedGames, input.PageLayout,
