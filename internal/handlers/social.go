@@ -168,13 +168,23 @@ func GetCollection(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "list not found"})
 		return
 	}
-	// Resolve game details
+	// Resolve game details. Skip unpublished games the viewer doesn't own —
+	// otherwise a developer could expose unreleased titles by sticking them
+	// in a public collection.
+	viewerID := ""
+	if user != nil {
+		viewerID = user.ID
+	}
 	games := []models.Game{}
 	for _, gid := range col.GameIDs {
 		g, err := models.GetGameByID(gid)
-		if err == nil {
-			games = append(games, *g)
+		if err != nil || g == nil {
+			continue
 		}
+		if !g.Published && g.DeveloperID != viewerID {
+			continue
+		}
+		games = append(games, *g)
 	}
 	c.JSON(http.StatusOK, gin.H{"collection": col, "games": games})
 }
