@@ -171,7 +171,11 @@ func CreateSession(userID string) (string, error) {
 		return "", err
 	}
 	token := hex.EncodeToString(b)
-	expires := time.Now().Add(30 * 24 * time.Hour) // 30 days
+	// Store expires_at in UTC. The comparison in GetUserBySession uses
+	// SQLite's datetime('now'), which is always UTC. Storing local-time
+	// breaks the comparison on any server with a non-zero timezone offset
+	// (sessions expire hours/days early or late depending on direction).
+	expires := time.Now().UTC().Add(30 * 24 * time.Hour) // 30 days
 	_, err := storage.DB.Exec(
 		`INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)`,
 		HashSessionToken(token), userID, expires,
