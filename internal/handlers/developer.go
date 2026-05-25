@@ -73,8 +73,8 @@ func UpdateDeveloperPage(c *gin.Context) {
 		input.FeaturedGames = []string{}
 	}
 
-	// Sanitize and limit about field (markdown, max 2000 chars)
-	input.About = SanitizePlain(input.About)
+	// About is stored raw (markdown); the frontend renders it via renderMarkdown().
+	// Limit to 2000 chars.
 	if len(input.About) > 2000 {
 		input.About = input.About[:2000]
 	}
@@ -113,11 +113,8 @@ func UpdateDeveloperPage(c *gin.Context) {
 	}
 	input.Links = cleanLinks
 
-	// DisplayName flows into onclick handlers + page headings in the SPA.
-	// HTML-escape on the write path so a missed render-time escape can't
-	// become stored XSS.
-	input.DisplayName = SanitizePlain(input.DisplayName)
-
+	// DisplayName is stored raw; the frontend escapeHtml()'s it at render time
+	// in page headings and elsewhere.
 	if err := models.UpsertDeveloperPage(
 		user.ID, input.DisplayName, input.BannerURL, input.ThemeColor, input.ThemePreset,
 		input.About, input.FontHeading, input.FontBody, input.CustomCSS, input.Links, input.FeaturedGames, input.PageLayout,

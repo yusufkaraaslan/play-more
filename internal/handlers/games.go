@@ -91,6 +91,9 @@ func UploadGame(c *gin.Context) {
 	genre := c.PostForm("genre")
 	description := c.PostForm("description")
 	price, _ := strconv.ParseFloat(c.DefaultPostForm("price", "0"), 64)
+	if price < 0 {
+		price = 0
+	}
 	tagsStr := c.PostForm("tags")
 	isWebGPU := c.PostForm("is_webgpu") == "true"
 
@@ -173,7 +176,12 @@ func UploadGame(c *gin.Context) {
 		entryFile = ef
 	} else if strings.HasSuffix(lowerName, ".html") || strings.HasSuffix(lowerName, ".htm") {
 		// Single HTML file is small enough to buffer
-		htmlData, _ := io.ReadAll(tmp)
+		htmlData, err := io.ReadAll(tmp)
+		if err != nil {
+			game.Delete()
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read file"})
+			return
+		}
 		if err := storage.SaveGameFile(game.ID, fileName, htmlData); err != nil {
 			game.Delete()
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save file"})
@@ -223,17 +231,26 @@ func UploadGame(c *gin.Context) {
 			screenshots = append(screenshots, "/play/"+game.ID+"/"+name)
 		}
 		if len(screenshots) > 0 {
-			ssJSON, _ := json.Marshal(screenshots)
-			storage.DB.Exec(`UPDATE games SET screenshots = ? WHERE id = ?`, string(ssJSON), game.ID)
+			ssJSON, err := json.Marshal(screenshots)
+			if err != nil {
+				log.Printf("json.Marshal screenshots failed: %v", err)
+			} else {
+				storage.DB.Exec(`UPDATE games SET screenshots = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, string(ssJSON), game.ID)
+			}
 		}
+
 	}
 
 	// Handle video URLs
 	videoURL := strings.TrimSpace(c.PostForm("video_url"))
 	if videoURL != "" && validateVideoURL(videoURL) {
 		videos := []string{videoURL}
-		videosJSON, _ := json.Marshal(videos)
-		storage.DB.Exec(`UPDATE games SET video_url = ?, videos = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, videoURL, string(videosJSON), game.ID)
+		videosJSON, err := json.Marshal(videos)
+		if err != nil {
+			log.Printf("json.Marshal videos failed: %v", err)
+		} else {
+			storage.DB.Exec(`UPDATE games SET video_url = ?, videos = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, videoURL, string(videosJSON), game.ID)
+		}
 	}
 
 	// Mark user as developer
@@ -308,12 +325,16 @@ func UpdateGame(c *gin.Context) {
 				filtered = append(filtered, v)
 			}
 		}
-		videosJSON, _ := json.Marshal(filtered)
-		videoURL := ""
-		if len(filtered) > 0 {
-			videoURL = filtered[0]
+		videosJSON, err := json.Marshal(filtered)
+		if err != nil {
+			log.Printf("json.Marshal videos failed: %v", err)
+		} else {
+			videoURL := ""
+			if len(filtered) > 0 {
+				videoURL = filtered[0]
+			}
+			storage.DB.Exec(`UPDATE games SET videos = ?, video_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, string(videosJSON), videoURL, game.ID)
 		}
-		storage.DB.Exec(`UPDATE games SET videos = ?, video_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, string(videosJSON), videoURL, game.ID)
 	} else if input.VideoURL != nil && validateVideoURL(*input.VideoURL) {
 		storage.DB.Exec(`UPDATE games SET video_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, *input.VideoURL, game.ID)
 	}
@@ -340,26 +361,24 @@ func UpdateGame(c *gin.Context) {
 		storage.DB.Exec(`UPDATE games SET header_image = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, safe, game.ID)
 	}
 	if input.CustomAbout != nil {
-		safe := SanitizePlain(*input.CustomAbout)
-		storage.DB.Exec(`UPDATE games SET custom_about = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, safe, game.ID)
+		// Stored raw; escaped at render time by the frontend's escapeHtml().
+		storage.DB.Exec(`UPDATE games SET custom_about = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, *input.CustomAbout, game.ID)
 	}
 	if input.Features != nil {
-		// Sanitize each feature string before serializing — they flow into the
-		// game-page features list which the SPA renders.
-		safe := make([]string, 0, len(input.Features))
-		for _, f := range input.Features {
-			safe = append(safe, SanitizePlain(f))
+		// Stored raw; each feature is escaped at render time by the frontend's escapeHtml().
+		featJSON, err := json.Marshal(input.Features)
+		if err != nil {
+			log.Printf("json.Marshal features failed: %v", err)
+		} else {
+			storage.DB.Exec(`UPDATE games SET features = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, string(featJSON), game.ID)
 		}
-		featJSON, _ := json.Marshal(safe)
-		storage.DB.Exec(`UPDATE games SET features = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, string(featJSON), game.ID)
 	}
 	if input.SysReqMin != nil {
-		safe := SanitizePlain(*input.SysReqMin)
-		storage.DB.Exec(`UPDATE games SET sys_req_min = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, safe, game.ID)
+		// Stored raw; escaped at render time by the frontend's escapeHtml().
+		storage.DB.Exec(`UPDATE games SET sys_req_min = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, *input.SysReqMin, game.ID)
 	}
 	if input.SysReqRec != nil {
-		safe := SanitizePlain(*input.SysReqRec)
-		storage.DB.Exec(`UPDATE games SET sys_req_rec = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, safe, game.ID)
+		storage.DB.Exec(`UPDATE games SET sys_req_rec = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, *input.SysReqRec, game.ID)
 	}
 
 	// Re-fetch updated game
@@ -490,7 +509,12 @@ func ManageScreenshots(c *gin.Context) {
 		}
 		screenshots = append(screenshots, "/play/"+game.ID+"/"+name)
 	}
-	ssJSON, _ := json.Marshal(screenshots)
+	ssJSON, err := json.Marshal(screenshots)
+	if err != nil {
+		log.Printf("json.Marshal screenshots failed: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save screenshots"})
+		return
+	}
 	storage.DB.Exec(`UPDATE games SET screenshots = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, string(ssJSON), game.ID)
 	c.JSON(http.StatusOK, gin.H{"screenshots": screenshots})
 }
@@ -517,7 +541,12 @@ func DeleteScreenshot(c *gin.Context) {
 		return
 	}
 	screenshots := append(game.Screenshots[:idx], game.Screenshots[idx+1:]...)
-	ssJSON, _ := json.Marshal(screenshots)
+	ssJSON, err := json.Marshal(screenshots)
+	if err != nil {
+		log.Printf("json.Marshal screenshots failed: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update screenshots"})
+		return
+	}
 	storage.DB.Exec(`UPDATE games SET screenshots = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, string(ssJSON), game.ID)
 	c.JSON(http.StatusOK, gin.H{"screenshots": screenshots})
 }
@@ -599,28 +628,85 @@ func ReuploadGameFiles(c *gin.Context) {
 		return
 	}
 
-	// Delete old files
-	storage.DeleteGameFiles(game.ID)
+	// Extract-then-swap so a failed extraction never destroys the live files.
+	// Steps:
+	//   1. Extract new files into <gameDir>.new staging directory.
+	//   2. On extraction failure: remove staging, leave live files untouched.
+	//   3. On success: rename liveDir → liveDir+.old, staging → liveDir, then
+	//      remove liveDir+.old. Each rename is atomic on POSIX so a crash
+	//      mid-swap leaves the dir in a recoverable state (either liveDir
+	//      contains the old files, or .old / .new exist and the next reupload
+	//      cleans them up).
+	liveDir := storage.GameDir(game.ID)
+	stagingDir := liveDir + ".new"
+	backupDir := liveDir + ".old"
+	// Belt-and-suspenders: remove any stale staging/backup dirs from a prior
+	// crashed reupload.
+	_ = os.RemoveAll(stagingDir)
+	_ = os.RemoveAll(backupDir)
 
-	if strings.HasSuffix(lowerName, ".zip") {
-		ef, err := storage.ExtractZipFromReader(game.ID, tmp, written)
+	switch {
+	case strings.HasSuffix(lowerName, ".zip"):
+		ef, err := storage.ExtractZipToDir(stagingDir, tmp, written)
 		if err != nil {
+			_ = os.RemoveAll(stagingDir)
 			log.Printf("ZIP extraction failed for game %s: %v", game.ID, err)
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid game archive"})
 			return
 		}
 		entryFile = ef
-	} else if strings.HasSuffix(lowerName, ".html") || strings.HasSuffix(lowerName, ".htm") {
-		htmlData, _ := io.ReadAll(tmp)
-		if err := storage.SaveGameFile(game.ID, fileName, htmlData); err != nil {
+	case strings.HasSuffix(lowerName, ".html"), strings.HasSuffix(lowerName, ".htm"):
+		if err := os.MkdirAll(stagingDir, 0755); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to stage upload"})
+			return
+		}
+		htmlData, err := io.ReadAll(tmp)
+		if err != nil {
+			_ = os.RemoveAll(stagingDir)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read file"})
+			return
+		}
+		if err := os.WriteFile(filepath.Join(stagingDir, fileName), htmlData, 0644); err != nil {
+			_ = os.RemoveAll(stagingDir)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save file"})
 			return
 		}
-	} else {
+	default:
 		c.JSON(http.StatusBadRequest, gin.H{"error": "game file must be .html, .htm, or .zip"})
 		return
 	}
-	game.UpdateFiles(storage.GameDir(game.ID), entryFile)
+
+	// Atomic swap. If liveDir doesn't exist (first reupload after a delete?),
+	// skip the move-aside step. We always Stat first so we know whether to
+	// restore on swap failure.
+	hadLive := false
+	if _, err := os.Stat(liveDir); err == nil {
+		hadLive = true
+		if err := os.Rename(liveDir, backupDir); err != nil {
+			_ = os.RemoveAll(stagingDir)
+			log.Printf("reupload: rename live→backup failed for %s: %v", game.ID, err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to swap files"})
+			return
+		}
+	}
+	if err := os.Rename(stagingDir, liveDir); err != nil {
+		// Restore the old files if we moved them aside.
+		if hadLive {
+			if rerr := os.Rename(backupDir, liveDir); rerr != nil {
+				log.Printf("reupload: CRITICAL — failed to restore backup for %s: rename err=%v restore err=%v", game.ID, err, rerr)
+			}
+		}
+		_ = os.RemoveAll(stagingDir)
+		log.Printf("reupload: rename staging→live failed for %s: %v", game.ID, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to swap files"})
+		return
+	}
+	// Success — backup no longer needed.
+	if hadLive {
+		_ = os.RemoveAll(backupDir)
+	}
+
+	game.UpdateFiles(liveDir, entryFile)
 	c.JSON(http.StatusOK, gin.H{"message": "game files updated"})
 }
 

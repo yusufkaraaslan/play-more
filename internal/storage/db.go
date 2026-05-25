@@ -27,6 +27,14 @@ func InitDB(dataDir string) error {
 		return fmt.Errorf("open db: %w", err)
 	}
 
+	// SetMaxOpenConns(1) forces serialised writes, which is intentional:
+	// SQLite is embedded (no network round-trip) and WAL-mode readers do not
+	// block. A single writer avoids SQLITE_BUSY retry storms on concurrent
+	// INSERT/UPDATE bursts (achievement checks, playtime heartbeats, page-view
+	// inserts). Throughput is not a concern for a self-hosted single-node app;
+	// correctness under concurrent access is. If you ever need higher write
+	// concurrency, pair this with an in-process write queue — do NOT just raise
+	// the limit without one.
 	DB.SetMaxOpenConns(1)
 
 	// Belt-and-suspenders: also issue the PRAGMA explicitly so we fail loud
@@ -107,6 +115,8 @@ func migrate() error {
 			expires_at      DATETIME NOT NULL)`,
 		`CREATE INDEX IF NOT EXISTS idx_upload_sessions_user    ON upload_sessions(user_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_upload_sessions_expires ON upload_sessions(expires_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_games_published ON games(published)`,
+		`CREATE INDEX IF NOT EXISTS idx_playtime_game ON playtime(game_id)`,
 	}
 	for _, m := range migrations {
 		if _, err := DB.Exec(m); err != nil {
@@ -135,6 +145,23 @@ func isIdempotentMigrationError(err error) bool {
 	msg := err.Error()
 	return strings.Contains(msg, "duplicate column") ||
 		strings.Contains(msg, "already exists")
+}
+
+// IsUniqueConstraintError checks whether err is a SQLite UNIQUE constraint
+// violation. modernc.org/sqlite does not expose structured error codes, so we
+// match on the well-known error message substrings that have been stable across
+// every SQLite version ever released.
+//
+// Use this instead of strings.Contains(err.Error(), "UNIQUE") — the bare word
+// "UNIQUE" could appear in table names or error contexts unrelated to constraint
+// violations.
+func IsUniqueConstraintError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "UNIQUE constraint failed") ||
+		strings.Contains(msg, "UNIQUE constraint")
 }
 
 const schema = `

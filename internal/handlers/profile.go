@@ -63,7 +63,7 @@ func UpdateProfile(c *gin.Context) {
 		input.Links = []models.Link{}
 	}
 
-	input.Bio = SanitizePlain(input.Bio)
+	// Bio is stored raw and escaped at render time by the frontend's escapeHtml().
 	// Avatar/Banner URLs flow into <img src="..."> in the SPA. SanitizeWebURL
 	// strips javascript:/data:/vbscript: and other non-http(s) schemes so a
 	// malicious URL can't fire via image-error handlers or browser quirks.

@@ -123,16 +123,30 @@ func AdminDeleteUser(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "cannot delete yourself"})
 		return
 	}
-	// Delete user's games files
-	rows, _ := storage.DB.Query(`SELECT id FROM games WHERE developer_id = ?`, userID)
-	if rows != nil {
-		defer rows.Close()
-		for rows.Next() {
-			var gameID string
-			rows.Scan(&gameID)
-			storage.DeleteGameFiles(gameID)
+
+	tx, err := storage.DB.Begin()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
+		return
+	}
+	defer tx.Rollback()
+
+	// Collect game IDs for post-commit file cleanup. Don't delete files yet —
+	// a tx rollback while files are gone would leave inconsistent state.
+	gameIDs := []string{}
+	rows, err := tx.Query(`SELECT id FROM games WHERE developer_id = ?`, userID)
+	if err != nil {
+		log.Printf("admin_delete_user: list games for %s failed: %v", userID, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete user"})
+		return
+	}
+	for rows.Next() {
+		var gameID string
+		if err := rows.Scan(&gameID); err == nil {
+			gameIDs = append(gameIDs, gameID)
 		}
 	}
+	rows.Close()
 	// Cascade delete
 	for _, table := range []string{"sessions", "activity", "reviews", "playtime", "library", "wishlist", "developer_pages", "devlogs", "follows", "collections", "games"} {
 		col := "user_id"
@@ -140,20 +154,48 @@ func AdminDeleteUser(c *gin.Context) {
 			col = "developer_id"
 		}
 		if table == "follows" {
-			storage.DB.Exec(`DELETE FROM follows WHERE follower_id = ? OR followed_id = ?`, userID, userID)
+			tx.Exec(`DELETE FROM follows WHERE follower_id = ? OR followed_id = ?`, userID, userID)
 			continue
 		}
-		storage.DB.Exec(`DELETE FROM `+table+` WHERE `+col+` = ?`, userID)
+		tx.Exec(`DELETE FROM `+table+` WHERE `+col+` = ?`, userID)
 	}
-	storage.DB.Exec(`DELETE FROM users WHERE id = ?`, userID)
+	tx.Exec(`DELETE FROM users WHERE id = ?`, userID)
+
+	if err := tx.Commit(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete user"})
+		return
+	}
+
+	// After commit succeeds, remove files. Failures here = orphan files
+	// (uploads-GC will sweep them later); DB stays consistent.
+	for _, gameID := range gameIDs {
+		if err := storage.DeleteGameFiles(gameID); err != nil {
+			log.Printf("admin_delete_user: delete files for game %s: %v", gameID, err)
+		}
+	}
+
 	adminLog(c, "delete_user", "user", userID)
 	c.JSON(http.StatusOK, gin.H{"message": "user deleted"})
 }
 
 func AdminDeleteGame(c *gin.Context) {
 	gameID := c.Param("id")
+
+	tx, err := storage.DB.Begin()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
+		return
+	}
+	defer tx.Rollback()
+
+	tx.Exec(`DELETE FROM games WHERE id = ?`, gameID)
+
+	if err := tx.Commit(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete game"})
+		return
+	}
+
 	storage.DeleteGameFiles(gameID)
-	storage.DB.Exec(`DELETE FROM games WHERE id = ?`, gameID)
 	adminLog(c, "delete_game", "game", gameID)
 	c.JSON(http.StatusOK, gin.H{"message": "game deleted"})
 }

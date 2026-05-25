@@ -63,7 +63,6 @@ func CreateReview(c *gin.Context) {
 		return
 	}
 
-	input.Text = SanitizePlain(input.Text)
 	review, err := models.CreateReview(gameID, user.ID, input.Rating, input.Text)
 	if err != nil {
 		c.JSON(http.StatusConflict, gin.H{"error": "you already reviewed this game"})
@@ -74,7 +73,7 @@ func CreateReview(c *gin.Context) {
 
 	// Notify game developer (re-use the game we already fetched above).
 	if game.DeveloperID != user.ID {
-		CreateNotification(game.DeveloperID, "review", SanitizePlain(user.Username)+" reviewed your game \""+SanitizePlain(game.Title)+"\"", gameID, user.Username)
+		models.CreateNotification(game.DeveloperID, "review", user.Username+" reviewed your game \""+game.Title+"\"", gameID, user.Username)
 	}
 
 	CheckAchievements(user.ID)

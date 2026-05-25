@@ -1,12 +1,8 @@
 package server
 
 import (
-	"bytes"
-	"crypto/rand"
 	"embed"
-	"encoding/base64"
 	"fmt"
-	"html"
 	"io/fs"
 	"net/http"
 	"path/filepath"
@@ -19,31 +15,31 @@ import (
 	"github.com/yusufkaraaslan/play-more/internal/storage"
 )
 
+// =============================================================================
+// Server setup
+// =============================================================================
+
 func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxies string) *gin.Engine {
-	// gin.New() + Recovery() (no Logger) — we install a custom logger below
-	// that strips query strings, so password-reset/verify tokens don't land
-	// in journalctl forever.
 	r := gin.New()
 	r.Use(gin.Recovery())
-	// Cap multipart parsing at 32 MiB in memory; larger uploads spill to tmp
-	// (already capped per-route below). Caller must still wrap the request
-	// body with http.MaxBytesReader for large endpoints.
 	r.MaxMultipartMemory = 32 << 20
 
 	// limitBody returns middleware that caps the request body to maxBytes.
-	// Use on routes that accept multipart uploads — defense against attackers
-	// stuffing huge non-target form fields past the per-file size check.
 	limitBody := func(maxBytes int64) gin.HandlerFunc {
 		return func(c *gin.Context) {
 			c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxBytes)
 			c.Next()
 		}
 	}
-	uploadCap := int64(storage.MaxFileSize) + (32 << 20) // game file + cover/screenshots/form overhead
-	imageCap := int64(10 << 20)                          // 5 MiB image + form overhead
+	uploadCap := int64(storage.MaxFileSize) + (32 << 20)
+	imageCap := int64(10 << 20)
+
+	// =========================================================================
+	// Global middleware
+	// =========================================================================
+
+	// Custom logger — strips query strings so tokens don't land in logs.
 	r.Use(gin.LoggerWithFormatter(func(p gin.LogFormatterParams) string {
-		// Path only, no RawQuery — tokens are passed via query in some flows.
-		// Sanitise control characters to prevent log injection (e.g. %0A in path).
 		path := strings.ReplaceAll(p.Path, "\n", "")
 		path = strings.ReplaceAll(path, "\r", "")
 		return fmt.Sprintf("%s | %3d | %13v | %15s | %-7s %s\n",
@@ -52,8 +48,7 @@ func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxi
 		)
 	}))
 
-	// Trust proxies — by default trust nothing; operator must explicitly opt in.
-	// Reject 0.0.0.0/0 (which would let anything spoof X-Forwarded-* headers).
+	// Trust proxies
 	hasTrustedProxy := false
 	if trustedProxies != "" {
 		proxies := []string{}
@@ -63,7 +58,7 @@ func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxi
 				continue
 			}
 			if p == "0.0.0.0/0" || p == "::/0" {
-				panic("trusted-proxies must not include 0.0.0.0/0 or ::/0 — that allows ANY client to spoof X-Forwarded-* headers")
+				panic("trusted-proxies must not include 0.0.0.0/0 or ::/0")
 			}
 			proxies = append(proxies, p)
 		}
@@ -79,16 +74,11 @@ func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxi
 		r.SetTrustedProxies(nil)
 	}
 
-	// HTTPS redirect middleware (before security headers).
-	// Only honor X-Forwarded-Proto when --trusted-proxies is set, otherwise
-	// any client can spoof the header to trigger redirects.
-	// We use baseURL (operator-configured) instead of c.Request.Host to prevent
-	// open-redirect via Host-header injection.
+	// HTTPS redirect (before security headers)
 	r.Use(func(c *gin.Context) {
 		if hasTrustedProxy && c.Request.Header.Get("X-Forwarded-Proto") == "http" {
 			scheme := "https"
 			host := c.Request.Host
-			// If baseURL is configured, use its host to prevent Host-header injection.
 			if baseURL != "" {
 				if i := strings.Index(baseURL, "://"); i != -1 {
 					host = baseURL[i+3:]
@@ -106,66 +96,43 @@ func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxi
 		c.Next()
 	})
 
-	// Security headers
-	r.Use(func(c *gin.Context) {
-		c.Header("X-Content-Type-Options", "nosniff")
-		c.Header("X-Frame-Options", "SAMEORIGIN")
-		c.Header("Referrer-Policy", "strict-origin-when-cross-origin")
-		// CSP is set per-request with nonce in the SPA handler; set a default for non-HTML
-		c.Set("goatcounter_url", goatCounterURL)
-		c.Header("Content-Security-Policy", "default-src 'self'; object-src 'none'")
-		// The SPA handler overrides this with a nonce-based CSP
-		if c.Request.Header.Get("X-Forwarded-Proto") == "https" || c.Request.TLS != nil {
-			// `preload` is intentionally omitted — submit the domain to
-			// hstspreload.org first, then add it back. With `preload` set
-			// without submission, a self-hoster who later drops TLS would
-			// lock all returning visitors out for 2 years.
-			c.Header("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
-		}
-		c.Header("Permissions-Policy", "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()")
-		c.Next()
-	})
+	r.Use(securityHeaders(goatCounterURL))
+	r.Use(cacheHeaders())
 
-	// Cache-Control headers middleware
-	r.Use(func(c *gin.Context) {
-		path := c.Request.URL.Path
-		// API routes: no-store, no-cache, must-revalidate
-		if len(path) >= 4 && path[:4] == "/api" {
-			c.Header("Cache-Control", "no-store, no-cache, must-revalidate")
-		} else if len(path) >= 8 && path[:8] == "/assets/" {
-			// Static assets: let browser cache (default behavior, no Cache-Control header)
-			c.Header("Cache-Control", "public, max-age=31536000, immutable")
-		} else {
-			// HTML pages and other routes: no-cache
-			c.Header("Cache-Control", "no-cache")
-		}
-		c.Next()
-	})
-
-	// Body size limit on JSON requests — multipart uploads use their own caps
-	// in handlers/games.go and handlers/uploads.go (storage.MaxFileSize / 5MB)
-	// because http.MaxBytesReader can't tell multipart from JSON at this layer.
+	// JSON body size limit
 	r.Use(func(c *gin.Context) {
 		ct := c.GetHeader("Content-Type")
 		if strings.Contains(ct, "application/json") {
-			c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 1<<20) // 1 MiB JSON cap
+			c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 1<<20)
 		}
 		c.Next()
 	})
 
-	// Gzip compression (skip game file serving — handled separately with Range support)
+	// Gzip (skip game file serving)
 	r.Use(gzip.Gzip(gzip.DefaultCompression, gzip.WithExcludedPaths([]string{"/play/"})))
 
-	// Site analytics tracking
+	// Site analytics
 	r.Use(middleware.TrackPageView())
 
+	// =========================================================================
+	// Health checks
+	// =========================================================================
+
+	r.GET("/health", func(c *gin.Context) { c.JSON(200, gin.H{"status": "ok"}) })
+	r.GET("/healthz", func(c *gin.Context) { c.JSON(200, gin.H{"status": "ok"}) })
+	r.GET("/ready", func(c *gin.Context) {
+		if err := storage.DB.Ping(); err != nil {
+			c.JSON(503, gin.H{"status": "not ready", "error": err.Error()})
+			return
+		}
+		c.JSON(200, gin.H{"status": "ready"})
+	})
+
+	// =========================================================================
 	// API routes
+	// =========================================================================
+
 	api := r.Group("/api")
-	// Global per-IP rate limit on the entire /api surface — catches attackers
-	// who rotate between endpoints to dodge per-route limits. Generous enough
-	// (600/5min ≈ 2 req/sec sustained) that normal SPA usage doesn't trip it.
-	// Per-route limits stack on top of this and remain the tighter constraint
-	// for specific actions (login, upload, etc.).
 	api.Use(middleware.GlobalRateLimit(600, 300))
 	api.Use(middleware.AuthOptional())
 	// CSRF after auth so we can check auth_method (API keys skip CSRF)
@@ -341,77 +308,20 @@ func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxi
 	r.GET("/play/:id", handlers.ServeGameFiles(spaOrigin))
 	r.GET("/play/:id/*filepath", handlers.ServeGameFiles(spaOrigin))
 
-	// Frontend (SPA) - serve embedded files
+	// =========================================================================
+	// Frontend (SPA)
+	// =========================================================================
+
 	frontendSub, err := fs.Sub(frontendFS, "frontend")
 	if err == nil {
 		r.StaticFS("/assets", http.FS(frontendSub))
 
-		// Serve .well-known directory for security.txt
 		wellKnownSub, err := fs.Sub(frontendFS, "frontend/.well-known")
 		if err == nil {
 			r.StaticFS("/.well-known", http.FS(wellKnownSub))
 		}
 
-		// SPA fallback: serve index.html for all non-API, non-play routes
-		r.NoRoute(func(c *gin.Context) {
-			// Don't intercept API or play routes
-			if len(c.Request.URL.Path) > 4 && c.Request.URL.Path[:4] == "/api" {
-				c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
-				return
-			}
-			if len(c.Request.URL.Path) > 5 && c.Request.URL.Path[:5] == "/play" {
-				c.String(http.StatusNotFound, "game not found")
-				return
-			}
-
-			data, err := frontendFS.ReadFile("frontend/index.html")
-			if err != nil {
-				c.String(http.StatusInternalServerError, "frontend not found")
-				return
-			}
-
-			// Generate per-request nonce for CSP
-			nonceBytes := make([]byte, 16)
-			rand.Read(nonceBytes)
-			nonce := base64.StdEncoding.EncodeToString(nonceBytes)
-
-			// Inject nonce into inline style and script tags
-			data = bytes.Replace(data, []byte("<style>"), []byte(`<style nonce="`+nonce+`">`), 1)
-			data = bytes.Replace(data, []byte("<script>"), []byte(`<script nonce="`+nonce+`">`), 1)
-
-			// Inject games origin if configured
-			gamesOrigin := ""
-			if gamesDomain != "" {
-				scheme := "https://"
-				if c.Request.TLS == nil && c.Request.Header.Get("X-Forwarded-Proto") != "https" {
-					scheme = "http://"
-				}
-				gamesOrigin = scheme + gamesDomain
-				originSnippet := []byte(`<script nonce="` + nonce + `">window.PLAYMORE_GAMES_ORIGIN="` + html.EscapeString(gamesOrigin) + `";</script></head>`)
-				data = bytes.Replace(data, []byte("</head>"), originSnippet, 1)
-			}
-
-			// Build nonce-based CSP — frame-src must include games origin if set
-			gcURL, _ := c.Get("goatcounter_url")
-			gcStr, _ := gcURL.(string)
-			frameSrc := "'self' https://www.youtube.com"
-			if gamesOrigin != "" {
-				frameSrc += " " + gamesOrigin
-			}
-			csp := "default-src 'self'; script-src 'self' 'nonce-" + nonce + "'; script-src-attr 'unsafe-inline'; style-src 'self' 'nonce-" + nonce + "' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; img-src 'self' data: blob: https://img.youtube.com; connect-src 'self'; frame-src " + frameSrc + "; media-src 'self'; font-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; form-action 'self'"
-			if gcStr != "" {
-				csp = "default-src 'self'; script-src 'self' 'nonce-" + nonce + "' https://gc.zgo.at https://*.goatcounter.com https://static.cloudflareinsights.com; script-src-attr 'unsafe-inline'; style-src 'self' 'nonce-" + nonce + "' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; img-src 'self' data: blob: https://img.youtube.com https://gc.zgo.at; connect-src 'self' https://*.goatcounter.com https://cloudflareinsights.com; frame-src " + frameSrc + "; media-src 'self'; font-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; form-action 'self'"
-			}
-			c.Header("Content-Security-Policy", csp)
-
-			// Inject GoatCounter script if configured
-			if gcStr != "" {
-				escaped := html.EscapeString(gcStr)
-				snippet := []byte(`<script nonce="` + nonce + `" data-goatcounter="` + escaped + `/count" async src="//gc.zgo.at/count.js"></script></body>`)
-				data = bytes.Replace(data, []byte("</body>"), snippet, 1)
-			}
-			c.Data(http.StatusOK, "text/html; charset=utf-8", data)
-		})
+		r.NoRoute(spaFallback(frontendFS, goatCounterURL, gamesDomain, baseURL))
 	}
 
 	return r

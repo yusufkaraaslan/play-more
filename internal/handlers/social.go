@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -28,8 +29,8 @@ func FollowDeveloper(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "cannot follow yourself"})
 		return
 	}
-	storage.DB.Exec(`INSERT OR IGNORE INTO follows (follower_id, followed_id) VALUES (?, ?)`, user.ID, target.ID)
-	CreateNotification(target.ID, "follow", SanitizePlain(user.Username)+" started following you", "", user.Username)
+	models.FollowUser(user.ID, target.ID)
+	models.CreateNotification(target.ID, "follow", user.Username+" started following you", "", user.Username)
 	CheckAchievements(user.ID)
 	CheckAchievements(target.ID) // target may unlock "popular"
 	c.JSON(http.StatusOK, gin.H{"message": "following " + target.Username})
@@ -50,7 +51,7 @@ func UnfollowDeveloper(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "cannot unfollow yourself"})
 		return
 	}
-	storage.DB.Exec(`DELETE FROM follows WHERE follower_id = ? AND followed_id = ?`, user.ID, target.ID)
+	models.UnfollowUser(user.ID, target.ID)
 	c.JSON(http.StatusOK, gin.H{"message": "unfollowed " + target.Username})
 }
 
@@ -61,7 +62,7 @@ func GetFollowing(c *gin.Context) {
 		return
 	}
 	rows, err := storage.DB.Query(
-		`SELECT u.id, u.username, u.avatar_url, u.bio FROM follows f JOIN users u ON f.followed_id = u.id WHERE f.follower_id = ?`, user.ID,
+		`SELECT u.id, u.username, u.avatar_url, u.bio FROM follows f JOIN users u ON f.followed_id = u.id WHERE f.follower_id = ? ORDER BY f.created_at DESC LIMIT 200`, user.ID,
 	)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get following"})
@@ -175,16 +176,17 @@ func GetCollection(c *gin.Context) {
 	if user != nil {
 		viewerID = user.ID
 	}
+	dbGames, err := models.GetGamesByIDs(col.GameIDs)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load games"})
+		return
+	}
 	games := []models.Game{}
-	for _, gid := range col.GameIDs {
-		g, err := models.GetGameByID(gid)
-		if err != nil || g == nil {
-			continue
-		}
+	for _, g := range dbGames {
 		if !g.Published && g.DeveloperID != viewerID {
 			continue
 		}
-		games = append(games, *g)
+		games = append(games, g)
 	}
 	c.JSON(http.StatusOK, gin.H{"collection": col, "games": games})
 }
@@ -315,7 +317,12 @@ func AddToCollection(c *gin.Context) {
 		return
 	}
 	gameIDs = append(gameIDs, input.GameID)
-	updated, _ := json.Marshal(gameIDs)
+	updated, err := json.Marshal(gameIDs)
+	if err != nil {
+		log.Printf("json.Marshal game_ids failed: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update collection"})
+		return
+	}
 	storage.DB.Exec(`UPDATE collections SET game_ids = ? WHERE id = ?`, string(updated), colID)
 	c.JSON(http.StatusOK, gin.H{"message": "added to collection"})
 }
@@ -344,7 +351,12 @@ func RemoveFromCollection(c *gin.Context) {
 			filtered = append(filtered, id)
 		}
 	}
-	updated, _ := json.Marshal(filtered)
+	updated, err := json.Marshal(filtered)
+	if err != nil {
+		log.Printf("json.Marshal game_ids failed: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update collection"})
+		return
+	}
 	storage.DB.Exec(`UPDATE collections SET game_ids = ? WHERE id = ?`, string(updated), colID)
 	c.JSON(http.StatusOK, gin.H{"message": "removed from collection"})
 }

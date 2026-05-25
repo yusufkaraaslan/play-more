@@ -2,6 +2,7 @@ package models
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"github.com/yusufkaraaslan/play-more/internal/storage"
 )
@@ -67,10 +68,19 @@ func GetDeveloperPage(userID string) (*DeveloperPage, error) {
 }
 
 func UpsertDeveloperPage(userID, displayName, bannerURL, themeColor, themePreset, about, fontHeading, fontBody, customCSS string, links []DeveloperLink, featuredGames []string, pageLayout []PageSection) error {
-	linksJSON, _ := json.Marshal(links)
-	featuredJSON, _ := json.Marshal(featuredGames)
-	layoutJSON, _ := json.Marshal(pageLayout)
-	_, err := storage.DB.Exec(
+	linksJSON, err := json.Marshal(links)
+	if err != nil {
+		return fmt.Errorf("json marshal links: %w", err)
+	}
+	featuredJSON, err := json.Marshal(featuredGames)
+	if err != nil {
+		return fmt.Errorf("json marshal featured_games: %w", err)
+	}
+	layoutJSON, err := json.Marshal(pageLayout)
+	if err != nil {
+		return fmt.Errorf("json marshal page_layout: %w", err)
+	}
+	_, err = storage.DB.Exec(
 		`INSERT INTO developer_pages (user_id, display_name, banner_url, theme_color, theme_preset, links, about, font_heading, font_body, custom_css, featured_games, page_layout)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(user_id) DO UPDATE SET

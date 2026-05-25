@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"log"
 	"net/http"
+	"sort"
 
 	"github.com/gin-gonic/gin"
 	"github.com/yusufkaraaslan/play-more/internal/middleware"
@@ -28,6 +30,7 @@ func GetFeed(c *gin.Context) {
 	}
 
 	items := []FeedItem{}
+	failedQueries := 0
 
 	// 1. Devlogs from games by followed developers.
 	// Filter g.published = 1 — a devlog about an unpublished game shouldn't
@@ -41,7 +44,10 @@ func GetFeed(c *gin.Context) {
 		   AND g.published = 1
 		 ORDER BY d.created_at DESC LIMIT 10`, user.ID,
 	)
-	if err == nil {
+	if err != nil {
+		log.Printf("[FEED] devlogs query failed: %v", err)
+		failedQueries++
+	} else {
 		defer rows1.Close()
 		for rows1.Next() {
 			var item FeedItem
@@ -59,7 +65,10 @@ func GetFeed(c *gin.Context) {
 		   AND g.published = 1
 		 ORDER BY g.created_at DESC LIMIT 10`, user.ID,
 	)
-	if err == nil {
+	if err != nil {
+		log.Printf("[FEED] new_games query failed: %v", err)
+		failedQueries++
+	} else {
 		defer rows2.Close()
 		for rows2.Next() {
 			var item FeedItem
@@ -81,7 +90,10 @@ func GetFeed(c *gin.Context) {
 		   AND g.published = 1
 		 ORDER BY r.created_at DESC LIMIT 10`, user.ID, user.ID,
 	)
-	if err == nil {
+	if err != nil {
+		log.Printf("[FEED] reviews query failed: %v", err)
+		failedQueries++
+	} else {
 		defer rows3.Close()
 		for rows3.Next() {
 			var item FeedItem
@@ -104,7 +116,10 @@ func GetFeed(c *gin.Context) {
 		   AND (g.id IS NULL OR g.published = 1)
 		 ORDER BY a.created_at DESC LIMIT 10`, user.ID,
 	)
-	if err == nil {
+	if err != nil {
+		log.Printf("[FEED] activity query failed: %v", err)
+		failedQueries++
+	} else {
 		defer rows4.Close()
 		for rows4.Next() {
 			var item FeedItem
@@ -113,14 +128,15 @@ func GetFeed(c *gin.Context) {
 		}
 	}
 
-	// Sort by created_at descending (simple string sort works for ISO dates)
-	for i := 0; i < len(items); i++ {
-		for j := i + 1; j < len(items); j++ {
-			if items[j].CreatedAt > items[i].CreatedAt {
-				items[i], items[j] = items[j], items[i]
-			}
-		}
+	if failedQueries == 4 {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load feed"})
+		return
+	} else if failedQueries > 0 {
+		log.Printf("[FEED] returning partial results: %d of 4 queries failed", failedQueries)
 	}
+
+	// Sort by created_at descending (simple string sort works for ISO dates)
+	sort.Slice(items, func(i, j int) bool { return items[i].CreatedAt > items[j].CreatedAt })
 
 	// Limit to 30
 	if len(items) > 30 {

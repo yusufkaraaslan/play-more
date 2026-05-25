@@ -32,7 +32,7 @@ func ListReviews(gameID string) ([]Review, error) {
 	rows, err := storage.DB.Query(
 		`SELECT r.id, r.game_id, r.user_id, r.rating, r.text, r.created_at, u.username, u.avatar_url
 		 FROM reviews r JOIN users u ON r.user_id = u.id
-		 WHERE r.game_id = ? ORDER BY r.created_at DESC`, gameID,
+		 WHERE r.game_id = ? ORDER BY r.created_at DESC LIMIT 100`, gameID,
 	)
 	if err != nil {
 		return nil, err

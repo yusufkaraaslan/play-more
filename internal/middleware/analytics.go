@@ -44,7 +44,15 @@ type pageView struct {
 	OS         string
 	SessionID  string
 	CreatedAt  time.Time
+	// attempts counts how many flushBatch cycles this view has gone through
+	// already. Capped via maxFlushAttempts to prevent infinite re-enqueue
+	// loops when the DB is persistently unhappy.
+	attempts int
 }
+
+// maxFlushAttempts is how many flush cycles a view can be re-enqueued before
+// we give up and drop it. Caps CPU spin when the DB is consistently failing.
+const maxFlushAttempts = 3
 
 var viewChan = make(chan pageView, 1000)
 var analyticsCancel context.CancelFunc
@@ -232,23 +240,63 @@ func StopAnalyticsWriter() {
 	}
 }
 
+// requeue puts views back on viewChan for the next flush cycle. Drops any
+// that have already been retried maxFlushAttempts times (prevents an infinite
+// loop + CPU spin if the DB is persistently failing). Drops silently when
+// the channel is full (caller logs the aggregate count).
+func requeue(batch []pageView) (requeued, dropped int) {
+	for _, pv := range batch {
+		pv.attempts++
+		if pv.attempts >= maxFlushAttempts {
+			dropped++
+			continue
+		}
+		select {
+		case viewChan <- pv:
+			requeued++
+		default:
+			dropped++
+		}
+	}
+	return
+}
+
 func flushBatch(batch []pageView) {
 	tx, err := storage.DB.Begin()
 	if err != nil {
+		rq, dr := requeue(batch)
+		log.Printf("analytics: DB.Begin failed (re-enqueued %d, dropped %d): %v", rq, dr, err)
 		return
 	}
 	defer tx.Rollback()
 
 	stmt, err := tx.Prepare(`INSERT INTO page_views (path, method, ip_hash, user_agent, referrer, user_id, status_code, response_ms, device_type, os, session_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
+		rq, dr := requeue(batch)
+		log.Printf("analytics: stmt prepare failed (re-enqueued %d, dropped %d): %v", rq, dr, err)
 		return
 	}
 	defer stmt.Close()
 
+	var failed []pageView
 	for _, pv := range batch {
 		if _, err := stmt.Exec(pv.Path, pv.Method, pv.IPHash, pv.UserAgent, pv.Referrer, pv.UserID, pv.StatusCode, pv.ResponseMs, pv.DeviceType, pv.OS, pv.SessionID, pv.CreatedAt); err != nil {
 			log.Printf("analytics insert error: %v", err)
+			failed = append(failed, pv)
 		}
 	}
-	tx.Commit()
+
+	if err := tx.Commit(); err != nil {
+		rq, dr := requeue(batch)
+		log.Printf("analytics: commit failed (re-enqueued %d, dropped %d): %v", rq, dr, err)
+		return
+	}
+
+	if len(failed) > 0 {
+		// Failed inserts go back through requeue (with attempts bumped) for a
+		// future flush cycle to retry rather than a same-cycle nested-tx retry —
+		// simpler and respects the attempts cap uniformly.
+		rq, dr := requeue(failed)
+		log.Printf("analytics: %d inserts failed in this batch (re-enqueued %d, dropped %d)", len(failed), rq, dr)
+	}
 }

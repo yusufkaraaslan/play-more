@@ -103,7 +103,7 @@ func Register(c *gin.Context) {
 
 	user, err := models.CreateUser(input.Username, input.Email, input.Password)
 	if err != nil {
-		if strings.Contains(err.Error(), "UNIQUE") {
+		if storage.IsUniqueConstraintError(err) {
 			// Return generic error to prevent user enumeration
 			c.JSON(http.StatusConflict, gin.H{"error": "Registration failed. Please try again with different information."})
 			return
@@ -124,8 +124,7 @@ func Register(c *gin.Context) {
 	// Send verification email if SMTP is configured
 	if email.Configured() {
 		vToken := generateToken()
-		storage.DB.Exec(`INSERT INTO email_tokens (token, user_id, type, expires_at) VALUES (?, ?, 'verify', ?)`,
-			hashToken(vToken), user.ID, time.Now().Add(24*time.Hour).UTC().Format(time.RFC3339))
+		models.CreateEmailToken(hashToken(vToken), user.ID, "verify", time.Now().Add(24*time.Hour))
 		go email.SendVerification(input.Email, input.Username, vToken)
 	}
 
@@ -271,11 +270,14 @@ func ResendVerification(c *gin.Context) {
 		c.JSON(http.StatusTooManyRequests, gin.H{"error": "too many verification emails sent recently, please wait"})
 		return
 	}
-	storage.DB.Exec(`DELETE FROM email_tokens WHERE user_id = ? AND type = 'verify'`, user.ID)
+	models.DeleteEmailTokens(user.ID, "verify")
 	token := generateToken()
-	storage.DB.Exec(`INSERT INTO email_tokens (token, user_id, type, expires_at) VALUES (?, ?, 'verify', ?)`,
-		hashToken(token), user.ID, time.Now().Add(24*time.Hour).UTC().Format(time.RFC3339))
-	go email.SendVerification(user.Email, user.Username, token)
+	models.CreateEmailToken(hashToken(token), user.ID, "verify", time.Now().Add(24*time.Hour))
+	if err := email.SendVerification(user.Email, user.Username, token); err != nil {
+		log.Printf("[EMAIL] resend verification failed for user=%s: %v", user.ID, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to send verification email, please try again"})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"message": "verification email sent"})
 }
 
@@ -316,11 +318,13 @@ func VerifyEmail(c *gin.Context) {
 		return
 	}
 	if _, err := tx.Exec(`UPDATE users SET email_verified = 1 WHERE id = ?`, userID); err != nil {
-		log.Printf("verify: failed to mark verified: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to verify email"})
+		return
 	}
 	tx.Exec(`DELETE FROM email_tokens WHERE token = ?`, tokenHash)
 	if err := tx.Commit(); err != nil {
-		log.Printf("verify: failed to commit: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to verify email"})
+		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "email verified"})
 }
@@ -350,11 +354,17 @@ func ForgotPassword(c *gin.Context) {
 		return
 	}
 	// Delete old reset tokens for this user
-	storage.DB.Exec(`DELETE FROM email_tokens WHERE user_id = ? AND type = 'reset'`, user.ID)
+	models.DeleteEmailTokens(user.ID, "reset")
 	token := generateToken()
-	storage.DB.Exec(`INSERT INTO email_tokens (token, user_id, type, expires_at) VALUES (?, ?, 'reset', ?)`,
-		hashToken(token), user.ID, time.Now().Add(1*time.Hour).UTC().Format(time.RFC3339))
-	go email.SendPasswordReset(user.Email, user.Username, token)
+	models.CreateEmailToken(hashToken(token), user.ID, "reset", time.Now().Add(1*time.Hour))
+	if err := email.SendPasswordReset(user.Email, user.Username, token); err != nil {
+		// Log the SMTP failure but keep the response identical to the unknown-
+		// email / no-SMTP paths above. Returning 500 with a specific message
+		// here would leak which emails are real (attacker probes: known →
+		// 500, unknown → 200). The token row is left in place so the user can
+		// retry once the SMTP outage clears.
+		log.Printf("[EMAIL] password reset send failed for user=%s: %v", user.ID, err)
+	}
 	c.JSON(http.StatusOK, gin.H{"message": "if an account exists, a reset email has been sent"})
 }
 

@@ -56,12 +56,14 @@ func makeSlug(title string) string {
 func CreateGame(title, genre, description, developerID string, price float64, tags []string, isWebGPU bool) (*Game, error) {
 	id := uuid.New().String()
 	baseSlug := makeSlug(title)
-	tagsJSON, _ := json.Marshal(tags)
+	tagsJSON, err := json.Marshal(tags)
+	if err != nil {
+		return nil, fmt.Errorf("json marshal tags: %w", err)
+	}
 	screenshotsJSON := "[]"
 
 	// Try inserting with slug, retry with suffix on UNIQUE conflict
 	var slug string
-	var err error
 	for attempt := 0; attempt < 20; attempt++ {
 		if attempt == 0 {
 			slug = baseSlug
@@ -76,7 +78,7 @@ func CreateGame(title, genre, description, developerID string, price float64, ta
 		if err == nil {
 			break
 		}
-		if !strings.Contains(err.Error(), "UNIQUE") {
+		if !storage.IsUniqueConstraintError(err) {
 			return nil, err
 		}
 	}
@@ -98,10 +100,14 @@ func GetGameByID(id string) (*Game, error) {
 		        g.cover_path, g.developer_id, g.tags, g.is_webgpu, g.file_path, g.entry_file,
 		        g.screenshots, g.video_url, g.videos, g.published, g.theme_color, g.header_image, g.custom_about, g.features, g.sys_req_min, g.sys_req_rec, g.created_at, g.updated_at,
 		        u.username,
-		        COALESCE((SELECT AVG(rating) FROM reviews WHERE game_id = g.id), 0),
-		        COALESCE((SELECT COUNT(*) FROM reviews WHERE game_id = g.id), 0),
-		        COALESCE((SELECT SUM(play_count) FROM playtime WHERE game_id = g.id), 0)
-		 FROM games g JOIN users u ON g.developer_id = u.id WHERE g.id = ?`, id,
+		        COALESCE(ride.avg_rating, 0),
+		        COALESCE(ride.review_count, 0),
+		        COALESCE(pc.play_count, 0)
+		 FROM games g
+		 JOIN users u ON g.developer_id = u.id
+		 LEFT JOIN (SELECT game_id, AVG(rating) AS avg_rating, COUNT(*) AS review_count FROM reviews GROUP BY game_id) ride ON ride.game_id = g.id
+		 LEFT JOIN (SELECT game_id, SUM(play_count) AS play_count FROM playtime GROUP BY game_id) pc ON pc.game_id = g.id
+		 WHERE g.id = ?`, id,
 	))
 }
 
@@ -111,10 +117,14 @@ func GetGameBySlug(slug string) (*Game, error) {
 		        g.cover_path, g.developer_id, g.tags, g.is_webgpu, g.file_path, g.entry_file,
 		        g.screenshots, g.video_url, g.videos, g.published, g.theme_color, g.header_image, g.custom_about, g.features, g.sys_req_min, g.sys_req_rec, g.created_at, g.updated_at,
 		        u.username,
-		        COALESCE((SELECT AVG(rating) FROM reviews WHERE game_id = g.id), 0),
-		        COALESCE((SELECT COUNT(*) FROM reviews WHERE game_id = g.id), 0),
-		        COALESCE((SELECT SUM(play_count) FROM playtime WHERE game_id = g.id), 0)
-		 FROM games g JOIN users u ON g.developer_id = u.id WHERE g.slug = ?`, slug,
+		        COALESCE(ride.avg_rating, 0),
+		        COALESCE(ride.review_count, 0),
+		        COALESCE(pc.play_count, 0)
+		 FROM games g
+		 JOIN users u ON g.developer_id = u.id
+		 LEFT JOIN (SELECT game_id, AVG(rating) AS avg_rating, COUNT(*) AS review_count FROM reviews GROUP BY game_id) ride ON ride.game_id = g.id
+		 LEFT JOIN (SELECT game_id, SUM(play_count) AS play_count FROM playtime GROUP BY game_id) pc ON pc.game_id = g.id
+		 WHERE g.slug = ?`, slug,
 	))
 }
 
@@ -179,9 +189,9 @@ func ListGames(p GameListParams) ([]Game, int, error) {
 	orderBy := "g.created_at DESC"
 	switch p.Sort {
 	case "popular":
-		orderBy = "(SELECT SUM(play_count) FROM playtime WHERE game_id = g.id) DESC"
+		orderBy = "COALESCE(pc.play_count, 0) DESC"
 	case "rating":
-		orderBy = "(SELECT AVG(rating) FROM reviews WHERE game_id = g.id) DESC"
+		orderBy = "COALESCE(ride.avg_rating, 0) DESC"
 	case "price-low":
 		orderBy = "g.price ASC"
 	case "price-high":
@@ -198,10 +208,13 @@ func ListGames(p GameListParams) ([]Game, int, error) {
 		        g.cover_path, g.developer_id, g.tags, g.is_webgpu, g.file_path, g.entry_file,
 		        g.screenshots, g.video_url, g.videos, g.published, g.theme_color, g.header_image, g.custom_about, g.features, g.sys_req_min, g.sys_req_rec, g.created_at, g.updated_at,
 		        u.username,
-		        COALESCE((SELECT AVG(rating) FROM reviews WHERE game_id = g.id), 0),
-		        COALESCE((SELECT COUNT(*) FROM reviews WHERE game_id = g.id), 0),
-		        COALESCE((SELECT SUM(play_count) FROM playtime WHERE game_id = g.id), 0)
-		 FROM games g JOIN users u ON g.developer_id = u.id
+		        COALESCE(ride.avg_rating, 0),
+		        COALESCE(ride.review_count, 0),
+		        COALESCE(pc.play_count, 0)
+		 FROM games g
+		 JOIN users u ON g.developer_id = u.id
+		 LEFT JOIN (SELECT game_id, AVG(rating) AS avg_rating, COUNT(*) AS review_count FROM reviews GROUP BY game_id) ride ON ride.game_id = g.id
+		 LEFT JOIN (SELECT game_id, SUM(play_count) AS play_count FROM playtime GROUP BY game_id) pc ON pc.game_id = g.id
 		 WHERE `+whereClause+` ORDER BY `+orderBy+` LIMIT ? OFFSET ?`, args...,
 	)
 	if err != nil {
@@ -221,8 +234,11 @@ func ListGames(p GameListParams) ([]Game, int, error) {
 }
 
 func (g *Game) Update(title, genre, description string, price float64, tags []string, isWebGPU bool) error {
-	tagsJSON, _ := json.Marshal(tags)
-	_, err := storage.DB.Exec(
+	tagsJSON, err := json.Marshal(tags)
+	if err != nil {
+		return fmt.Errorf("json marshal tags: %w", err)
+	}
+	_, err = storage.DB.Exec(
 		`UPDATE games SET title = ?, genre = ?, description = ?, price = ?, tags = ?, is_webgpu = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
 		title, genre, description, price, string(tagsJSON), isWebGPU, g.ID,
 	)
@@ -237,6 +253,56 @@ func (g *Game) UpdateCover(coverPath string) error {
 func (g *Game) UpdateFiles(filePath, entryFile string) error {
 	_, err := storage.DB.Exec(`UPDATE games SET file_path = ?, entry_file = ? WHERE id = ?`, filePath, entryFile, g.ID)
 	return err
+}
+
+func GetGamesByIDs(ids []string) ([]Game, error) {
+	if len(ids) == 0 {
+		return []Game{}, nil
+	}
+	placeholders := make([]string, len(ids))
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+	query := fmt.Sprintf(
+		`SELECT g.id, g.title, g.slug, g.genre, g.price, g.discount, g.description,
+		        g.cover_path, g.developer_id, g.tags, g.is_webgpu, g.file_path, g.entry_file,
+		        g.screenshots, g.video_url, g.videos, g.published, g.theme_color, g.header_image, g.custom_about, g.features, g.sys_req_min, g.sys_req_rec, g.created_at, g.updated_at,
+		        u.username,
+		        COALESCE(ride.avg_rating, 0),
+		        COALESCE(ride.review_count, 0),
+		        COALESCE(pc.play_count, 0)
+		 FROM games g
+		 JOIN users u ON g.developer_id = u.id
+		 LEFT JOIN (SELECT game_id, AVG(rating) AS avg_rating, COUNT(*) AS review_count FROM reviews GROUP BY game_id) ride ON ride.game_id = g.id
+		 LEFT JOIN (SELECT game_id, SUM(play_count) AS play_count FROM playtime GROUP BY game_id) pc ON pc.game_id = g.id
+		 WHERE g.id IN (%s)`, strings.Join(placeholders, ","),
+	)
+	rows, err := storage.DB.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	// SQL IN(...) returns rows in storage order, not in the input id order —
+	// so a collection's user-curated ordering would be lost. Build a map and
+	// reorder to match the caller's input ids.
+	byID := make(map[string]Game, len(ids))
+	for rows.Next() {
+		g, err := scanGameRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		byID[g.ID] = *g
+	}
+	ordered := make([]Game, 0, len(ids))
+	for _, id := range ids {
+		if g, ok := byID[id]; ok {
+			ordered = append(ordered, g)
+		}
+	}
+	return ordered, nil
 }
 
 func (g *Game) Delete() error {
@@ -276,7 +342,7 @@ func scanGame(row *sql.Row) (*Game, error) {
 		&g.CreatedAt, &g.UpdatedAt,
 		&g.DeveloperName, &g.AvgRating, &g.ReviewCount, &g.PlayCount,
 	)
-	if err != nil { return nil, err }
+	if err != nil { return nil, fmt.Errorf("scan game row: %w", err) }
 	parseGameJSON(g, tagsJSON, screenshotsJSON, videosJSON, featuresJSON)
 	return g, nil
 }
@@ -292,7 +358,7 @@ func scanGameRow(rows *sql.Rows) (*Game, error) {
 		&g.CreatedAt, &g.UpdatedAt,
 		&g.DeveloperName, &g.AvgRating, &g.ReviewCount, &g.PlayCount,
 	)
-	if err != nil { return nil, err }
+	if err != nil { return nil, fmt.Errorf("scan game rows: %w", err) }
 	parseGameJSON(g, tagsJSON, screenshotsJSON, videosJSON, featuresJSON)
 	return g, nil
 }

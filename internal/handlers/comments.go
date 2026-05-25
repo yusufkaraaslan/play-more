@@ -100,7 +100,6 @@ func CreateComment(c *gin.Context) {
 	}
 
 	devlogID := c.Param("id")
-	input.Text = SanitizePlain(input.Text)
 
 	// Validate parent_id (if any) belongs to THIS devlog — stops cross-thread
 	// notification spam where a user replies to a comment in another thread.
@@ -127,7 +126,7 @@ func CreateComment(c *gin.Context) {
 	var authorID, devlogTitle string
 	storage.DB.QueryRow(`SELECT user_id, title FROM devlogs WHERE id = ?`, devlogID).Scan(&authorID, &devlogTitle)
 	if authorID != "" && authorID != user.ID {
-		CreateNotification(authorID, "comment", SanitizePlain(user.Username)+" commented on your devlog \""+SanitizePlain(devlogTitle)+"\"", "", user.Username)
+		models.CreateNotification(authorID, "comment", user.Username+" commented on your devlog \""+devlogTitle+"\"", "", user.Username)
 	}
 
 	// If replying, notify parent comment author too
@@ -135,7 +134,7 @@ func CreateComment(c *gin.Context) {
 		var parentUserID string
 		storage.DB.QueryRow(`SELECT user_id FROM comments WHERE id = ?`, input.ParentID).Scan(&parentUserID)
 		if parentUserID != "" && parentUserID != user.ID && parentUserID != authorID {
-			CreateNotification(parentUserID, "comment", SanitizePlain(user.Username)+" replied to your comment", "", user.Username)
+			models.CreateNotification(parentUserID, "comment", user.Username+" replied to your comment", "", user.Username)
 		}
 	}
 

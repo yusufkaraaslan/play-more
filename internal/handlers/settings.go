@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -45,41 +46,70 @@ func DeleteAccount(c *gin.Context) {
 		return
 	}
 
-	// Delete all user data (CASCADE handles most, but some tables lack FKs)
-	storage.DB.Exec(`DELETE FROM api_keys WHERE user_id = ?`, user.ID)
-	storage.DB.Exec(`DELETE FROM sessions WHERE user_id = ?`, user.ID)
-	storage.DB.Exec(`DELETE FROM activity WHERE user_id = ?`, user.ID)
-	storage.DB.Exec(`DELETE FROM reviews WHERE user_id = ?`, user.ID)
-	storage.DB.Exec(`DELETE FROM playtime WHERE user_id = ?`, user.ID)
-	storage.DB.Exec(`DELETE FROM library WHERE user_id = ?`, user.ID)
-	storage.DB.Exec(`DELETE FROM wishlist WHERE user_id = ?`, user.ID)
-	storage.DB.Exec(`DELETE FROM developer_pages WHERE user_id = ?`, user.ID)
-	// Tables without CASCADE FK constraints
-	storage.DB.Exec(`DELETE FROM game_views WHERE user_id = ?`, user.ID)
-	storage.DB.Exec(`DELETE FROM page_views WHERE user_id = ?`, user.ID)
-	storage.DB.Exec(`DELETE FROM follows WHERE follower_id = ? OR followed_id = ?`, user.ID, user.ID)
-	storage.DB.Exec(`DELETE FROM notifications WHERE user_id = ? OR from_user = ?`, user.ID, user.Username)
+	// Wrap in a transaction so all deletes are atomic. If the user's games and
+	// files are deleted but one of the subsequent DELETEs fails, state is
+	// inconsistent (orphaned data or a partially-cleaned account).
+	tx, err := storage.DB.Begin()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
+		return
+	}
+	defer tx.Rollback()
 
-	// Delete user's games and their files
-	rows, _ := storage.DB.Query(`SELECT id FROM games WHERE developer_id = ?`, user.ID)
-	if rows != nil {
-		defer rows.Close()
-		for rows.Next() {
-			var gameID string
-			rows.Scan(&gameID)
-			storage.DeleteGameFiles(gameID)
+	// Delete all user data (CASCADE handles most, but some tables lack FKs)
+	tx.Exec(`DELETE FROM api_keys WHERE user_id = ?`, user.ID)
+	tx.Exec(`DELETE FROM sessions WHERE user_id = ?`, user.ID)
+	tx.Exec(`DELETE FROM activity WHERE user_id = ?`, user.ID)
+	tx.Exec(`DELETE FROM reviews WHERE user_id = ?`, user.ID)
+	tx.Exec(`DELETE FROM playtime WHERE user_id = ?`, user.ID)
+	tx.Exec(`DELETE FROM library WHERE user_id = ?`, user.ID)
+	tx.Exec(`DELETE FROM wishlist WHERE user_id = ?`, user.ID)
+	tx.Exec(`DELETE FROM developer_pages WHERE user_id = ?`, user.ID)
+	// Tables without CASCADE FK constraints
+	tx.Exec(`DELETE FROM game_views WHERE user_id = ?`, user.ID)
+	tx.Exec(`DELETE FROM page_views WHERE user_id = ?`, user.ID)
+	tx.Exec(`DELETE FROM follows WHERE follower_id = ? OR followed_id = ?`, user.ID, user.ID)
+	tx.Exec(`DELETE FROM notifications WHERE user_id = ? OR from_user = ?`, user.ID, user.Username)
+
+	// Collect game IDs for post-commit file cleanup. Don't delete files yet —
+	// if the tx rolls back, files-gone + db-rows-kept = inconsistent state.
+	gameIDs := []string{}
+	rows, err := tx.Query(`SELECT id FROM games WHERE developer_id = ?`, user.ID)
+	if err != nil {
+		log.Printf("delete_account: list games failed for %s: %v", user.ID, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete account"})
+		return
+	}
+	for rows.Next() {
+		var gameID string
+		if err := rows.Scan(&gameID); err == nil {
+			gameIDs = append(gameIDs, gameID)
 		}
 	}
-	storage.DB.Exec(`DELETE FROM games WHERE developer_id = ?`, user.ID)
+	rows.Close()
+	tx.Exec(`DELETE FROM games WHERE developer_id = ?`, user.ID)
 
 	// Delete user
-	storage.DB.Exec(`DELETE FROM users WHERE id = ?`, user.ID)
+	tx.Exec(`DELETE FROM users WHERE id = ?`, user.ID)
 
 	// Audit log
-	storage.DB.Exec(
+	tx.Exec(
 		`INSERT INTO audit_log (actor_id, action, target_type, target_id, ip) VALUES (?, ?, ?, ?, ?)`,
 		user.ID, "delete_account", "user", user.ID, middleware.RealClientIP(c),
 	)
+
+	if err := tx.Commit(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete account"})
+		return
+	}
+
+	// After commit succeeds, delete files. Failures here leave orphan files
+	// on disk but the DB is consistent — uploads-GC will sweep them later.
+	for _, gameID := range gameIDs {
+		if err := storage.DeleteGameFiles(gameID); err != nil {
+			log.Printf("delete_account: delete files for game %s: %v", gameID, err)
+		}
+	}
 
 	c.SetSameSite(http.SameSiteLaxMode)
 	c.SetCookie("session", "", -1, "/", "", middleware.IsSecure(c), true)

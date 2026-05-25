@@ -40,7 +40,7 @@ func ListDevlogs(c *gin.Context) {
 	rows, err := storage.DB.Query(
 		`SELECT d.id, d.game_id, d.user_id, d.title, d.content, d.created_at, g.title, u.username
 		 FROM devlogs d JOIN games g ON d.game_id = g.id JOIN users u ON d.user_id = u.id
-		 WHERE d.game_id = ? ORDER BY d.created_at DESC`, gameID,
+		 WHERE d.game_id = ? ORDER BY d.created_at DESC LIMIT 100`, gameID,
 	)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list devlogs"})
@@ -87,9 +87,8 @@ func CreateDevlog(c *gin.Context) {
 		return
 	}
 
-	// Sanitize user input to plain text (frontend renders with white-space:pre-wrap)
-	input.Title = SanitizePlain(input.Title)
-	input.Content = SanitizePlain(input.Content)
+	// Title and content are stored raw; the frontend escapes them at render
+	// time via escapeHtml() with white-space:pre-wrap.
 	if input.Title == "" || input.Content == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "title and content required"})
 		return

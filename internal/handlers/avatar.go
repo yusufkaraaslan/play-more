@@ -1,8 +1,8 @@
 package handlers
 
 import (
+	"bytes"
 	"crypto/md5"
-	"fmt"
 	"image"
 	"image/color"
 	"image/png"
@@ -28,14 +28,40 @@ func GetAvatar(c *gin.Context) {
 	avatarPath := filepath.Join(avatarDir, username+".png")
 
 	if _, err := os.Stat(avatarPath); os.IsNotExist(err) {
+		// Encode the PNG fully into a buffer first so concurrent readers can't
+		// see a half-written file via the os.Stat path. Then write to a temp
+		// file and atomic-rename into place — POSIX guarantees the rename is
+		// atomic, so readers either see the old file (race: another writer
+		// just published, that's fine) or the fully-written new one.
 		img := generateIdenticon(username, 128)
-		f, err := os.Create(avatarPath)
-		if err != nil {
-			c.String(http.StatusInternalServerError, "failed to generate avatar")
+		var buf bytes.Buffer
+		if err := png.Encode(&buf, img); err != nil {
+			c.String(http.StatusInternalServerError, "failed to encode avatar")
 			return
 		}
-		png.Encode(f, img)
-		f.Close()
+		tmp, err := os.CreateTemp(avatarDir, "."+username+".*.png")
+		if err != nil {
+			c.String(http.StatusInternalServerError, "failed to write avatar")
+			return
+		}
+		tmpName := tmp.Name()
+		if _, err := tmp.Write(buf.Bytes()); err != nil {
+			tmp.Close()
+			os.Remove(tmpName)
+			c.String(http.StatusInternalServerError, "failed to write avatar")
+			return
+		}
+		if err := tmp.Close(); err != nil {
+			os.Remove(tmpName)
+			c.String(http.StatusInternalServerError, "failed to write avatar")
+			return
+		}
+		if err := os.Rename(tmpName, avatarPath); err != nil {
+			// Another goroutine may have published concurrently — that's fine,
+			// drop our copy and serve theirs. On other errors, fall through and
+			// serve whatever exists (or fail at c.File below).
+			os.Remove(tmpName)
+		}
 	}
 
 	c.Header("Cache-Control", "public, max-age=86400")
@@ -131,7 +157,3 @@ func RegenerateAvatar(username string) {
 	os.Remove(filepath.Join(avatarDir, username+".png"))
 }
 
-func init() {
-	// Ensure fmt is used
-	_ = fmt.Sprintf
-}

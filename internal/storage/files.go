@@ -91,9 +91,17 @@ func ExtractZip(gameID string, data []byte) (string, error) {
 }
 
 // ExtractZipFromReader extracts from a ReaderAt (typically a temp file) so
-// large game uploads don't have to be fully buffered in memory.
+// large game uploads don't have to be fully buffered in memory. The ZIP is
+// extracted directly into the game's live directory; use ExtractZipToDir if
+// you need to extract to a staging path first (e.g. for atomic reupload).
 func ExtractZipFromReader(gameID string, ra io.ReaderAt, size int64) (string, error) {
-	dir := GameDir(gameID)
+	return ExtractZipToDir(GameDir(gameID), ra, size)
+}
+
+// ExtractZipToDir extracts a ZIP archive into the caller-specified directory.
+// Used by reupload to extract into a staging directory and then atomically
+// rename into place, so a failed extraction never blows away the live files.
+func ExtractZipToDir(dir string, ra io.ReaderAt, size int64) (string, error) {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return "", err
 	}

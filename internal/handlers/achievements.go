@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/yusufkaraaslan/play-more/internal/middleware"
+	"github.com/yusufkaraaslan/play-more/internal/models"
 	"github.com/yusufkaraaslan/play-more/internal/storage"
 )
 
@@ -46,6 +47,14 @@ func init() {
 
 // CheckAchievements checks all achievement conditions for a user
 // and awards any newly unlocked ones. Returns list of newly unlocked.
+//
+// This function issues 7-8 separate COUNT/SUM queries plus a SELECT for the
+// unlocked set. This is deliberate: achievement rules are simple, stable, and
+// evaluated infrequently (only on user actions: upload, review, playtime, etc.).
+// Batching into a single query would add coupling between unrelated aggregation
+// concerns for negligible performance gain in a self-hosted single-node app.
+// If the achievement set grows beyond ~20 rules, consider a per-rule delta-check
+// model instead of full recomputation.
 func CheckAchievements(userID string) []AchievementDef {
 	var newly []AchievementDef
 
@@ -102,7 +111,7 @@ func CheckAchievements(userID string) []AchievementDef {
 				if def, ok := achievementMap[id]; ok {
 					newly = append(newly, def)
 					// Create notification
-					CreateNotification(userID, "achievement", "Achievement unlocked: "+def.Icon+" "+def.Name, "", "")
+					models.CreateNotification(userID, "achievement", "Achievement unlocked: "+def.Icon+" "+def.Name, "", "")
 				}
 			}
 		}

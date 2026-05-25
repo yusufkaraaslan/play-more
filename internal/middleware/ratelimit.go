@@ -9,6 +9,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+var ShutdownCh = make(chan struct{})
+
 // maxLimiterKeys caps the total number of tracked keys to bound memory under
 // IP-rotation attacks. When exceeded we evict the keys with the oldest most-
 // recent activity rather than wiping all keys — this preserves the rate-limit
@@ -126,23 +128,27 @@ func GlobalRateLimit(maxRequests int, windowSeconds int) gin.HandlerFunc {
 func StartRateLimitCleanup() {
 	go func() {
 		for {
-			time.Sleep(5 * time.Minute)
-			limiter.mu.Lock()
-			cutoff := time.Now().Add(-10 * time.Minute)
-			for key, times := range limiter.requests {
-				valid := make([]time.Time, 0)
-				for _, t := range times {
-					if t.After(cutoff) {
-						valid = append(valid, t)
+			select {
+			case <-time.After(5 * time.Minute):
+				limiter.mu.Lock()
+				cutoff := time.Now().Add(-10 * time.Minute)
+				for key, times := range limiter.requests {
+					valid := make([]time.Time, 0)
+					for _, t := range times {
+						if t.After(cutoff) {
+							valid = append(valid, t)
+						}
+					}
+					if len(valid) == 0 {
+						delete(limiter.requests, key)
+					} else {
+						limiter.requests[key] = valid
 					}
 				}
-				if len(valid) == 0 {
-					delete(limiter.requests, key)
-				} else {
-					limiter.requests[key] = valid
-				}
+				limiter.mu.Unlock()
+			case <-ShutdownCh:
+				return
 			}
-			limiter.mu.Unlock()
 		}
 	}()
 }

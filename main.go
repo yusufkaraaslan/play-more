@@ -11,6 +11,8 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
+	"syscall"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -196,6 +198,8 @@ func main() {
 	gamesDomain := flag.String("games-domain", "", "Optional separate domain for game files (e.g. games.example.com) — strongest isolation against malicious uploaded games")
 	trustedProxies := flag.String("trusted-proxies", "", "Comma-separated list of trusted proxy CIDRs (e.g. '127.0.0.1/32,10.0.0.0/8'). Empty = trust no proxy headers.")
 	forceSecure := flag.Bool("behind-tls-proxy", false, "Always set Secure flag on cookies (use when behind a TLS-terminating reverse proxy)")
+	uploadsGC := flag.Bool("uploads-gc", false, "Enable daily uploads/ directory sweep — deletes files unreferenced by any DB row and older than 90 days. Off by default; review --uploads-gc-dry-run output before enabling.")
+	uploadsGCDryRun := flag.Bool("uploads-gc-dry-run", false, "Run uploads GC in dry-run mode — log what would be pruned but don't actually delete. Requires --uploads-gc.")
 	flag.Parse()
 
 	// Environment variables as fallback (flags take priority)
@@ -288,38 +292,27 @@ func main() {
 	}
 
 	// Configure email
-	emailpkg.Host = *smtpHost
-	emailpkg.Port = *smtpPort
-	emailpkg.User = *smtpUser
-	emailpkg.Pass = *smtpPass
-	emailpkg.From = *smtpFrom
-	emailpkg.BaseURL = *baseURL
+	emailpkg.CurrentConfig = &emailpkg.Config{
+		Host:    *smtpHost,
+		Port:    *smtpPort,
+		User:    *smtpUser,
+		Pass:    *smtpPass,
+		From:    *smtpFrom,
+		BaseURL: *baseURL,
+	}
 
 	// SMTP health check (non-fatal — email is optional)
 	if emailpkg.Configured() {
 		if err := emailpkg.HealthCheck(); err != nil {
-			fmt.Printf("⚠  SMTP health check failed (%s:%d): %v\n", emailpkg.Host, emailpkg.Port, err)
+			fmt.Printf("⚠  SMTP health check failed (%s:%d): %v\n", emailpkg.CurrentConfig.Host, emailpkg.CurrentConfig.Port, err)
 			if emailpkg.IsLocalBridge() {
-				// Try auto-starting protonmail-bridge on Linux
-				if tryStartLocalBridge() {
-					// Wait briefly for service to come up
-					for i := 0; i < 10; i++ {
-						time.Sleep(500 * time.Millisecond)
-						if emailpkg.HealthCheck() == nil {
-							fmt.Printf("✓  SMTP reachable after starting local bridge\n")
-							goto smtpOK
-						}
-					}
-				}
-				fmt.Println("   Local bridge not reachable. Start it manually:")
-				fmt.Println("   sudo systemctl start protonmail-bridge")
-				fmt.Println("   (or see docs/SETUP_PROTONMAIL_BRIDGE.md)")
-			smtpOK:
+				fmt.Println("   (local bridge detected — certificate verification skipped)")
+				fmt.Println("   Email verification/reset will fail until SMTP is reachable.")
 			} else {
 				fmt.Println("   Email verification/reset will fail until SMTP is reachable.")
 			}
 		} else {
-			fmt.Printf("✓  SMTP reachable at %s:%d\n", emailpkg.Host, emailpkg.Port)
+			fmt.Printf("✓  SMTP reachable at %s:%d\n", emailpkg.CurrentConfig.Host, emailpkg.CurrentConfig.Port)
 		}
 	} else {
 		fmt.Println("⚠  SMTP not configured — uploads, reviews, and devlogs are BLOCKED")
@@ -329,13 +322,19 @@ func main() {
 
 	middleware.StartRateLimitCleanup()
 	middleware.StartAnalyticsWriter()
+	uploadgc.UploadsGCEnabled = *uploadsGC
+	uploadgc.UploadsGCDryRun = *uploadsGCDryRun
 	uploadgc.Start(context.Background())
 
 	// Periodic cleanup of expired sessions and email tokens
 	go func() {
 		for {
-			time.Sleep(1 * time.Hour)
-			models.CleanupExpiredSessions()
+			select {
+			case <-time.After(1 * time.Hour):
+				models.CleanupExpiredSessions()
+			case <-middleware.ShutdownCh:
+				return
+			}
 		}
 	}()
 
@@ -370,6 +369,12 @@ func main() {
 		}
 	}
 
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+
+	var mainSrv *http.Server
+	var redirectSrv *http.Server
+
 	if *autoTLS {
 		certDir := filepath.Join(*dataDir, "certs")
 		m := &autocert.Manager{
@@ -377,50 +382,79 @@ func main() {
 			Prompt:     autocert.AcceptTOS,
 			HostPolicy: autocert.HostWhitelist(*domain),
 		}
-		s := makeServer(":443")
-		s.TLSConfig = &tls.Config{
+		mainSrv = makeServer(":443")
+		mainSrv.TLSConfig = &tls.Config{
 			GetCertificate: m.GetCertificate,
 			MinVersion:     tls.VersionTLS13,
 		}
-		// HTTP challenge server + redirect on port 80
-		go func() {
-			h := m.HTTPHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				// Use the configured domain instead of r.Host to prevent open-redirect
-				// via Host-header injection on the HTTP challenge server.
-				host := *domain
-				if host == "" {
-					host = r.Host
-				}
-				target := "https://" + host + r.URL.Path
-				if len(r.URL.RawQuery) > 0 {
-					target += "?" + r.URL.RawQuery
-				}
-				http.Redirect(w, r, target, http.StatusMovedPermanently)
-			}))
-			redirectSrv := &http.Server{
-				Addr:              ":80",
-				Handler:           h,
-				ReadHeaderTimeout: 5 * time.Second,
-				IdleTimeout:       60 * time.Second,
+		h := m.HTTPHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			host := *domain
+			if host == "" {
+				host = r.Host
 			}
-			log.Fatal(redirectSrv.ListenAndServe())
-		}()
-		fmt.Printf("Listening on :443 (auto-TLS) and :80 (redirect)\n")
-		if err := s.ListenAndServeTLS("", ""); err != nil {
-			log.Fatal("Server failed:", err)
+			target := "https://" + host + r.URL.Path
+			if len(r.URL.RawQuery) > 0 {
+				target += "?" + r.URL.RawQuery
+			}
+			http.Redirect(w, r, target, http.StatusMovedPermanently)
+		}))
+		redirectSrv = &http.Server{
+			Addr:              ":80",
+			Handler:           h,
+			ReadHeaderTimeout: 5 * time.Second,
+			IdleTimeout:       60 * time.Second,
 		}
 	} else if *tlsCert != "" {
-		s := makeServer(addr)
-		s.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS13}
-		if err := s.ListenAndServeTLS(*tlsCert, *tlsKey); err != nil {
+		mainSrv = makeServer(addr)
+		mainSrv.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS13}
+	} else {
+		mainSrv = makeServer(addr)
+	}
+
+	// Start main server in background
+	go func() {
+		var err error
+		if *autoTLS {
+			err = mainSrv.ListenAndServeTLS("", "")
+		} else if *tlsCert != "" {
+			err = mainSrv.ListenAndServeTLS(*tlsCert, *tlsKey)
+		} else {
+			err = mainSrv.ListenAndServe()
+		}
+		if err != nil && err != http.ErrServerClosed {
 			log.Fatal("Server failed:", err)
 		}
+	}()
+
+	if redirectSrv != nil {
+		go func() {
+			if err := redirectSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				log.Fatal("Redirect server failed:", err)
+			}
+		}()
+		fmt.Printf("Listening on :443 (auto-TLS) and :80 (redirect)\n")
 	} else {
-		s := makeServer(addr)
-		if err := s.ListenAndServe(); err != nil {
-			log.Fatal("Server failed:", err)
+		fmt.Printf("PlayMore server listening on %s://localhost:%d\n", scheme, *port)
+	}
+
+	sig := <-sigCh
+	fmt.Printf("\nReceived %v, shutting down gracefully...\n", sig)
+
+	middleware.StopAnalyticsWriter()
+	close(middleware.ShutdownCh)
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	if err := mainSrv.Shutdown(shutdownCtx); err != nil {
+		log.Printf("Error shutting down main server: %v", err)
+	}
+	if redirectSrv != nil {
+		if err := redirectSrv.Shutdown(shutdownCtx); err != nil {
+			log.Printf("Error shutting down redirect server: %v", err)
 		}
 	}
+	fmt.Println("Server stopped.")
 }
 
 // tryStartLocalBridge attempts to start protonmail-bridge via systemctl.

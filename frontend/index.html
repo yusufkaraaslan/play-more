@@ -107,6 +107,13 @@
         .empty-state a { color: var(--accent); cursor: pointer; text-decoration: none; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
+        /* Loading Spinner */
+        .loading-spinner { text-align: center; padding: 40px; color: var(--text-secondary); }
+        .spinner { width: 40px; height: 40px; margin: 0 auto 15px; border: 3px solid rgba(255,255,255,0.1); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .error-state { text-align: center; padding: 40px; color: var(--text-secondary); }
+        .error-state a { color: var(--accent); cursor: pointer; text-decoration: none; }
+
         /* Buttons */
         .btn-primary { padding: 12px; background: linear-gradient(135deg, var(--success), #7ba828); border: none; color: white; font-size: 14px; font-weight: bold; border-radius: 3px; cursor: pointer; width: 100%; transition: all 0.3s ease; }
         .btn-primary:hover { filter: brightness(1.1); transform: translateY(-1px); }
@@ -474,16 +481,16 @@
             <svg viewBox="0 0 24 24"><path d="M21 6H3c-1.1 0-2 .9-2 2v8c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-10 7H8v3H6v-3H3v-2h3V8h2v3h3v2zm4.5 2c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm4-3c-.83 0-1.5-.67-1.5-1.5S18.67 9 19.5 9s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/></svg>
             PlayMore
         </div>
-        <nav class="nav-tabs">
-            <button class="nav-tab active" data-tab="store" onclick="navigate('store')">Store</button>
-            <button class="nav-tab" data-tab="library" onclick="navigate('library')">Library</button>
-            <button class="nav-tab" data-tab="feed" onclick="navigate('feed')" id="nav-feed" style="display:none;">Feed</button>
-            <button class="nav-tab" data-tab="upload" onclick="navigate('upload')">Upload</button>
-            <button class="nav-tab" data-tab="profile" onclick="navigate('profile')">Profile</button>
+        <nav class="nav-tabs" role="navigation" aria-label="Main navigation">
+            <button class="nav-tab active" data-tab="store" onclick="navigate('store')" tabindex="0">Store</button>
+            <button class="nav-tab" data-tab="library" onclick="navigate('library')" tabindex="0">Library</button>
+            <button class="nav-tab" data-tab="feed" onclick="navigate('feed')" id="nav-feed" style="display:none;" tabindex="0">Feed</button>
+            <button class="nav-tab" data-tab="upload" onclick="navigate('upload')" tabindex="0">Upload</button>
+            <button class="nav-tab" data-tab="profile" onclick="navigate('profile')" tabindex="0">Profile</button>
         </nav>
         <button onclick="toggleTheme()" id="theme-toggle" title="Toggle theme" style="background:none;border:none;font-size:18px;cursor:pointer;padding:5px;">🌙</button>
         <div class="global-search">
-            <input type="text" id="global-search-input" placeholder="Search games..." oninput="debounceGlobalSearch()" onfocus="debounceGlobalSearch()" autocomplete="off">
+            <input type="text" id="global-search-input" placeholder="Search games..." aria-label="Search games" oninput="debounceGlobalSearch()" onfocus="debounceGlobalSearch()" autocomplete="off">
             <div class="global-search-results" id="global-search-results"></div>
         </div>
         <div class="header-actions" id="header-actions">
@@ -496,7 +503,7 @@
         <a onclick="resendVerificationEmail()" style="margin-left:10px;color:var(--accent);cursor:pointer;text-decoration:underline;">Resend email</a>
     </div>
 
-    <main class="main-content">
+    <main class="main-content" role="main">
         <section id="auth-section" class="section">
             <div class="auth-form" id="auth-form"></div>
         </section>
@@ -670,7 +677,7 @@
         <iframe id="player-frame" allow="gamepad; fullscreen" referrerpolicy="no-referrer"></iframe>
     </div>
 
-    <div class="toast-container" id="toast-container"></div>
+    <div class="toast-container" id="toast-container" aria-live="polite"></div>
     <div class="modal-overlay" id="modal">
         <div class="modal">
             <h3 class="modal-title" id="modal-title">Confirm</h3>
@@ -752,12 +759,18 @@
         }
 
         /* ============ Theme ============ */
-        function applyTheme() {
-            const saved = localStorage.getItem('playmore_theme') || 'dark';
-            document.documentElement.setAttribute('data-theme', saved);
-            const btn = document.getElementById('theme-toggle');
-            if (btn) btn.textContent = saved === 'light' ? '☀️' : '🌙';
-        }
+		function applyTheme() {
+			const saved = localStorage.getItem('playmore_theme');
+			let theme = 'dark';
+			if (saved) {
+				theme = saved;
+			} else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
+				theme = 'light';
+			}
+			document.documentElement.setAttribute('data-theme', theme);
+			const btn = document.getElementById('theme-toggle');
+			if (btn) btn.textContent = theme === 'light' ? '☀️' : '🌙';
+		}
         function toggleTheme() {
             const current = document.documentElement.getAttribute('data-theme') || 'dark';
             const next = current === 'dark' ? 'light' : 'dark';
@@ -1021,7 +1034,7 @@
             form.innerHTML = '<h2>Reset Password</h2>' +
                 '<div class="form-group"><label class="form-label">New Password</label><input type="password" class="form-input" id="auth-password" placeholder="Min 6 characters"></div>' +
                 '<div class="form-group"><label class="form-label">Confirm Password</label><input type="password" class="form-input" id="auth-password2"></div>' +
-                '<button class="btn-primary" onclick="doResetPassword(\'' + escapeHtml(token) + '\')">Reset Password</button>' +
+                '<button class="btn-primary" onclick="doResetPassword(\'' + jsEsc(token) + '\')">Reset Password</button>' +
                 '<div id="auth-error" class="error-msg"></div>';
             navigate('auth', false);
         }
@@ -1057,16 +1070,17 @@
         /* ============ Navigation ============ */
         let suppressHashChange = false;
 
-        function navigate(tab, updateHash = true) {
-            currentTab = tab;
-            if (lightboxOpen) closeLightbox();
+		function navigate(tab, updateHash = true) {
+			currentTab = tab;
+			if (lightboxOpen) closeLightbox();
+			currentGameData = null;
             detachMediaKeyNav();
             document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-            document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.nav-tab').forEach(t => { t.classList.remove('active'); t.removeAttribute('aria-current'); });
             const section = document.getElementById(tab + '-section');
             if (section) section.classList.add('active');
             const navTab = document.querySelector('[data-tab="' + tab + '"]');
-            if (navTab) navTab.classList.add('active');
+            if (navTab) { navTab.classList.add('active'); navTab.setAttribute('aria-current', 'page'); }
             window.scrollTo(0, 0);
             if (tab === 'feed') loadFeedPage();
             if (tab === 'store') { loadStore(); loadRecentlyPlayed(); loadOffers(); }
@@ -1105,7 +1119,7 @@
                 } else {
                     // 404
                     document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-                    document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+                    document.querySelectorAll('.nav-tab').forEach(t => { t.classList.remove('active'); t.removeAttribute('aria-current'); });
                     document.getElementById('store-section').classList.add('active');
                     document.getElementById('store-grid').innerHTML = '<div class="empty-state" style="padding:60px;"><h2 style="font-size:24px;margin-bottom:15px;">Page Not Found</h2><p>The page <strong>#' + esc(hash) + '</strong> doesn\'t exist.</p><p style="margin-top:15px;"><a style="color:var(--accent);cursor:pointer;" onclick="navigate(\'store\')">Back to Store</a></p></div>';
                 }
@@ -1114,8 +1128,15 @@
 
         window.addEventListener('hashchange', handleHashRoute);
 
+        /* ============ Utilities ============ */
+        function showLoading(containerId) {
+            const el = document.getElementById(containerId);
+            if (el) el.innerHTML = '<div class="loading-spinner"><div class="spinner"></div><p>Loading...</p></div>';
+        }
+
         /* ============ Store ============ */
         async function loadStore() {
+            showLoading('store-grid');
             const search = document.getElementById('store-search')?.value || '';
             const genre = document.getElementById('store-genre')?.value || '';
             const sort = document.getElementById('store-sort')?.value || 'newest';
@@ -1130,7 +1151,7 @@
                 storePage = 1;
                 grid.innerHTML = data.games.map(g => gameCardHTML(g)).join('');
                 renderLoadMore(data.total, data.games.length, search, genre, sort);
-            } catch (e) { console.error('Failed to load store:', e); }
+            } catch (e) { document.getElementById('store-grid').innerHTML = '<div class="error-state"><p>Failed to load. <a href="#" onclick="navigate(\'store\')">Try again</a></p></div>'; document.getElementById('store-load-more').innerHTML = ''; }
         }
 
         function renderLoadMore(total, shown, search, genre, sort) {
@@ -1152,21 +1173,21 @@
                     const totalShown = document.getElementById('store-grid').children.length;
                     renderLoadMore(data.total, totalShown, search, genre, sort);
                 }
-            } catch (e) { console.error('Failed to load more:', e); }
+            } catch (e) { toast('Failed to load more.', 'error'); }
         }
 
         function gameCardHTML(g) {
             const coverSrc = g.cover_path || 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="225"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="%232a475e"/><stop offset="100%" stop-color="%23171a21"/></linearGradient></defs><rect fill="url(%23g)" width="400" height="225"/><text x="200" y="120" text-anchor="middle" fill="%2366c0f4" font-family="Segoe UI" font-size="22" font-weight="bold">' + escapeHtml(g.title) + '</text></svg>');
             const rating = g.avg_rating > 0 ? '★ ' + g.avg_rating.toFixed(1) : '';
             const price = g.price === 0 ? 'Free' : '$' + g.price.toFixed(2);
-            return '<div class="game-card" onclick="showGameDetail(\'' + g.id + '\')">' +
+            return '<div class="game-card" onclick="showGameDetail(\'' + jsEsc(g.id) + '\')">' +
                 '<img src="' + coverSrc + '" alt="' + escapeHtml(g.title) + '">' +
                 '<div class="game-card-overlay"><span class="game-card-play">VIEW GAME</span></div>' +
                 '<div class="game-card-info">' +
                 '<div class="game-card-title">' + escapeHtml(g.title) + '</div>' +
                 '<div class="game-card-meta">by ' + escapeHtml(g.developer_name || 'Unknown') + (rating ? ' · ' + rating : '') + '</div>' +
                 '<div class="game-card-footer">' +
-                '<span class="game-card-genre" onclick="event.stopPropagation();searchByTag(\'' + escapeHtml(g.genre) + '\')">' + escapeHtml(g.genre) + '</span>' +
+                '<span class="game-card-genre" onclick="event.stopPropagation();searchByTag(\'' + jsEsc(g.genre) + '\')">' + escapeHtml(g.genre) + '</span>' +
                 (g.is_webgpu ? '<span class="webgpu-badge">WebGPU</span>' : '') +
                 '<span class="game-card-price">' + price + '</span>' +
                 '</div></div></div>';
@@ -1177,6 +1198,7 @@
         let libCache = { library: [], wishlist: [], collections: [] };
 
         async function loadLibrary() {
+            showLoading('library-grid');
             if (!currentUser) {
                 document.getElementById('library-grid').innerHTML = '<div class="empty-state">Please <a onclick="showAuth(\'login\')">login</a> to see your library.</div>';
                 document.getElementById('lib-sidebar').innerHTML = '';
@@ -1268,8 +1290,8 @@
                 toolbar.innerHTML = '<h2>' + escapeHtml(col.name) + '</h2><span class="lib-count-total">' + (col.game_ids||[]).length + ' games</span>' +
                     '<div style="margin-left:auto;display:flex;gap:6px;">' +
                     '<button class="btn-secondary" style="padding:4px 12px;font-size:11px;" onclick="editList(\'' + jsEsc(col.id) + '\',\'' + jsEsc(col.name) + '\',' + col.is_public + ',\'' + jsEsc(col.description || '') + '\')">Edit</button>' +
-                    '<button class="btn-secondary" style="padding:4px 12px;font-size:11px;" onclick="copyListLink(\'' + col.id + '\')">Share</button>' +
-                    '<button class="btn-secondary" style="padding:4px 12px;font-size:11px;color:var(--danger);" onclick="deleteCollection(\'' + col.id + '\')">Delete</button></div>';
+                    '<button class="btn-secondary" style="padding:4px 12px;font-size:11px;" onclick="copyListLink(\'' + jsEsc(col.id) + '\')">Share</button>' +
+                    '<button class="btn-secondary" style="padding:4px 12px;font-size:11px;color:var(--danger);" onclick="deleteCollection(\'' + jsEsc(col.id) + '\')">Delete</button></div>';
                 // Resolve games
                 const gameIds = col.game_ids || [];
                 if (gameIds.length === 0) {
@@ -1333,7 +1355,7 @@
 
         function libraryCardHTML(g) {
             const coverSrc = g.cover_path || 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="225"><rect fill="%231e1e2e" width="400" height="225"/><text x="200" y="120" text-anchor="middle" fill="%2366c0f4" font-size="20">' + escapeHtml(g.title) + '</text></svg>');
-            return '<div class="game-card" onclick="showGameDetail(\'' + g.id + '\')">' +
+            return '<div class="game-card" onclick="showGameDetail(\'' + jsEsc(g.id) + '\')">' +
                 '<img src="' + coverSrc + '" alt="' + escapeHtml(g.title) + '">' +
                 '<div class="game-card-overlay"><span class="game-card-play">VIEW</span></div>' +
                 '<div class="game-card-info">' +
@@ -1341,7 +1363,7 @@
                 '<div class="game-card-meta">' + escapeHtml(g.genre) + ' · ' + (g.play_count||0) + ' plays · ' + ((g.avg_rating||0) > 0 ? '★ ' + g.avg_rating.toFixed(1) : '') + '</div>' +
                 '<div class="game-card-footer">' +
                 '<button class="btn-accent" style="padding:5px 15px;font-size:12px;width:auto;" onclick="event.stopPropagation();playGame(\'' + jsEsc(g.id) + '\',\'' + jsEsc(g.entry_file) + '\')">Play</button>' +
-                '<button class="btn-secondary" style="padding:5px 10px;font-size:11px;" onclick="event.stopPropagation();removeFromLib(\'' + g.id + '\')">Remove</button>' +
+                '<button class="btn-secondary" style="padding:5px 10px;font-size:11px;" onclick="event.stopPropagation();removeFromLib(\'' + jsEsc(g.id) + '\')">Remove</button>' +
                 '</div></div></div>';
         }
 
@@ -1484,6 +1506,7 @@
         /* ============ Profile ============ */
         async function loadProfile() {
             if (!currentUser) { document.getElementById('profile-content').innerHTML = '<div class="empty-state">Please <a onclick="showAuth(\'login\')">login</a> to see your profile.</div>'; return; }
+            showLoading('profile-content');
             try {
                 const data = await api('/profile/' + currentUser.username);
                 const u = data.user; const s = data.stats;
@@ -1511,7 +1534,7 @@
                 html += '<div><h3 style="font-size:16px;margin-bottom:4px;">Public Page</h3>';
                 html += '<p style="color:var(--text-secondary);font-size:13px;">Your storefront</p></div>';
                 html += '<div style="display:flex;gap:8px;">';
-                html += '<button class="btn-secondary" onclick="showDeveloper(\'' + escapeHtml(u.username) + '\')">View</button>';
+                html += '<button class="btn-secondary" onclick="showDeveloper(\'' + jsEsc(u.username) + '\')">View</button>';
                 html += '<button class="btn-accent" onclick="navigate(\'deveditor\')">Edit</button></div></div>';
                 html += '<div class="card-box" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0;">';
                 html += '<div><h3 style="font-size:16px;margin-bottom:4px;">Dashboard</h3>';
@@ -1552,13 +1575,13 @@
                 } else { html += '<div class="empty-state">No activity yet.</div>'; }
 
                 document.getElementById('profile-content').innerHTML = html;
-            } catch (e) { console.error('Failed to load profile:', e); }
+            } catch (e) { document.getElementById('profile-content').innerHTML = '<div class="error-state"><p>Failed to load profile. <a href="#" onclick="navigate(\'profile\')">Try again</a></p></div>'; }
         }
 
         // Profile editing is done via Developer Page editor (navigate('deveditor'))
         // and Settings page (navigate('settings')) — no separate profile editor needed
 
-        function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+		function esc(s) { return escapeHtml(s); }
         // jsEsc escapes a string for safe embedding INSIDE a single-quoted
         // JS string that itself sits INSIDE an HTML attribute (e.g.
         //     onclick="fn('<jsEsc-output>')").
@@ -1607,6 +1630,7 @@
         let selectedRating = 0;
 
         async function showGameDetail(gameId) {
+            showLoading('game-detail-content');
             try {
                 const data = await api('/games/' + gameId);
                 const game = data.game; currentGameData = game; const fileSize = data.file_size || 0;
@@ -1624,7 +1648,7 @@
                 html += '<div class="game-header">';
                 if (coverSrc) html += '<img src="' + esc(coverSrc) + '" class="game-header-bg">';
                 html += '<div class="game-header-content"><h1>' + escapeHtml(game.title) + '</h1>';
-                html += '<div class="game-header-meta">by <a onclick="showDeveloper(\'' + escapeHtml(game.developer_name) + '\')">' + escapeHtml(game.developer_name) + '</a> · ' + escapeHtml(genreCap);
+                html += '<div class="game-header-meta">by <a onclick="showDeveloper(\'' + jsEsc(game.developer_name) + '\')">' + escapeHtml(game.developer_name) + '</a> · ' + escapeHtml(genreCap);
                 if (game.avg_rating > 0) html += ' · ★ ' + game.avg_rating.toFixed(1);
                 html += '</div></div></div>';
 
@@ -1792,7 +1816,7 @@
 
                 // Info box
                 html += '<div class="info-box">';
-                html += '<div class="info-row"><span class="info-label">Developer</span><span class="info-value"><a onclick="showDeveloper(\'' + escapeHtml(game.developer_name) + '\')">' + escapeHtml(game.developer_name) + '</a></span></div>';
+                html += '<div class="info-row"><span class="info-label">Developer</span><span class="info-value"><a onclick="showDeveloper(\'' + jsEsc(game.developer_name) + '\')">' + escapeHtml(game.developer_name) + '</a></span></div>';
                 html += '<div class="info-row"><span class="info-label">Genre</span><span class="info-value">' + escapeHtml(genreCap) + '</span></div>';
                 html += '<div class="info-row"><span class="info-label">Released</span><span class="info-value">' + escapeHtml(game.created_at || 'Unknown') + '</span></div>';
                 if (game.is_webgpu) html += '<div class="info-row"><span class="info-label">Graphics</span><span class="info-value" style="color:var(--success);">WebGPU Enabled</span></div>';
@@ -1835,7 +1859,7 @@
                         if (wishBtn && wishData.games?.some(g => g.id === game.id)) { wishBtn.textContent = 'On Wishlist ✓'; wishBtn.classList.add('active'); }
                     } catch {}
                 }
-            } catch (e) { console.error('Failed to load game:', e); }
+            } catch (e) { document.getElementById('game-detail-content').innerHTML = '<div class="error-state"><p>Failed to load game. <a href="#" onclick="navigate(\'store\')">Try again</a></p></div>'; }
         }
 
         // ============ Media gallery ============
@@ -2106,7 +2130,7 @@
                 document.getElementById('developer-content').innerHTML = html;
                 navigate('developer', false);
                 suppressHashChange = true; location.hash = 'developer/' + username; suppressHashChange = false;
-            } catch (e) { console.error('Failed to load developer page:', e); }
+            } catch (e) { document.getElementById('developer-content').innerHTML = '<div class="error-state"><p>Failed to load developer page. <a href="#" onclick="navigate(\'store\')">Try again</a></p></div>'; }
         }
 
         /* ============ Developer Editor ============ */
@@ -2248,7 +2272,7 @@
 
             // Save / Preview
             html += '<div style="display:flex;gap:10px;margin-top:20px;"><button class="btn-primary" style="width:auto;padding:12px 30px;" onclick="saveDevPage()">Save Developer Page</button>';
-            html += '<button class="btn-secondary" onclick="showDeveloper(\'' + escapeHtml(currentUser.username) + '\')">Preview</button></div>';
+            html += '<button class="btn-secondary" onclick="showDeveloper(\'' + jsEsc(currentUser.username) + '\')">Preview</button></div>';
             document.getElementById('deveditor-content').innerHTML = html;
         }
 
@@ -2569,7 +2593,7 @@
                         const gd = await api('/games/' + a.game_id);
                         const g = gd.game;
                         const coverSrc = g.cover_path || '';
-                        html += '<div class="recent-card" onclick="showGameDetail(\'' + g.id + '\')">';
+                        html += '<div class="recent-card" onclick="showGameDetail(\'' + jsEsc(g.id) + '\')">';
                         if (coverSrc) html += '<img src="' + escapeHtml(coverSrc) + '">'; else html += '<div style="height:100px;background:var(--bg-secondary);"></div>';
                         html += '<div class="recent-card-info"><div class="recent-card-title">' + escapeHtml(g.title) + '</div>';
                         html += '<div class="recent-card-time">' + escapeHtml(a.created_at) + '</div></div></div>';
@@ -2589,7 +2613,7 @@
                 document.getElementById('offers-grid').innerHTML = games.slice(0,3).map(g => {
                     const coverSrc = g.cover_path || '';
                     const final = (g.price * (1 - g.discount/100)).toFixed(2);
-                    return '<div class="offer-card" onclick="showGameDetail(\'' + g.id + '\')">' +
+                    return '<div class="offer-card" onclick="showGameDetail(\'' + jsEsc(g.id) + '\')">' +
                         (coverSrc ? '<img src="' + escapeHtml(coverSrc) + '">' : '<div style="height:120px;background:var(--bg-secondary);"></div>') +
                         '<div class="offer-content"><div class="offer-title">' + escapeHtml(g.title) + '</div>' +
                         '<div class="offer-price"><span class="purchase-discount">-' + g.discount + '%</span>' +
@@ -2609,7 +2633,7 @@
                 document.getElementById('wishlist-grid').innerHTML = data.games.map(g => {
                     const coverSrc = g.cover_path || '';
                     const price = g.price === 0 ? 'Free' : '$' + g.price.toFixed(2);
-                    return '<div class="game-card" onclick="showGameDetail(\'' + g.id + '\')">' +
+                    return '<div class="game-card" onclick="showGameDetail(\'' + jsEsc(g.id) + '\')">' +
                         (coverSrc ? '<img src="' + escapeHtml(coverSrc) + '">' : '<div style="height:160px;background:var(--bg-secondary);"></div>') +
                         '<div class="game-card-info"><div class="game-card-title">' + escapeHtml(g.title) + '</div>' +
                         '<div class="game-card-footer"><span class="game-card-price">' + price + '</span>' +
@@ -2623,6 +2647,7 @@
         let dashboardSort = 'newest';
         async function loadDashboard() {
             if (!currentUser) { showAuth('login'); return; }
+            showLoading('dashboard-content');
             try {
                 const data = await api('/developer/' + currentUser.username + '/games');
                 const container = document.getElementById('dashboard-content');
@@ -2650,18 +2675,18 @@
                         ? '<span style="background:var(--success);color:#000;padding:2px 8px;border-radius:3px;font-size:11px;font-weight:600;">Published</span>'
                         : '<span style="background:var(--text-secondary);color:#000;padding:2px 8px;border-radius:3px;font-size:11px;font-weight:600;">Draft</span>';
                     return '<div class="dashboard-card">' +
-                        (coverSrc ? '<img src="' + escapeHtml(coverSrc) + '" style="width:180px;height:80px;object-fit:cover;border-radius:3px;cursor:pointer;" onclick="showGameDetail(\'' + g.id + '\')">' : '<div style="width:180px;height:80px;background:var(--bg-secondary);border-radius:3px;"></div>') +
-                        '<div><div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;"><div class="game-card-title" style="cursor:pointer;margin-bottom:0;" onclick="showGameDetail(\'' + g.id + '\')">' + escapeHtml(g.title) + '</div>' + pubBadge + '</div>' +
+                        (coverSrc ? '<img src="' + escapeHtml(coverSrc) + '" style="width:180px;height:80px;object-fit:cover;border-radius:3px;cursor:pointer;" onclick="showGameDetail(\'' + jsEsc(g.id) + '\')">' : '<div style="width:180px;height:80px;background:var(--bg-secondary);border-radius:3px;"></div>') +
+                        '<div><div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;"><div class="game-card-title" style="cursor:pointer;margin-bottom:0;" onclick="showGameDetail(\'' + jsEsc(g.id) + '\')">' + escapeHtml(g.title) + '</div>' + pubBadge + '</div>' +
                         '<div class="dashboard-stats"><span>' + escapeHtml(g.genre) + '</span><span>★ ' + (g.avg_rating||0).toFixed(1) + '</span><span>' + (g.review_count||0) + ' reviews</span><span>' + (g.play_count||0) + ' plays</span></div></div>' +
                         '<div class="dashboard-actions">' +
                         '<button class="dash-btn dash-btn-edit" onclick="toggleVisibility(\'' + g.id + '\',' + !g.published + ')">' + (g.published ? 'Unpublish' : 'Publish') + '</button>' +
-                        '<button class="dash-btn dash-btn-edit" onclick="showGameDetail(\'' + g.id + '\')">View</button>' +
+                        '<button class="dash-btn dash-btn-edit" onclick="showGameDetail(\'' + jsEsc(g.id) + '\')">View</button>' +
                         '<button class="dash-btn dash-btn-edit" onclick="showAnalytics(\'' + g.id + '\')">Analytics</button>' +
                         '<button class="dash-btn dash-btn-edit" onclick="editGame(\'' + g.id + '\')">Edit</button>' +
                         '<button class="dash-btn dash-btn-delete" onclick="deleteGame(\'' + jsEsc(g.id) + '\',\'' + jsEsc(g.title) + '\')">Delete</button></div></div>';
                 }).join('');
                 container.innerHTML = html;
-            } catch (e) { console.error('Dashboard error:', e); }
+            } catch (e) { container.innerHTML = '<div class="error-state"><p>Failed to load dashboard. <a href="#" onclick="navigate(\'dashboard\')">Try again</a></p></div>'; }
         }
 
         async function toggleVisibility(id, published) {
@@ -3266,6 +3291,7 @@
         let adminTab = 'overview';
         async function loadAdmin() {
             if (!currentUser) { showAuth('login'); return; }
+            showLoading('admin-content');
             const container = document.getElementById('admin-content');
             // Tab bar
             let html = '<div style="display:flex;gap:5px;margin-bottom:20px;">';
@@ -3514,7 +3540,7 @@
                 const data = await api('/library');
                 if (!data.games || data.games.length === 0) { list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary);">No games in library.</div>'; return; }
                 list.innerHTML = data.games.slice(0, 15).map(g =>
-                    '<div class="feed-item" onclick="showGameDetail(\'' + g.id + '\')">' +
+                    '<div class="feed-item" onclick="showGameDetail(\'' + jsEsc(g.id) + '\')">' +
                     (g.cover_path ? '<img src="' + escapeHtml(g.cover_path) + '">' : '<div style="width:50px;height:35px;background:var(--bg-tertiary);border-radius:3px;"></div>') +
                     '<div class="feed-item-info"><div class="feed-item-title">' + escapeHtml(g.title) + '</div>' +
                     '<div class="feed-item-meta">' + escapeHtml(g.genre) + ' · ' + (g.play_count || 0) + ' plays</div></div></div>'
@@ -3529,7 +3555,7 @@
                 if (!data.games || data.games.length === 0) { list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary);">Wishlist is empty.</div>'; return; }
                 list.innerHTML = data.games.map(g => {
                     const price = g.price === 0 ? 'Free' : '$' + g.price.toFixed(2);
-                    return '<div class="feed-item" onclick="showGameDetail(\'' + g.id + '\')">' +
+                    return '<div class="feed-item" onclick="showGameDetail(\'' + jsEsc(g.id) + '\')">' +
                     (g.cover_path ? '<img src="' + escapeHtml(g.cover_path) + '">' : '<div style="width:50px;height:35px;background:var(--bg-tertiary);border-radius:3px;"></div>') +
                     '<div class="feed-item-info"><div class="feed-item-title">' + escapeHtml(g.title) + '</div>' +
                     '<div class="feed-item-meta">' + price + '</div></div></div>';
@@ -3543,7 +3569,7 @@
                 const data = await api('/following');
                 if (!data.following || data.following.length === 0) { list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary);">Not following anyone yet.</div>'; return; }
                 list.innerHTML = data.following.map(u =>
-                    '<div class="feed-item" onclick="showDeveloper(\'' + escapeHtml(u.username) + '\')">' +
+                    '<div class="feed-item" onclick="showDeveloper(\'' + jsEsc(u.username) + '\')">' +
                     '<img src="' + avatarUrl(u) + '" style="width:35px;height:35px;border-radius:50%;object-fit:cover;">' +
                     '<div class="feed-item-info"><div class="feed-item-title">' + escapeHtml(u.username) + '</div>' +
                     '<div class="feed-item-meta">' + escapeHtml(u.bio || 'Developer') + '</div></div></div>'
@@ -3612,7 +3638,7 @@
 
                 let html = '';
                 items.forEach(item => {
-                    html += '<div class="card-box" style="display:flex;gap:15px;align-items:flex-start;cursor:pointer;margin-bottom:10px;" onclick="' + (item.game_id ? "showGameDetail('" + esc(item.game_id) + "')" : '') + '">';
+                    html += '<div class="card-box" style="display:flex;gap:15px;align-items:flex-start;cursor:pointer;margin-bottom:10px;" onclick="' + (item.game_id ? "showGameDetail('" + jsEsc(item.game_id) + "')" : '') + '">';
                     if (item.cover_path) {
                         html += '<img src="' + esc(item.cover_path) + '" style="width:80px;height:50px;object-fit:cover;border-radius:4px;flex-shrink:0;">';
                     } else {
@@ -3767,6 +3793,7 @@
         document.addEventListener('keydown', e => {
             if (e.key === 'Escape') { closePlayer(); closeModal(); }
             if (e.key === 'f' && document.getElementById('game-player').classList.contains('active') && !e.target.matches('input,textarea')) toggleFps();
+            if ((e.key === 'Enter' || e.key === ' ') && e.target.classList.contains('nav-tab')) { e.preventDefault(); e.target.click(); }
         });
 
         /* ============ Particles ============ */
