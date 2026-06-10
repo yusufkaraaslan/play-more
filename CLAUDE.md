@@ -13,14 +13,17 @@ go build -o playmore                                      # Build
 ./playmore setup                                          # Interactive .env wizard
 ./playmore                                                # Run (reads .env, then flags/env)
 ./playmore --port 3000 --data /path/to                    # Custom port and data dir
-./playmore --tls-cert cert.pem --tls-key key.pem          # Direct TLS
+./playmore --tls-cert cert.pem --tls-key key.pem          # Direct TLS (TLS 1.3 only)
 ./playmore --auto-tls --domain playmore.example.com       # Let's Encrypt (needs :80 + :443)
 ./playmore --smtp-host ... --smtp-user ... --base-url ... # Enable email (verify / reset)
+./playmore --trusted-proxies '127.0.0.1/32,10.0.0.0/8'    # REQUIRED behind reverse proxy
+./playmore --behind-tls-proxy                             # Force Secure-cookie when proxy terminates TLS
+./playmore --games-domain games.example.com               # Serve /play/* from separate origin (sandboxing)
 curl -X POST localhost:8080/api/seed                      # Seed demo data
 docker-compose up -d                                      # Docker deployment
 ```
 
-Config precedence: **CLI flag > env var > `.env` file**. Env-var fallbacks: `PLAYMORE_PORT`, `PLAYMORE_DATA`, `PLAYMORE_GOATCOUNTER`, `PLAYMORE_TLS_CERT`, `PLAYMORE_TLS_KEY`, `PLAYMORE_AUTO_TLS`, `PLAYMORE_DOMAIN`, `PLAYMORE_BASE_URL`, `PLAYMORE_SMTP_{HOST,PORT,USER,PASS,FROM}`. `.env` is loaded at startup via `loadEnvFile()` and never overrides existing env.
+Config precedence: **CLI flag > env var > `.env` file**. Env-var fallbacks: `PLAYMORE_PORT`, `PLAYMORE_DATA`, `PLAYMORE_GOATCOUNTER`, `PLAYMORE_TLS_CERT`, `PLAYMORE_TLS_KEY`, `PLAYMORE_AUTO_TLS`, `PLAYMORE_DOMAIN`, `PLAYMORE_BASE_URL`, `PLAYMORE_GAMES_DOMAIN`, `PLAYMORE_TRUSTED_PROXIES`, `PLAYMORE_BEHIND_TLS_PROXY`, `PLAYMORE_SMTP_{HOST,PORT,USER,PASS,FROM}`. `.env` is loaded at startup via `loadEnvFile()` and never overrides existing env.
 
 ## Testing
 
@@ -34,19 +37,22 @@ main.go                    # Entry, CLI flags, .env loader, setup wizard, go:emb
 internal/
   server/server.go         # Gin router: HTTPS redirect, security headers, per-request CSP nonce,
                            #   gzip, cache-control, all routes
-  handlers/                # HTTP handlers — auth, games, library, reviews, profile, developer,
-                           #   feed, devlogs, comments, social, admin, admin_analytics, analytics,
-                           #   achievements, notifications, settings, uploads, sanitize, seed,
-                           #   apikeys, deployscript, docs (API reference HTML), avatar
+  handlers/                # HTTP handlers — auth, captcha, games, library, reviews, profile,
+                           #   developer, feed, devlogs, comments, social, admin, admin_analytics,
+                           #   analytics, achievements, notifications, settings, uploads, sanitize,
+                           #   seed, apikeys, deployscript, docs (API reference HTML), avatar
   handlers/playmore-deploy.sh  # Embedded shell script served at /deploy.sh
   models/                  # DB queries — user, game, review, activity, developer, apikey
   storage/db.go            # SQLite schema + idempotent migrations (ALTER TABLE / CREATE IF NOT EXISTS)
   storage/files.go         # Game file storage, ZIP extraction with path traversal protection
   middleware/              # auth.go (session + Bearer API key), ratelimit.go (per-IP, per-endpoint),
-                           #   csrf.go (Origin/Referer; bypassed for API-key auth), analytics.go
+                           #   csrf.go (Origin/Referer; bypassed for API-key auth),
+                           #   clientip.go (trusted-proxy-aware client IP), analytics.go
   email/email.go           # SMTP sender, health check, ProtonMail Bridge detection
-frontend/index.html        # Vanilla JS SPA (single file ~262KB, inline CSS/JS)
+frontend/index.html        # Vanilla JS SPA (~3600 lines, ~260KB, inline CSS/JS)
+frontend/security-policy.html # Static security disclosure page
 docs/                      # SETUP.md, DEVELOPER.md (API reference), SETUP_PROTONMAIL_BRIDGE.md
+scripts/                   # install.sh, deploy.sh, backup.sh — operational helpers (not embedded)
 v1/                        # Original single-file HTML version (archived, not actively developed)
 ```
 
@@ -64,8 +70,14 @@ v1/                        # Original single-file HTML version (archived, not ac
 - **Analytics**: Page views written asynchronously via channel; `middleware.StartAnalyticsWriter()` batches every 5s or 50 records. 90-day retention.
 - **Email**: Optional. `internal/email` package; configured via `--smtp-*` flags or `PLAYMORE_SMTP_*` env. `BaseURL` (`PLAYMORE_BASE_URL`) is required for verification/reset links to work. On Linux, if SMTP host looks like a local ProtonMail Bridge, `main.go` tries `systemctl start protonmail-bridge` (system + user) before giving up. Self-signed certs are accepted for local SMTP bridges.
 - **File storage**: Games at `{dataDir}/games/{gameID}/`, uploads at `{dataDir}/uploads/`, autocert cache at `{dataDir}/certs/`.
-- **Secure cookies**: `Secure` flag set automatically when `IsSecure(c)` is true (direct TLS or reverse-proxy `X-Forwarded-Proto: https`).
-- **HTTPS redirect**: If `X-Forwarded-Proto: http` is seen, the server 301s to https. Combined with HSTS, do not break this when adding middleware — it must run before security headers.
+- **Secure cookies**: `Secure` flag set automatically when `IsSecure(c)` is true (direct TLS, or trusted-proxy with `X-Forwarded-Proto: https`). For TLS-terminating proxies that don't set `X-Forwarded-Proto`, use `--behind-tls-proxy` (sets `middleware.ForceSecureCookies = true`).
+- **Trusted proxies**: By default the server trusts NO proxy headers — `X-Forwarded-Proto`, `X-Forwarded-For`, `X-Real-IP` are ignored. To enable behind a reverse proxy, pass `--trusted-proxies` with explicit CIDRs. `0.0.0.0/0` and `::/0` are rejected at startup. `middleware/clientip.go` exposes the trusted-proxy-aware client IP for rate-limiting and analytics.
+- **HTTPS redirect**: If `X-Forwarded-Proto: http` is seen AND a trusted proxy is configured, server 301s to https using `baseURL` (not `Host` — prevents Host-header injection / open redirect). Without `--trusted-proxies` the redirect is disabled. Must run before security headers.
+- **TLS**: `MinVersion: tls.VersionTLS13` for both direct TLS and auto-TLS. `--auto-tls` and `--tls-cert/--tls-key` are mutually exclusive.
+- **Game origin isolation**: Optional `--games-domain` causes `/play/*` to be served (and CSP frame-src/sandbox-allowed) from a separate origin. Strongest defense against malicious uploaded games breaking out of the iframe.
+- **Body size caps**: Per-route `http.MaxBytesReader` wrapping. Game upload cap = `storage.MaxFileSize` + 32 MiB form overhead (~500 MiB total); image uploads capped at 10 MiB. `r.MaxMultipartMemory = 32 MiB`. `MaxHeaderBytes = 1 MiB`.
+- **Logger**: Custom `gin.LoggerWithFormatter` strips `RawQuery` (auth tokens land in URLs for verify/reset) and sanitizes `\r\n` to prevent log injection. Don't switch back to the default Gin logger.
+- **Email-required gating**: If SMTP is not configured, users cannot verify their email, and `RequireVerifiedEmail()` blocks uploads/reviews/devlogs. Startup prints a `⚠ SMTP not configured` warning. Demo seed data still works without email.
 
 ## Database tables
 
