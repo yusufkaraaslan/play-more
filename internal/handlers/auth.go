@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -177,11 +178,15 @@ func Login(c *gin.Context) {
 	}
 	emailKey := strings.ToLower(strings.TrimSpace(input.Email))
 
-	// Per-account lockout — defeats distributed credential-stuffing where each
-	// IP only hits the per-IP limit (10/5min) but thousands of IPs converge on
-	// one account. 10 attempts per email per 15min, regardless of source IP.
-	if !middleware.AllowByKey("login:"+emailKey, 10, 900) {
-		c.JSON(http.StatusTooManyRequests, gin.H{"error": "too many login attempts for this account, please try again later"})
+	// Per-(IP, account) exponential backoff. Replaces a global per-email lockout
+	// that an attacker could weaponize to lock a victim out of their own account
+	// by spamming bad passwords (#12). Keyed on client IP + email, so an attacker
+	// on one IP can never block the legitimate owner arriving from another; a
+	// correct password clears the counter immediately.
+	backoffKey := "login:" + middleware.RealClientIP(c) + ":" + emailKey
+	if blocked, retryAfter := middleware.LoginBlocked(backoffKey); blocked {
+		c.Header("Retry-After", strconv.Itoa(int(retryAfter.Seconds())+1))
+		c.JSON(http.StatusTooManyRequests, gin.H{"error": "too many failed attempts, please wait a moment and try again"})
 		return
 	}
 
@@ -189,16 +194,21 @@ func Login(c *gin.Context) {
 	if err != nil {
 		// Equalize timing with the password-mismatch path (cost-12 bcrypt).
 		bcrypt.CompareHashAndPassword(dummyBcryptHash, []byte(input.Password))
+		middleware.RecordLoginFailure(backoffKey)
 		log.Printf("[AUTH] failed login attempt for email=%s ip=%s reason=no_such_user", emailKey, middleware.RealClientIP(c))
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
 		return
 	}
 
 	if !user.CheckPassword(input.Password) {
+		middleware.RecordLoginFailure(backoffKey)
 		log.Printf("[AUTH] failed login attempt for user=%s ip=%s reason=wrong_password", user.Username, middleware.RealClientIP(c))
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
 		return
 	}
+
+	// Successful auth — clear the failure counter for this (IP, account).
+	middleware.ClearLoginFailures(backoffKey)
 
 	// Invalidate any pre-seated/orphan sessions for this user before issuing a
 	// new one — defeats session fixation where an attacker plants a session

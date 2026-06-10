@@ -146,6 +146,7 @@ func StartRateLimitCleanup() {
 					}
 				}
 				limiter.mu.Unlock()
+				cleanupLoginBackoff()
 			case <-ShutdownCh:
 				return
 			}
