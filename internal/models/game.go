@@ -23,7 +23,7 @@ type Game struct {
 	DeveloperID string   `json:"developer_id"`
 	Tags        []string `json:"tags"`
 	IsWebGPU    bool     `json:"is_webgpu"`
-	FilePath    string   `json:"file_path"`
+	FilePath    string   `json:"-"` // internal disk path (data/games/<id>) — never expose in API responses (#10)
 	EntryFile   string   `json:"entry_file"`
 	Screenshots []string `json:"screenshots"`
 	VideoURL    string   `json:"video_url"`
@@ -162,14 +162,14 @@ func ListGames(p GameListParams) ([]Game, int, error) {
 			p.Search = p.Search[:100]
 		}
 		where = append(where, "(g.rowid IN (SELECT rowid FROM games_fts WHERE games_fts MATCH ?) OR g.title LIKE ? OR g.tags LIKE ?)")
-		// Escape FTS special characters (incl. AND/OR/NOT keywords via space-stripping) to prevent query injection
-		safe := strings.Map(func(r rune) rune {
-			if strings.ContainsRune(`+-<>():*"^~`, r) {
-				return -1
-			}
-			return r
-		}, p.Search)
-		ftsQuery := safe + "*"
+		// Wrap the whole term as a single FTS5 string literal: double internal
+		// quotes and surround with quotes, then prefix-match the last token with
+		// a trailing '*'. Inside a quoted string FTS5 treats every other character
+		// as a token separator, so special characters (' & | ! % \ etc.) can never
+		// produce a parser syntax error — which previously surfaced as HTTP 500.
+		// (The value is also bound as a parameter, so there is no SQL injection;
+		// this purely hardens the FTS expression grammar.)
+		ftsQuery := `"` + strings.ReplaceAll(p.Search, `"`, `""`) + `"*`
 		q := "%" + p.Search + "%"
 		args = append(args, ftsQuery, q, q)
 	}

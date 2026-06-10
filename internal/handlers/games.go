@@ -713,7 +713,11 @@ func ReuploadGameFiles(c *gin.Context) {
 // ServeGameFiles serves game files for the iframe player. spaOrigin is the
 // origin allowed to embed via CSP frame-ancestors; pass "" for legacy
 // same-origin embed. frame-ancestors also includes the www.<host> variant.
-func ServeGameFiles(spaOrigin string) gin.HandlerFunc {
+// gamesDomain, when non-empty, is the dedicated host that game content must be
+// served from; requests for /play/* arriving on any other host are redirected
+// there so uploaded game JS can never execute under the main (authenticated)
+// origin's loose game CSP.
+func ServeGameFiles(spaOrigin, gamesDomain string) gin.HandlerFunc {
 	frameAncestors := "'self'"
 	if spaOrigin != "" {
 		frameAncestors = spaOrigin
@@ -736,13 +740,42 @@ func ServeGameFiles(spaOrigin string) gin.HandlerFunc {
 	// cannot mint API keys via same-origin fetch. Omitting allow-same-origin
 	// makes the document an opaque origin: cookies aren't sent on /api/* fetches,
 	// and any request it does make carries Origin: null (rejected by CSRF).
-	htmlCSP := csp + "; sandbox allow-scripts allow-pointer-lock allow-popups allow-popups-to-escape-sandbox allow-forms allow-modals"
+	// allow-popups-to-escape-sandbox intentionally omitted (#5): a malicious game
+	// could otherwise spawn an un-sandboxed popup for credential phishing. Popups
+	// stay sandboxed; matches the iframe-attribute sandbox in the SPA player.
+	htmlCSP := csp + "; sandbox allow-scripts allow-pointer-lock allow-popups allow-forms allow-modals"
 
 	// gameIDRe matches our game ID format (UUIDv4) — prevents Windows path
 	// traversal via gameID = ".." and bounds the lookup to plausible IDs.
 	gameIDRe := regexp.MustCompile(`^[a-zA-Z0-9-]{1,64}$`)
 
 	return func(c *gin.Context) {
+		// Origin isolation (defends the account-takeover chain): when a dedicated
+		// games domain is configured, game HTML must NEVER be served from the
+		// main origin. A top-level navigation to playmore.world/play/<id>/ would
+		// otherwise run attacker-uploaded JS under the main origin's permissive
+		// game CSP, with the victim's first-party session cookie in scope. Redirect
+		// any /play/* request on a non-games host to the isolated games origin
+		// BEFORE any HTML or loose CSP is emitted.
+		if gamesDomain != "" {
+			host := c.Request.Host
+			if i := strings.IndexByte(host, ':'); i != -1 {
+				host = host[:i]
+			}
+			if !strings.EqualFold(host, gamesDomain) {
+				scheme := "https://"
+				if !middleware.IsSecure(c) {
+					scheme = "http://"
+				}
+				target := scheme + gamesDomain + c.Request.URL.Path
+				if c.Request.URL.RawQuery != "" {
+					target += "?" + c.Request.URL.RawQuery
+				}
+				c.Redirect(http.StatusMovedPermanently, target)
+				return
+			}
+		}
+
 		gameID := c.Param("id")
 		if !gameIDRe.MatchString(gameID) {
 			c.String(http.StatusNotFound, "game not found")

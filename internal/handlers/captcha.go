@@ -26,9 +26,9 @@ import (
 // Verification on the server is O(1) — single hash + map check.
 
 const (
-	captchaDifficulty = 18                // bits of leading zeros required
-	captchaTTL        = 10 * time.Minute  // challenge expires
-	captchaMaxIssued  = 10000             // bound memory under flood
+	captchaDifficulty = 20               // bits of leading zeros required (~1M hashes; paired with per-IP register rate-limit)
+	captchaTTL        = 10 * time.Minute // challenge expires
+	captchaMaxIssued  = 10000            // bound memory under flood
 )
 
 type captchaEntry struct {

@@ -181,7 +181,7 @@ func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxi
 		api.GET("/profile/:username", handlers.GetProfile)
 		api.PUT("/profile", middleware.AuthRequired(), middleware.RateLimit(10, 300), handlers.UpdateProfile)
 		api.GET("/activity", middleware.AuthRequired(), handlers.GetActivity)
-		api.POST("/playtime", middleware.AuthRequired(), middleware.RateLimit(60, 60), handlers.RecordPlaytime)
+		api.POST("/playtime", middleware.AuthRequired(), handlers.RequireVerifiedEmail(), middleware.RateLimit(60, 60), handlers.RecordPlaytime)
 
 		// Settings
 		api.DELETE("/settings/account", middleware.AuthRequired(), middleware.RateLimit(3, 3600), handlers.DeleteAccount)
@@ -298,7 +298,7 @@ func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxi
 
 	// API Keys
 	api.GET("/api-keys", middleware.AuthRequired(), handlers.ListAPIKeysHandler)
-	api.POST("/api-keys", middleware.AuthRequired(), middleware.RateLimit(10, 3600), handlers.CreateAPIKeyHandler)
+	api.POST("/api-keys", middleware.AuthRequired(), handlers.RequireVerifiedEmail(), middleware.RateLimit(10, 3600), handlers.CreateAPIKeyHandler)
 	api.DELETE("/api-keys/:id", middleware.AuthRequired(), middleware.RateLimit(30, 3600), handlers.DeleteAPIKeyHandler)
 
 	// Self-hosted avatar generation
@@ -314,8 +314,8 @@ func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxi
 	// Game iframe content. spaOrigin gates who can embed via CSP frame-ancestors —
 	// XFO can't whitelist a cross-origin host, so split-origin (games.* subdomain) needs CSP.
 	spaOrigin := strings.TrimRight(baseURL, "/")
-	r.GET("/play/:id", handlers.ServeGameFiles(spaOrigin))
-	r.GET("/play/:id/*filepath", handlers.ServeGameFiles(spaOrigin))
+	r.GET("/play/:id", handlers.ServeGameFiles(spaOrigin, gamesDomain))
+	r.GET("/play/:id/*filepath", handlers.ServeGameFiles(spaOrigin, gamesDomain))
 
 	// =========================================================================
 	// Frontend (SPA)

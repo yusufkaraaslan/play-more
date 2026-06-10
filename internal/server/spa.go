@@ -57,12 +57,17 @@ func spaFallback(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL strin
 		gcURL, _ := c.Get("goatcounter_url")
 		gcStr, _ := gcURL.(string)
 		frameSrc := "'self' https://www.youtube.com"
+		// Cover/screenshot images live under /play/* and are loaded directly from
+		// the games origin when split-origin is configured (#1 fix), so img-src /
+		// media-src must whitelist it.
+		gamesSrc := ""
 		if gamesOrigin != "" {
 			frameSrc += " " + gamesOrigin
+			gamesSrc = " " + gamesOrigin
 		}
-		csp := "default-src 'self'; script-src 'self' 'nonce-" + nonce + "'; script-src-attr 'unsafe-inline'; style-src 'self' 'nonce-" + nonce + "' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; img-src 'self' data: blob: https://img.youtube.com; connect-src 'self'; frame-src " + frameSrc + "; media-src 'self'; font-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; form-action 'self'"
+		csp := "default-src 'self'; script-src 'self' 'nonce-" + nonce + "'; script-src-attr 'unsafe-inline'; style-src 'self' 'nonce-" + nonce + "' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; img-src 'self' data: blob: https://img.youtube.com" + gamesSrc + "; connect-src 'self'; frame-src " + frameSrc + "; media-src 'self'" + gamesSrc + "; font-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; form-action 'self'"
 		if gcStr != "" {
-			csp = "default-src 'self'; script-src 'self' 'nonce-" + nonce + "' https://gc.zgo.at https://*.goatcounter.com https://static.cloudflareinsights.com; script-src-attr 'unsafe-inline'; style-src 'self' 'nonce-" + nonce + "' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; img-src 'self' data: blob: https://img.youtube.com https://gc.zgo.at; connect-src 'self' https://*.goatcounter.com https://cloudflareinsights.com; frame-src " + frameSrc + "; media-src 'self'; font-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; form-action 'self'"
+			csp = "default-src 'self'; script-src 'self' 'nonce-" + nonce + "' https://gc.zgo.at https://*.goatcounter.com https://static.cloudflareinsights.com; script-src-attr 'unsafe-inline'; style-src 'self' 'nonce-" + nonce + "' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; img-src 'self' data: blob: https://img.youtube.com https://gc.zgo.at" + gamesSrc + "; connect-src 'self' https://*.goatcounter.com https://cloudflareinsights.com; frame-src " + frameSrc + "; media-src 'self'" + gamesSrc + "; font-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; form-action 'self'"
 		}
 		c.Header("Content-Security-Policy", csp)
 

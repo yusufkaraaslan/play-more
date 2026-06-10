@@ -1177,7 +1177,7 @@
         }
 
         function gameCardHTML(g) {
-            const coverSrc = g.cover_path || 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="225"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#2a475e"/><stop offset="100%" stop-color="#171a21"/></linearGradient></defs><rect fill="url(#g)" width="400" height="225"/><text x="200" y="120" text-anchor="middle" fill="#66c0f4" font-family="Segoe UI" font-size="22" font-weight="bold">' + escapeHtml(g.title) + '</text></svg>');
+            const coverSrc = playAsset(g.cover_path) || 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="225"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#2a475e"/><stop offset="100%" stop-color="#171a21"/></linearGradient></defs><rect fill="url(#g)" width="400" height="225"/><text x="200" y="120" text-anchor="middle" fill="#66c0f4" font-family="Segoe UI" font-size="22" font-weight="bold">' + escapeHtml(g.title) + '</text></svg>');
             const rating = g.avg_rating > 0 ? '★ ' + g.avg_rating.toFixed(1) : '';
             const price = g.price === 0 ? 'Free' : '$' + g.price.toFixed(2);
             return '<div class="game-card" onclick="showGameDetail(\'' + jsEsc(g.id) + '\')">' +
@@ -1354,7 +1354,7 @@
         }
 
         function libraryCardHTML(g) {
-            const coverSrc = g.cover_path || 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="225"><rect fill="#1e1e2e" width="400" height="225"/><text x="200" y="120" text-anchor="middle" fill="#66c0f4" font-size="20">' + escapeHtml(g.title) + '</text></svg>');
+            const coverSrc = playAsset(g.cover_path) || 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="225"><rect fill="#1e1e2e" width="400" height="225"/><text x="200" y="120" text-anchor="middle" fill="#66c0f4" font-size="20">' + escapeHtml(g.title) + '</text></svg>');
             return '<div class="game-card" onclick="showGameDetail(\'' + jsEsc(g.id) + '\')">' +
                 '<img src="' + coverSrc + '" alt="' + escapeHtml(g.title) + '">' +
                 '<div class="game-card-overlay"><span class="game-card-play">VIEW</span></div>' +
@@ -1647,7 +1647,7 @@
                 const data = await api('/games/' + gameId);
                 const game = data.game; currentGameData = game; const fileSize = data.file_size || 0;
                 const reviews = await api('/games/' + gameId + '/reviews');
-                const coverSrc = game.cover_path || '';
+                const coverSrc = playAsset(game.cover_path) || '';
                 const allReviews = reviews.reviews || [];
                 const posCount = allReviews.filter(r => r.rating >= 4).length;
                 const posPct = allReviews.length > 0 ? Math.round(posCount / allReviews.length * 100) : 0;
@@ -1670,7 +1670,7 @@
                 currentMediaList = [];
                 const gameVideos = (game.videos && game.videos.length > 0) ? game.videos : (game.video_url ? [game.video_url] : []);
                 gameVideos.forEach(v => currentMediaList.push({type:'video', url: v}));
-                if (game.screenshots) game.screenshots.forEach(s => currentMediaList.push({type:'image', url: s}));
+                if (game.screenshots) game.screenshots.forEach(s => currentMediaList.push({type:'image', url: playAsset(s)}));
                 if (currentMediaList.length === 0 && coverSrc) currentMediaList.push({type:'image', url: coverSrc});
                 currentMediaIdx = 0;
                 const autoplayEnabled = !!(currentUser && currentUser.autoplay_media);
@@ -2436,6 +2436,14 @@
             return (window.PLAYMORE_GAMES_ORIGIN || '');
         }
 
+        // Load /play/* assets (covers, screenshots) directly from the isolated
+        // games origin when split-origin is configured. On the main origin the
+        // server now 301s /play/* to the games origin, so this also avoids a
+        // redirect hop. Non-/play paths and data:/absolute URLs pass through.
+        function playAsset(p) {
+            return (p && gameOrigin() && p.indexOf('/play/') === 0) ? gameOrigin() + p : p;
+        }
+
         function launchGame(gameId, entryFile) {
             const player = document.getElementById('game-player');
             document.getElementById('player-title').textContent = 'Loading...';
@@ -2448,7 +2456,9 @@
             //     would let them call /api/* with the user's cookies — block storage
             //     access to keep auth safe.
             const hasSeparateOrigin = !!gameOrigin();
-            const sandbox = ['allow-scripts', 'allow-pointer-lock', 'allow-popups', 'allow-popups-to-escape-sandbox'];
+            // allow-popups-to-escape-sandbox removed (#5): a malicious game could
+            // otherwise open an un-sandboxed popup for phishing. Popups stay sandboxed.
+            const sandbox = ['allow-scripts', 'allow-pointer-lock', 'allow-popups'];
             if (hasSeparateOrigin) sandbox.push('allow-same-origin');
             frame.setAttribute('sandbox', sandbox.join(' '));
             frame.src = gameOrigin() + '/play/' + gameId + '/' + (entryFile || 'index.html');
@@ -2604,7 +2614,7 @@
                     try {
                         const gd = await api('/games/' + a.game_id);
                         const g = gd.game;
-                        const coverSrc = g.cover_path || '';
+                        const coverSrc = playAsset(g.cover_path) || '';
                         html += '<div class="recent-card" onclick="showGameDetail(\'' + jsEsc(g.id) + '\')">';
                         if (coverSrc) html += '<img src="' + escapeHtml(coverSrc) + '">'; else html += '<div style="height:100px;background:var(--bg-secondary);"></div>';
                         html += '<div class="recent-card-info"><div class="recent-card-title">' + escapeHtml(g.title) + '</div>';
@@ -2623,7 +2633,7 @@
                 if (games.length === 0) { document.getElementById('offers-section').style.display='none'; return; }
                 document.getElementById('offers-section').style.display='block';
                 document.getElementById('offers-grid').innerHTML = games.slice(0,3).map(g => {
-                    const coverSrc = g.cover_path || '';
+                    const coverSrc = playAsset(g.cover_path) || '';
                     const final = (g.price * (1 - g.discount/100)).toFixed(2);
                     return '<div class="offer-card" onclick="showGameDetail(\'' + jsEsc(g.id) + '\')">' +
                         (coverSrc ? '<img src="' + escapeHtml(coverSrc) + '">' : '<div style="height:120px;background:var(--bg-secondary);"></div>') +
@@ -2643,7 +2653,7 @@
                 if (!data.games || data.games.length === 0) { document.getElementById('wishlist-section').style.display='none'; return; }
                 document.getElementById('wishlist-section').style.display='block';
                 document.getElementById('wishlist-grid').innerHTML = data.games.map(g => {
-                    const coverSrc = g.cover_path || '';
+                    const coverSrc = playAsset(g.cover_path) || '';
                     const price = g.price === 0 ? 'Free' : '$' + g.price.toFixed(2);
                     return '<div class="game-card" onclick="showGameDetail(\'' + jsEsc(g.id) + '\')">' +
                         (coverSrc ? '<img src="' + escapeHtml(coverSrc) + '">' : '<div style="height:160px;background:var(--bg-secondary);"></div>') +
@@ -2682,7 +2692,7 @@
                 html += '</select></div>';
 
                 html += games.map(g => {
-                    const coverSrc = g.cover_path || '';
+                    const coverSrc = playAsset(g.cover_path) || '';
                     const pubBadge = g.published
                         ? '<span style="background:var(--success);color:#000;padding:2px 8px;border-radius:3px;font-size:11px;font-weight:600;">Published</span>'
                         : '<span style="background:var(--text-secondary);color:#000;padding:2px 8px;border-radius:3px;font-size:11px;font-weight:600;">Draft</span>';
@@ -2748,7 +2758,7 @@
                 html += '<div class="card-box" style="margin-bottom:20px;"><h3 style="font-size:14px;text-transform:uppercase;letter-spacing:1px;margin-bottom:15px;">Media</h3>';
                 // Cover
                 html += '<div class="form-group"><label class="form-label">Cover Image</label>';
-                if (g.cover_path) html += '<div style="margin-bottom:8px;"><img src="' + escapeHtml(g.cover_path) + '" style="height:80px;border-radius:4px;object-fit:cover;"></div>';
+                if (g.cover_path) html += '<div style="margin-bottom:8px;"><img src="' + escapeHtml(playAsset(g.cover_path)) + '" style="height:80px;border-radius:4px;object-fit:cover;"></div>';
                 html += '<input type="file" class="form-input" id="edit-game-cover" accept="image/*" style="padding:8px;"></div>';
                 // Screenshots
                 html += '<div class="form-group"><label class="form-label">Screenshots</label>';
@@ -3553,7 +3563,7 @@
                 if (!data.games || data.games.length === 0) { list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary);">No games in library.</div>'; return; }
                 list.innerHTML = data.games.slice(0, 15).map(g =>
                     '<div class="feed-item" onclick="showGameDetail(\'' + jsEsc(g.id) + '\')">' +
-                    (g.cover_path ? '<img src="' + escapeHtml(g.cover_path) + '">' : '<div style="width:50px;height:35px;background:var(--bg-tertiary);border-radius:3px;"></div>') +
+                    (g.cover_path ? '<img src="' + escapeHtml(playAsset(g.cover_path)) + '">' : '<div style="width:50px;height:35px;background:var(--bg-tertiary);border-radius:3px;"></div>') +
                     '<div class="feed-item-info"><div class="feed-item-title">' + escapeHtml(g.title) + '</div>' +
                     '<div class="feed-item-meta">' + escapeHtml(g.genre) + ' · ' + (g.play_count || 0) + ' plays</div></div></div>'
                 ).join('');
@@ -3568,7 +3578,7 @@
                 list.innerHTML = data.games.map(g => {
                     const price = g.price === 0 ? 'Free' : '$' + g.price.toFixed(2);
                     return '<div class="feed-item" onclick="showGameDetail(\'' + jsEsc(g.id) + '\')">' +
-                    (g.cover_path ? '<img src="' + escapeHtml(g.cover_path) + '">' : '<div style="width:50px;height:35px;background:var(--bg-tertiary);border-radius:3px;"></div>') +
+                    (g.cover_path ? '<img src="' + escapeHtml(playAsset(g.cover_path)) + '">' : '<div style="width:50px;height:35px;background:var(--bg-tertiary);border-radius:3px;"></div>') +
                     '<div class="feed-item-info"><div class="feed-item-title">' + escapeHtml(g.title) + '</div>' +
                     '<div class="feed-item-meta">' + price + '</div></div></div>';
                 }).join('');
@@ -3652,7 +3662,7 @@
                 items.forEach(item => {
                     html += '<div class="card-box" style="display:flex;gap:15px;align-items:flex-start;cursor:pointer;margin-bottom:10px;" onclick="' + (item.game_id ? "showGameDetail('" + jsEsc(item.game_id) + "')" : '') + '">';
                     if (item.cover_path) {
-                        html += '<img src="' + esc(item.cover_path) + '" style="width:80px;height:50px;object-fit:cover;border-radius:4px;flex-shrink:0;">';
+                        html += '<img src="' + esc(playAsset(item.cover_path)) + '" style="width:80px;height:50px;object-fit:cover;border-radius:4px;flex-shrink:0;">';
                     } else {
                         html += '<div style="width:50px;height:50px;background:var(--bg-tertiary);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;">' + (feedIcons[item.type] || '🎯') + '</div>';
                     }
@@ -3784,7 +3794,7 @@
                     return;
                 }
                 results.innerHTML = data.games.map(g => {
-                    const coverSrc = g.cover_path || '';
+                    const coverSrc = playAsset(g.cover_path) || '';
                     return '<div class="search-result" onclick="document.getElementById(\'global-search-results\').classList.remove(\'open\');document.getElementById(\'global-search-input\').value=\'\';showGameDetail(\'' + g.id + '\')">' +
                         (coverSrc ? '<img src="' + escapeHtml(coverSrc) + '">' : '<div style="width:60px;height:35px;background:var(--bg-tertiary);border-radius:3px;"></div>') +
                         '<div><div class="search-result-title">' + escapeHtml(g.title) + '</div>' +
