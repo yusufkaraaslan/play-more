@@ -471,26 +471,30 @@
             .header-actions { gap: 8px; }
             .gpu-badge { display: none; }
         }
+        /* Hover/focus effects migrated off inline on* handlers (CSP, #3). */
+        .tmpl-card:hover { border-color: var(--tmpl-accent) !important; }
+        .bar-hover:hover { opacity: 1 !important; }
+        [data-layout-title]:focus { border-color: var(--border-color) !important; }
     </style>
 </head>
 <body>
     <canvas id="particles-canvas"></canvas>
 
     <header class="header">
-        <div class="logo" onclick="navigate('store')">
+        <div class="logo" data-act="navigate" data-act-args="[&quot;store&quot;]">
             <svg viewBox="0 0 24 24"><path d="M21 6H3c-1.1 0-2 .9-2 2v8c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-10 7H8v3H6v-3H3v-2h3V8h2v3h3v2zm4.5 2c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm4-3c-.83 0-1.5-.67-1.5-1.5S18.67 9 19.5 9s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/></svg>
             PlayMore
         </div>
         <nav class="nav-tabs" role="navigation" aria-label="Main navigation">
-            <button class="nav-tab active" data-tab="store" onclick="navigate('store')" tabindex="0">Store</button>
-            <button class="nav-tab" data-tab="library" onclick="navigate('library')" tabindex="0">Library</button>
-            <button class="nav-tab" data-tab="feed" onclick="navigate('feed')" id="nav-feed" style="display:none;" tabindex="0">Feed</button>
-            <button class="nav-tab" data-tab="upload" onclick="navigate('upload')" tabindex="0">Upload</button>
-            <button class="nav-tab" data-tab="profile" onclick="navigate('profile')" tabindex="0">Profile</button>
+            <button class="nav-tab active" data-tab="store" data-act="navigate" data-act-args="[&quot;store&quot;]" tabindex="0">Store</button>
+            <button class="nav-tab" data-tab="library" data-act="navigate" data-act-args="[&quot;library&quot;]" tabindex="0">Library</button>
+            <button class="nav-tab" data-tab="feed" data-act="navigate" data-act-args="[&quot;feed&quot;]" id="nav-feed" style="display:none;" tabindex="0">Feed</button>
+            <button class="nav-tab" data-tab="upload" data-act="navigate" data-act-args="[&quot;upload&quot;]" tabindex="0">Upload</button>
+            <button class="nav-tab" data-tab="profile" data-act="navigate" data-act-args="[&quot;profile&quot;]" tabindex="0">Profile</button>
         </nav>
-        <button onclick="toggleTheme()" id="theme-toggle" title="Toggle theme" style="background:none;border:none;font-size:18px;cursor:pointer;padding:5px;">🌙</button>
+        <button data-act="toggleTheme" id="theme-toggle" title="Toggle theme" style="background:none;border:none;font-size:18px;cursor:pointer;padding:5px;">🌙</button>
         <div class="global-search">
-            <input type="text" id="global-search-input" placeholder="Search games..." aria-label="Search games" oninput="debounceGlobalSearch()" onfocus="debounceGlobalSearch()" autocomplete="off">
+            <input type="text" id="global-search-input" placeholder="Search games..." aria-label="Search games" data-input="debounceGlobalSearch" data-focus="debounceGlobalSearch" autocomplete="off">
             <div class="global-search-results" id="global-search-results"></div>
         </div>
         <div class="header-actions" id="header-actions">
@@ -500,7 +504,7 @@
 
     <div id="verify-banner" style="display:none;background:rgba(210,169,96,0.12);border-bottom:1px solid var(--warning);padding:10px 20px;text-align:center;font-size:13px;color:var(--warning);">
         <strong>Verify your email</strong> to upload games, post reviews, and write devlogs.
-        <a onclick="resendVerificationEmail()" style="margin-left:10px;color:var(--accent);cursor:pointer;text-decoration:underline;">Resend email</a>
+        <a data-act="resendVerificationEmail" style="margin-left:10px;color:var(--accent);cursor:pointer;text-decoration:underline;">Resend email</a>
     </div>
 
     <main class="main-content" role="main">
@@ -513,7 +517,7 @@
                 <div class="hero-content">
                     <h1 class="hero-title">Welcome to PlayMore</h1>
                     <p class="hero-subtitle">Your self-hosted game publishing platform. Upload, play, and share HTML5 games with WebGPU support.</p>
-                    <button class="hero-btn" onclick="navigate('upload')">Upload a Game</button>
+                    <button class="hero-btn" data-act="navigate" data-act-args="[&quot;upload&quot;]">Upload a Game</button>
                 </div>
             </div>
             <div class="recently-played" id="recently-played" style="display:none;">
@@ -525,8 +529,8 @@
                 <div class="offers-grid" id="offers-grid"></div>
             </div>
             <div class="filter-bar">
-                <input type="text" class="search-input" id="store-search" placeholder="Search games..." oninput="loadStore()">
-                <select class="filter-select" id="store-genre" onchange="loadStore()">
+                <input type="text" class="search-input" id="store-search" placeholder="Search games..." data-input="loadStore">
+                <select class="filter-select" id="store-genre" data-change="loadStore">
                     <option value="">All Genres</option>
                     <option value="action">Action</option>
                     <option value="adventure">Adventure</option>
@@ -537,7 +541,7 @@
                     <option value="horror">Horror</option>
                     <option value="experimental">Experimental</option>
                 </select>
-                <select class="filter-select" id="store-sort" onchange="loadStore()">
+                <select class="filter-select" id="store-sort" data-change="loadStore">
                     <option value="newest">Newest</option>
                     <option value="popular">Most Popular</option>
                     <option value="rating">Highest Rated</option>
@@ -553,7 +557,7 @@
         <section id="feed-section" class="section">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
                 <h2 class="section-title" style="margin-bottom:0;">Your Feed</h2>
-                <button class="btn-secondary" style="font-size:12px;padding:6px 14px;" onclick="toggleFeedSettings()">Filter</button>
+                <button class="btn-secondary" style="font-size:12px;padding:6px 14px;" data-act="toggleFeedSettings">Filter</button>
             </div>
             <div id="feed-settings" style="display:none;margin-bottom:20px;padding:15px;background:rgba(0,0,0,0.2);border-radius:8px;">
                 <div style="font-size:13px;color:var(--text-secondary);margin-bottom:10px;">Show in feed:</div>
@@ -637,7 +641,7 @@
                         </label>
                     </div>
                 </div>
-                <button class="btn-primary" onclick="submitUpload()">Upload Game</button>
+                <button class="btn-primary" data-act="submitUpload">Upload Game</button>
             </div>
         </section>
 
@@ -668,10 +672,10 @@
             <span id="session-timer" style="color:var(--text-secondary); font-size:14px; font-family:monospace;">00:00:00</span>
             <span id="fps-counter" style="font-size:13px; font-family:monospace; display:none; padding:3px 8px; border-radius:3px;">-- FPS</span>
             <div style="display:flex;gap:8px;">
-                <button class="btn-secondary" style="padding:6px 12px;font-size:12px;" onclick="toggleFps()" title="Toggle FPS (F)">FPS</button>
-                <button class="btn-secondary" style="padding:6px 12px;font-size:12px;" onclick="toggleFullscreen()" title="Fullscreen (F11)">⛶</button>
-                <button class="btn-secondary" style="padding:6px 12px;font-size:12px;" id="open-newtab-btn" onclick="openGameNewTab()">New Tab</button>
-                <button class="btn-secondary" onclick="closePlayer()">Close</button>
+                <button class="btn-secondary" style="padding:6px 12px;font-size:12px;" data-act="toggleFps" title="Toggle FPS (F)">FPS</button>
+                <button class="btn-secondary" style="padding:6px 12px;font-size:12px;" data-act="toggleFullscreen" title="Fullscreen (F11)">⛶</button>
+                <button class="btn-secondary" style="padding:6px 12px;font-size:12px;" id="open-newtab-btn" data-act="openGameNewTab">New Tab</button>
+                <button class="btn-secondary" data-act="closePlayer">Close</button>
             </div>
         </div>
         <iframe id="player-frame" allow="gamepad; fullscreen" referrerpolicy="no-referrer"></iframe>
@@ -683,7 +687,7 @@
             <h3 class="modal-title" id="modal-title">Confirm</h3>
             <p class="modal-text" id="modal-text">Are you sure?</p>
             <div class="modal-actions">
-                <button class="btn-secondary" onclick="closeModal()">Cancel</button>
+                <button class="btn-secondary" data-act="closeModal">Cancel</button>
                 <button class="btn-primary" style="width:auto;padding:10px 25px;" id="modal-confirm">Confirm</button>
             </div>
         </div>
@@ -935,27 +939,27 @@
             if (banner) banner.style.display = (currentUser && currentUser.email_verified === false) ? '' : 'none';
             if (currentUser) {
                 el.innerHTML = '<div style="position:relative;">' +
-                    '<button class="feed-btn" onclick="toggleFeed()" title="Notifications">🔔</button>' +
+                    '<button class="feed-btn" ' + act('toggleFeed') + ' title="Notifications">🔔</button>' +
                     '<div class="feed-dropdown" id="feed-dropdown">' +
                     '<div class="feed-tabs">' +
-                    '<button class="feed-tab active" onclick="switchFeedTab(\'activity\',this)">Activity</button>' +
-                    '<button class="feed-tab" onclick="switchFeedTab(\'library\',this)">Library</button>' +
-                    '<button class="feed-tab" onclick="switchFeedTab(\'wishlist\',this)">Wishlist</button>' +
-                    '<button class="feed-tab" onclick="switchFeedTab(\'following\',this)">Following</button>' +
+                    '<button class="feed-tab active" ' + act('switchFeedTab', 'activity') + '>Activity</button>' +
+                    '<button class="feed-tab" ' + act('switchFeedTab', 'library') + '>Library</button>' +
+                    '<button class="feed-tab" ' + act('switchFeedTab', 'wishlist') + '>Wishlist</button>' +
+                    '<button class="feed-tab" ' + act('switchFeedTab', 'following') + '>Following</button>' +
                     '</div><div class="feed-list" id="feed-list"></div></div></div> ' +
                     '<span class="user-info">Welcome, <strong>' + escapeHtml(currentUser.username) + '</strong></span> ' +
-                    '<button class="btn-secondary" onclick="logout()">Logout</button>';
+                    '<button class="btn-secondary" ' + act('logout') + '>Logout</button>';
             } else {
-                el.innerHTML = '<button class="btn-secondary" onclick="showAuth(\'login\')">Login</button> <button class="btn-accent" onclick="showAuth(\'register\')">Register</button>';
+                el.innerHTML = '<button class="btn-secondary" ' + act('showAuth', 'login') + '>Login</button> <button class="btn-accent" ' + act('showAuth', 'register') + '>Register</button>';
             }
         }
 
         function showAuth(mode) {
             const form = document.getElementById('auth-form');
             if (mode === 'login') {
-                form.innerHTML = '<h2>Login</h2><div class="form-group"><label class="form-label">Email</label><input type="email" class="form-input" id="auth-email"></div><div class="form-group"><label class="form-label">Password</label><input type="password" class="form-input" id="auth-password"></div><button class="btn-primary" onclick="doLogin()">Login</button><div id="auth-error" class="error-msg"></div><div class="auth-toggle"><a onclick="showForgotPassword()" style="cursor:pointer;">Forgot password?</a></div><div class="auth-toggle">No account? <a onclick="showAuth(\'register\')">Register</a></div>';
+                form.innerHTML = '<h2>Login</h2><div class="form-group"><label class="form-label">Email</label><input type="email" class="form-input" id="auth-email"></div><div class="form-group"><label class="form-label">Password</label><input type="password" class="form-input" id="auth-password"></div><button class="btn-primary" ' + act('doLogin') + '>Login</button><div id="auth-error" class="error-msg"></div><div class="auth-toggle"><a ' + act('showForgotPassword') + ' style="cursor:pointer;">Forgot password?</a></div><div class="auth-toggle">No account? <a ' + act('showAuth', 'register') + '>Register</a></div>';
             } else {
-                form.innerHTML = '<h2>Register</h2><div class="form-group"><label class="form-label">Username</label><input type="text" class="form-input" id="auth-username"></div><div class="form-group"><label class="form-label">Email</label><input type="email" class="form-input" id="auth-email"></div><div class="form-group"><label class="form-label">Password</label><input type="password" class="form-input" id="auth-password"></div><button class="btn-primary" onclick="doRegister()">Register</button><div id="auth-error" class="error-msg"></div><div class="auth-toggle">Have an account? <a onclick="showAuth(\'login\')">Login</a></div>';
+                form.innerHTML = '<h2>Register</h2><div class="form-group"><label class="form-label">Username</label><input type="text" class="form-input" id="auth-username"></div><div class="form-group"><label class="form-label">Email</label><input type="email" class="form-input" id="auth-email"></div><div class="form-group"><label class="form-label">Password</label><input type="password" class="form-input" id="auth-password"></div><button class="btn-primary" ' + act('doRegister') + '>Register</button><div id="auth-error" class="error-msg"></div><div class="auth-toggle">Have an account? <a ' + act('showAuth', 'login') + '>Login</a></div>';
             }
             navigate('auth');
         }
@@ -1023,9 +1027,9 @@
             const form = document.getElementById('auth-form');
             form.innerHTML = '<h2>Forgot Password</h2><p style="color:var(--text-secondary);margin-bottom:15px;">Enter your email and we\'ll send you a reset link.</p>' +
                 '<div class="form-group"><label class="form-label">Email</label><input type="email" class="form-input" id="auth-email"></div>' +
-                '<button class="btn-primary" onclick="doForgotPassword()">Send Reset Link</button>' +
+                '<button class="btn-primary" ' + act('doForgotPassword') + '>Send Reset Link</button>' +
                 '<div id="auth-error" class="error-msg"></div>' +
-                '<div class="auth-toggle"><a onclick="showAuth(\'login\')" style="cursor:pointer;">Back to Login</a></div>';
+                '<div class="auth-toggle"><a ' + act('showAuth', 'login') + ' style="cursor:pointer;">Back to Login</a></div>';
             navigate('auth');
         }
         async function doForgotPassword() {
@@ -1034,7 +1038,7 @@
             try {
                 await api('/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email }) });
                 document.getElementById('auth-form').innerHTML = '<h2>Check Your Email</h2><p style="color:var(--text-secondary);">If an account exists with that email, we\'ve sent a password reset link. Check your inbox.</p>' +
-                    '<div class="auth-toggle" style="margin-top:20px;"><a onclick="showAuth(\'login\')" style="cursor:pointer;">Back to Login</a></div>';
+                    '<div class="auth-toggle" style="margin-top:20px;"><a ' + act('showAuth', 'login') + ' style="cursor:pointer;">Back to Login</a></div>';
             } catch (e) { document.getElementById('auth-error').textContent = e.message; }
         }
 
@@ -1043,7 +1047,7 @@
             form.innerHTML = '<h2>Reset Password</h2>' +
                 '<div class="form-group"><label class="form-label">New Password</label><input type="password" class="form-input" id="auth-password" placeholder="Min 6 characters"></div>' +
                 '<div class="form-group"><label class="form-label">Confirm Password</label><input type="password" class="form-input" id="auth-password2"></div>' +
-                '<button class="btn-primary" onclick="doResetPassword(\'' + jsEsc(token) + '\')">Reset Password</button>' +
+                '<button class="btn-primary" ' + act('doResetPassword', token) + '>Reset Password</button>' +
                 '<div id="auth-error" class="error-msg"></div>';
             navigate('auth', false);
         }
@@ -1130,7 +1134,7 @@
                     document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
                     document.querySelectorAll('.nav-tab').forEach(t => { t.classList.remove('active'); t.removeAttribute('aria-current'); });
                     document.getElementById('store-section').classList.add('active');
-                    document.getElementById('store-grid').innerHTML = '<div class="empty-state" style="padding:60px;"><h2 style="font-size:24px;margin-bottom:15px;">Page Not Found</h2><p>The page <strong>#' + esc(hash) + '</strong> doesn\'t exist.</p><p style="margin-top:15px;"><a style="color:var(--accent);cursor:pointer;" onclick="navigate(\'store\')">Back to Store</a></p></div>';
+                    document.getElementById('store-grid').innerHTML = '<div class="empty-state" style="padding:60px;"><h2 style="font-size:24px;margin-bottom:15px;">Page Not Found</h2><p>The page <strong>#' + esc(hash) + '</strong> doesn\'t exist.</p><p style="margin-top:15px;"><a style="color:var(--accent);cursor:pointer;" ' + act('navigate', 'store') + '>Back to Store</a></p></div>';
                 }
             }
         }
@@ -1153,20 +1157,20 @@
                 const data = await api('/games?limit=' + STORE_LIMIT + '&page=1&search=' + encodeURIComponent(search) + '&genre=' + genre + '&sort=' + sort);
                 const grid = document.getElementById('store-grid');
                 if (!data.games || data.games.length === 0) {
-                    grid.innerHTML = '<div class="empty-state">No games found. ' + (search || genre ? 'Try different filters.' : 'Be the first to <a onclick="navigate(\'upload\')">upload one</a>!') + '</div>';
+                    grid.innerHTML = '<div class="empty-state">No games found. ' + (search || genre ? 'Try different filters.' : 'Be the first to <a ' + act('navigate', 'upload') + '>upload one</a>!') + '</div>';
                     document.getElementById('store-load-more').innerHTML = '';
                     return;
                 }
                 storePage = 1;
                 grid.innerHTML = data.games.map(g => gameCardHTML(g)).join('');
                 renderLoadMore(data.total, data.games.length, search, genre, sort);
-            } catch (e) { document.getElementById('store-grid').innerHTML = '<div class="error-state"><p>Failed to load. <a href="#" onclick="navigate(\'store\')">Try again</a></p></div>'; document.getElementById('store-load-more').innerHTML = ''; }
+            } catch (e) { document.getElementById('store-grid').innerHTML = '<div class="error-state"><p>Failed to load. <a href="#" ' + act('navigate', 'store') + '>Try again</a></p></div>'; document.getElementById('store-load-more').innerHTML = ''; }
         }
 
         function renderLoadMore(total, shown, search, genre, sort) {
             const el = document.getElementById('store-load-more');
             if (shown < total) {
-                el.innerHTML = '<button class="load-more-btn" onclick="loadMoreGames()">Load More (' + shown + ' of ' + total + ')</button>';
+                el.innerHTML = '<button class="load-more-btn" ' + act('loadMoreGames') + '>Load More (' + shown + ' of ' + total + ')</button>';
             } else { el.innerHTML = ''; }
         }
 
@@ -1189,14 +1193,14 @@
             const coverSrc = playAsset(g.cover_path) || 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="225"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#2a475e"/><stop offset="100%" stop-color="#171a21"/></linearGradient></defs><rect fill="url(#g)" width="400" height="225"/><text x="200" y="120" text-anchor="middle" fill="#66c0f4" font-family="Segoe UI" font-size="22" font-weight="bold">' + escapeHtml(g.title) + '</text></svg>');
             const rating = g.avg_rating > 0 ? '★ ' + g.avg_rating.toFixed(1) : '';
             const price = g.price === 0 ? 'Free' : '$' + g.price.toFixed(2);
-            return '<div class="game-card" onclick="showGameDetail(\'' + jsEsc(g.id) + '\')">' +
+            return '<div class="game-card" ' + act('showGameDetail', g.id) + '>' +
                 '<img src="' + coverSrc + '" alt="' + escapeHtml(g.title) + '">' +
                 '<div class="game-card-overlay"><span class="game-card-play">VIEW GAME</span></div>' +
                 '<div class="game-card-info">' +
                 '<div class="game-card-title">' + escapeHtml(g.title) + '</div>' +
                 '<div class="game-card-meta">by ' + escapeHtml(g.developer_name || 'Unknown') + (rating ? ' · ' + rating : '') + '</div>' +
                 '<div class="game-card-footer">' +
-                '<span class="game-card-genre" onclick="event.stopPropagation();searchByTag(\'' + jsEsc(g.genre) + '\')">' + escapeHtml(g.genre) + '</span>' +
+                '<span class="game-card-genre" ' + act('searchByTag', g.genre) + '>' + escapeHtml(g.genre) + '</span>' +
                 (g.is_webgpu ? '<span class="webgpu-badge">WebGPU</span>' : '') +
                 '<span class="game-card-price">' + price + '</span>' +
                 '</div></div></div>';
@@ -1209,7 +1213,7 @@
         async function loadLibrary() {
             showLoading('library-grid');
             if (!currentUser) {
-                document.getElementById('library-grid').innerHTML = '<div class="empty-state">Please <a onclick="showAuth(\'login\')">login</a> to see your library.</div>';
+                document.getElementById('library-grid').innerHTML = '<div class="empty-state">Please <a ' + act('showAuth', 'login') + '>login</a> to see your library.</div>';
                 document.getElementById('lib-sidebar').innerHTML = '';
                 document.getElementById('lib-toolbar').innerHTML = '';
                 return;
@@ -1229,7 +1233,7 @@
 
         function renderLibSidebar() {
             const sb = document.getElementById('lib-sidebar');
-            let html = '<div class="lib-sidebar-search"><input type="text" id="lib-search" placeholder="Search..." oninput="renderLibContent()"></div>';
+            let html = '<div class="lib-sidebar-search"><input type="text" id="lib-search" placeholder="Search..." ' + onEv('input', 'renderLibContent') + '></div>';
             // Main tabs
             html += '<div class="lib-sidebar-group">';
             html += '<div class="lib-sidebar-label">Library</div>';
@@ -1238,7 +1242,7 @@
             html += '</div>';
             // My Lists
             html += '<div class="lib-sidebar-group">';
-            html += '<div class="lib-sidebar-label">My Lists <button onclick="createListFromLibrary()" title="New list">+</button></div>';
+            html += '<div class="lib-sidebar-label">My Lists <button ' + act('createListFromLibrary') + ' title="New list">+</button></div>';
             libCache.collections.forEach(c => {
                 const count = (c.game_ids || []).length;
                 html += libSidebarItem(c.id, escapeHtml(c.name), count, c.is_public);
@@ -1256,7 +1260,7 @@
             if (isPublic !== undefined) {
                 badge = isPublic ? '<span class="lib-badge" style="background:rgba(161,205,68,0.15);color:var(--success);">Public</span>' : '';
             }
-            return '<div class="lib-sidebar-item' + active + '" onclick="switchLibTab(\'' + id + '\')">' +
+            return '<div class="lib-sidebar-item' + active + '" ' + act('switchLibTab', id) + '>' +
                 '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + label + '</span>' + badge +
                 '<span class="lib-count">' + count + '</span></div>';
         }
@@ -1279,13 +1283,13 @@
                 let games = libCache.library;
                 if (search) games = games.filter(g => g.title.toLowerCase().includes(search));
                 toolbar.innerHTML = '<h2>My Games</h2><span class="lib-count-total">' + games.length + ' games</span>' +
-                    '<select class="filter-select" style="margin-left:auto;padding:6px 10px;font-size:12px;" id="lib-sort" onchange="renderLibContent()">' +
+                    '<select class="filter-select" style="margin-left:auto;padding:6px 10px;font-size:12px;" id="lib-sort" ' + onEv('change', 'renderLibContent') + '>' +
                     '<option value="recent">Recent</option><option value="title">A-Z</option><option value="playtime">Most Played</option></select>';
                 const sort = document.getElementById('lib-sort')?.value || 'recent';
                 if (sort === 'title') games = [...games].sort((a, b) => a.title.localeCompare(b.title));
                 if (sort === 'playtime') games = [...games].sort((a, b) => (b.play_count||0) - (a.play_count||0));
                 grid.innerHTML = games.length > 0 ? games.map(g => libraryCardHTML(g)).join('') :
-                    '<div class="empty-state">Your library is empty. Browse the <a onclick="navigate(\'store\')">Store</a>!</div>';
+                    '<div class="empty-state">Your library is empty. Browse the <a ' + act('navigate', 'store') + '>Store</a>!</div>';
 
             } else if (libTab === 'wishlist') {
                 let games = libCache.wishlist;
@@ -1298,9 +1302,9 @@
                 // User's own collection
                 toolbar.innerHTML = '<h2>' + escapeHtml(col.name) + '</h2><span class="lib-count-total">' + (col.game_ids||[]).length + ' games</span>' +
                     '<div style="margin-left:auto;display:flex;gap:6px;">' +
-                    '<button class="btn-secondary" style="padding:4px 12px;font-size:11px;" onclick="editList(\'' + jsEsc(col.id) + '\',\'' + jsEsc(col.name) + '\',' + col.is_public + ',\'' + jsEsc(col.description || '') + '\')">Edit</button>' +
-                    '<button class="btn-secondary" style="padding:4px 12px;font-size:11px;" onclick="copyListLink(\'' + jsEsc(col.id) + '\')">Share</button>' +
-                    '<button class="btn-secondary" style="padding:4px 12px;font-size:11px;color:var(--danger);" onclick="deleteCollection(\'' + jsEsc(col.id) + '\')">Delete</button></div>';
+                    '<button class="btn-secondary" style="padding:4px 12px;font-size:11px;" ' + act('editList', col.id, col.name, col.is_public, col.description || '') + '>Edit</button>' +
+                    '<button class="btn-secondary" style="padding:4px 12px;font-size:11px;" ' + act('copyListLink', col.id) + '>Share</button>' +
+                    '<button class="btn-secondary" style="padding:4px 12px;font-size:11px;color:var(--danger);" ' + act('deleteCollection', col.id) + '>Delete</button></div>';
                 // Resolve games
                 const gameIds = col.game_ids || [];
                 if (gameIds.length === 0) {
@@ -1364,15 +1368,15 @@
 
         function libraryCardHTML(g) {
             const coverSrc = playAsset(g.cover_path) || 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="225"><rect fill="#1e1e2e" width="400" height="225"/><text x="200" y="120" text-anchor="middle" fill="#66c0f4" font-size="20">' + escapeHtml(g.title) + '</text></svg>');
-            return '<div class="game-card" onclick="showGameDetail(\'' + jsEsc(g.id) + '\')">' +
+            return '<div class="game-card" ' + act('showGameDetail', g.id) + '>' +
                 '<img src="' + coverSrc + '" alt="' + escapeHtml(g.title) + '">' +
                 '<div class="game-card-overlay"><span class="game-card-play">VIEW</span></div>' +
                 '<div class="game-card-info">' +
                 '<div class="game-card-title">' + escapeHtml(g.title) + '</div>' +
                 '<div class="game-card-meta">' + escapeHtml(g.genre) + ' · ' + (g.play_count||0) + ' plays · ' + ((g.avg_rating||0) > 0 ? '★ ' + g.avg_rating.toFixed(1) : '') + '</div>' +
                 '<div class="game-card-footer">' +
-                '<button class="btn-accent" style="padding:5px 15px;font-size:12px;width:auto;" onclick="event.stopPropagation();playGame(\'' + jsEsc(g.id) + '\',\'' + jsEsc(g.entry_file) + '\')">Play</button>' +
-                '<button class="btn-secondary" style="padding:5px 10px;font-size:11px;" onclick="event.stopPropagation();removeFromLib(\'' + jsEsc(g.id) + '\')">Remove</button>' +
+                '<button class="btn-accent" style="padding:5px 15px;font-size:12px;width:auto;" ' + act('playGame', g.id, g.entry_file) + '>Play</button>' +
+                '<button class="btn-secondary" style="padding:5px 10px;font-size:11px;" ' + act('removeFromLib', g.id) + '>Remove</button>' +
                 '</div></div></div>';
         }
 
@@ -1514,7 +1518,7 @@
 
         /* ============ Profile ============ */
         async function loadProfile() {
-            if (!currentUser) { document.getElementById('profile-content').innerHTML = '<div class="empty-state">Please <a onclick="showAuth(\'login\')">login</a> to see your profile.</div>'; return; }
+            if (!currentUser) { document.getElementById('profile-content').innerHTML = '<div class="empty-state">Please <a ' + act('showAuth', 'login') + '>login</a> to see your profile.</div>'; return; }
             showLoading('profile-content');
             try {
                 const data = await api('/profile/' + currentUser.username);
@@ -1530,7 +1534,7 @@
                 html += '<span class="level-badge">Level ' + level + '</span>';
                 html += '<div class="dev-meta" style="margin-top:6px;">' + escapeHtml(u.bio || 'No bio yet.') + '</div>';
                 html += '</div></div>';
-                html += '<button class="btn-secondary" onclick="navigate(\'settings\')">Settings</button></div>';
+                html += '<button class="btn-secondary" ' + act('navigate', 'settings') + '>Settings</button></div>';
 
                 // Stats
                 html += '<div class="stats-grid">';
@@ -1543,19 +1547,19 @@
                 html += '<div><h3 style="font-size:16px;margin-bottom:4px;">Public Page</h3>';
                 html += '<p style="color:var(--text-secondary);font-size:13px;">Your storefront</p></div>';
                 html += '<div style="display:flex;gap:8px;">';
-                html += '<button class="btn-secondary" onclick="showDeveloper(\'' + jsEsc(u.username) + '\')">View</button>';
-                html += '<button class="btn-accent" onclick="navigate(\'deveditor\')">Edit</button></div></div>';
+                html += '<button class="btn-secondary" ' + act('showDeveloper', u.username) + '>View</button>';
+                html += '<button class="btn-accent" ' + act('navigate', 'deveditor') + '>Edit</button></div></div>';
                 html += '<div class="card-box" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0;">';
                 html += '<div><h3 style="font-size:16px;margin-bottom:4px;">Dashboard</h3>';
                 html += '<p style="color:var(--text-secondary);font-size:13px;">Manage games</p></div>';
-                html += '<button class="btn-accent" onclick="navigate(\'dashboard\')">Open</button></div>';
+                html += '<button class="btn-accent" ' + act('navigate', 'dashboard') + '>Open</button></div>';
                 // Admin (if applicable)
                 try {
                     await api('/admin/stats');
                     html += '<div class="card-box" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0;">';
                     html += '<div><h3 style="font-size:16px;margin-bottom:4px;">Admin</h3>';
                     html += '<p style="color:var(--text-secondary);font-size:13px;">Moderate</p></div>';
-                    html += '<button class="btn-accent" onclick="navigate(\'admin\')">Open</button></div>';
+                    html += '<button class="btn-accent" ' + act('navigate', 'admin') + '>Open</button></div>';
                 } catch {}
                 html += '</div>';
 
@@ -1584,7 +1588,7 @@
                 } else { html += '<div class="empty-state">No activity yet.</div>'; }
 
                 document.getElementById('profile-content').innerHTML = html;
-            } catch (e) { document.getElementById('profile-content').innerHTML = '<div class="error-state"><p>Failed to load profile. <a href="#" onclick="navigate(\'profile\')">Try again</a></p></div>'; }
+            } catch (e) { document.getElementById('profile-content').innerHTML = '<div class="error-state"><p>Failed to load profile. <a href="#" ' + act('navigate', 'profile') + '>Try again</a></p></div>'; }
         }
 
         // Profile editing is done via Developer Page editor (navigate('deveditor'))
@@ -1593,7 +1597,7 @@
 		function esc(s) { return escapeHtml(s); }
         // jsEsc escapes a string for safe embedding INSIDE a single-quoted
         // JS string that itself sits INSIDE an HTML attribute (e.g.
-        //     onclick="fn('<jsEsc-output>')").
+        //     ' + act('fn', '<jsEsc-output>') + ').
         // The HTML attribute parser decodes entities BEFORE the JS interpreter
         // runs, so esc()'s &#39; turns back into ' and breaks out of the JS
         // string — this is the real DOM-XSS path that survived the &#39;
@@ -1642,6 +1646,72 @@
                 .replace(/"/g, '&quot;')
                 .replace(/'/g, '&#039;');
         }
+
+        // ── Delegated event handling ──────────────────────────────────────────
+        // CSP forbids inline on*= handlers (script-src-attr 'none'). Markup instead
+        // carries data-act / data-<event> naming a global handler plus JSON-encoded,
+        // HTML-escaped args. act()/onEv() emit those attributes (JSON.stringify +
+        // escapeHtml makes args safe inside a "-delimited attribute). Delegated
+        // listeners dispatch to window[name].apply(element, args) — so `this` inside
+        // a handler is the element, and closest() resolves the innermost target
+        // (which makes the old event.stopPropagation() calls unnecessary).
+        function act(name) {
+            var a = Array.prototype.slice.call(arguments, 1);
+            return 'data-act="' + name + '"' + (a.length ? ' data-act-args="' + escapeHtml(JSON.stringify(a)) + '"' : '');
+        }
+        function onEv(evt, name) {
+            var a = Array.prototype.slice.call(arguments, 2);
+            return 'data-' + evt + '="' + name + '"' + (a.length ? ' data-' + evt + '-args="' + escapeHtml(JSON.stringify(a)) + '"' : '');
+        }
+        function runAction(attr, el) {
+            var name = el.getAttribute('data-' + attr);
+            if (!name) return;
+            var fn = window[name];
+            if (typeof fn !== 'function') { console.warn('[action] missing handler:', name); return; }
+            var raw = el.getAttribute('data-' + attr + '-args');
+            var args = [];
+            if (raw) { try { args = JSON.parse(raw); } catch (e) { console.warn('[action] bad args for', name, e); } }
+            return fn.apply(el, args);
+        }
+        document.addEventListener('click', function (e) {
+            var el = e.target.closest('[data-act]');
+            if (el) runAction('act', el);
+        });
+        ['change', 'input'].forEach(function (evt) {
+            document.addEventListener(evt, function (e) {
+                var el = e.target.closest('[data-' + evt + ']');
+                if (el) runAction(evt, el);
+            });
+        });
+        document.addEventListener('focusin', function (e) {
+            var el = e.target.closest('[data-focus]');
+            if (el) runAction('focus', el);
+        });
+
+        // Named handlers for cases that previously used `this` or inline expressions.
+        function toggleHelp(id) { var n = document.getElementById(id); if (n) n.classList.toggle('open'); }
+        function toggleNext() { var n = this.nextElementSibling; if (n) n.style.display = (n.style.display === 'none' ? 'block' : 'none'); }
+        function removeParent() { if (this.parentElement) this.parentElement.remove(); }
+        function openUrl(u) { window.open(u); }
+        function copyToClipboard(id) { var el = document.getElementById(id); if (el) { navigator.clipboard.writeText(el.value); toast('Copied!', 'success'); } }
+        function setAdminTab(t) { adminTab = t; loadAdmin(); }
+        function searchResultClick(id) {
+            var r = document.getElementById('global-search-results'); if (r) r.classList.remove('open');
+            var inp = document.getElementById('global-search-input'); if (inp) inp.value = '';
+            showGameDetail(id);
+        }
+        function pickTheme(key, accent) {
+            document.querySelectorAll('.theme-pick').forEach(function (e) { e.style.borderColor = 'var(--border-color)'; });
+            this.style.borderColor = accent;
+            document.getElementById('dev-theme-preset').value = key;
+            document.getElementById('dev-theme-color').value = accent;
+        }
+        function previewDevColor() { document.getElementById('dev-color-preview').style.background = this.value; }
+        function previewDevAbout() { document.getElementById('dev-about-preview').innerHTML = renderMarkdown(this.value); }
+        function setDashboardSort() { dashboardSort = this.value; loadDashboard(); }
+        function addToCollection(cid, gid) { addGameToCollection(cid, gid); this.textContent = 'Added'; this.disabled = true; }
+        function toggleFeedFilter(key) { setFeedFilter(key, this.checked); renderFeedFilters(); loadFeedPage(); }
+
         function statCard(v, l) { return '<div class="stat-card"><div class="stat-value">' + esc(v) + '</div><div class="stat-label">' + esc(l) + '</div></div>'; }
         function actIcon(t) { return {played:'🎮',library_add:'📚',review:'✍️',upload:'📤'}[t]||'🎯'; }
         function actVerb(t) { return {played:'Played',library_add:'Added to library',review:'Reviewed',upload:'Uploaded'}[t]||t; }
@@ -1664,12 +1734,12 @@
 
                 let html = '<div class="game-detail">';
                 // Breadcrumbs
-                html += '<div class="breadcrumbs"><a onclick="navigate(\'store\')">All Games</a> &gt; <a onclick="navigate(\'store\')">' + escapeHtml(genreCap) + '</a> &gt; ' + escapeHtml(game.title) + '</div>';
+                html += '<div class="breadcrumbs"><a ' + act('navigate', 'store') + '>All Games</a> &gt; <a ' + act('navigate', 'store') + '>' + escapeHtml(genreCap) + '</a> &gt; ' + escapeHtml(game.title) + '</div>';
                 // Header
                 html += '<div class="game-header">';
                 if (coverSrc) html += '<img src="' + esc(coverSrc) + '" class="game-header-bg">';
                 html += '<div class="game-header-content"><h1>' + escapeHtml(game.title) + '</h1>';
-                html += '<div class="game-header-meta">by <a onclick="showDeveloper(\'' + jsEsc(game.developer_name) + '\')">' + escapeHtml(game.developer_name) + '</a> · ' + escapeHtml(genreCap);
+                html += '<div class="game-header-meta">by <a ' + act('showDeveloper', game.developer_name) + '>' + escapeHtml(game.developer_name) + '</a> · ' + escapeHtml(genreCap);
                 if (game.avg_rating > 0) html += ' · ★ ' + game.avg_rating.toFixed(1);
                 html += '</div></div></div>';
 
@@ -1693,13 +1763,13 @@
                         } else {
                             const vid = ytVideoIdFromEmbed(first.url);
                             if (vid) {
-                                html += '<div class="game-media-poster" onclick="showMediaItem(0, true)"><img src="https://img.youtube.com/vi/' + esc(vid) + '/hqdefault.jpg" alt=""></div>';
+                                html += '<div class="game-media-poster" ' + act('showMediaItem', 0, true) + '><img src="https://img.youtube.com/vi/' + esc(vid) + '/hqdefault.jpg" alt=""></div>';
                             } else {
                                 html += '<iframe src="' + esc(first.url) + '" allowfullscreen></iframe>';
                             }
                         }
                     } else {
-                        html += '<img src="' + esc(first.url) + '" id="media-main-img" onclick="openLightbox(0)">';
+                        html += '<img src="' + esc(first.url) + '" id="media-main-img" ' + act('openLightbox', 0) + '>';
                     }
                 }
                 html += '</div>';
@@ -1711,12 +1781,12 @@
                         if (item.type === 'video') {
                             const vid = ytVideoIdFromEmbed(item.url);
                             if (vid) {
-                                html += '<div class="game-media-thumb game-media-thumb-video' + activeCls + '" style="background-image:url(https://img.youtube.com/vi/' + esc(vid) + '/mqdefault.jpg);" onclick="showMediaItem(' + i + ', true)"></div>';
+                                html += '<div class="game-media-thumb game-media-thumb-video' + activeCls + '" style="background-image:url(https://img.youtube.com/vi/' + esc(vid) + '/mqdefault.jpg);" ' + act('showMediaItem', i, true) + '></div>';
                             } else {
-                                html += '<div class="game-media-thumb game-media-thumb-video-fallback' + activeCls + '" onclick="showMediaItem(' + i + ', true)">▶ Video</div>';
+                                html += '<div class="game-media-thumb game-media-thumb-video-fallback' + activeCls + '" ' + act('showMediaItem', i, true) + '>▶ Video</div>';
                             }
                         } else {
-                            html += '<img src="' + esc(item.url) + '" class="game-media-thumb' + activeCls + '" onclick="showMediaItem(' + i + ', true)">';
+                            html += '<img src="' + esc(item.url) + '" class="game-media-thumb' + activeCls + '" ' + act('showMediaItem', i, true) + '>';
                         }
                     });
                     html += '</div>';
@@ -1758,9 +1828,9 @@
                 }
                 if (currentUser) {
                     html += '<div style="margin-bottom:20px;padding:15px;background:rgba(0,0,0,0.2);border-radius:4px;">';
-                    html += '<div class="star-selector" id="star-selector">'; for (let i=1;i<=5;i++) html += '<span class="star-select" onclick="selectStar('+i+')">☆</span>'; html += '</div>';
+                    html += '<div class="star-selector" id="star-selector">'; for (let i=1;i<=5;i++) html += '<span class="star-select" ' + act('selectStar', i) + '>☆</span>'; html += '</div>';
                     html += '<textarea class="form-textarea" id="review-text" placeholder="Share your thoughts..." style="margin-bottom:10px;min-height:80px;"></textarea>';
-                    html += '<button class="btn-accent" onclick="submitGameReview()">Submit Review</button></div>';
+                    html += '<button class="btn-accent" ' + act('submitGameReview') + '>Submit Review</button></div>';
                 }
                 allReviews.forEach(r => {
                     const avatar = avatarUrl(r);
@@ -1771,7 +1841,7 @@
                     html += '<p class="review-text">' + escapeHtml(r.text) + '</p>';
                     html += '<p style="font-size:11px;color:var(--text-secondary);margin-top:8px;">Posted: ' + escapeHtml(r.created_at || '') + '</p></div>';
                 });
-                if (allReviews.length === 0 && !currentUser) html += '<p style="color:var(--text-secondary);">No reviews yet. <a style="color:var(--accent);cursor:pointer;" onclick="showAuth(\'login\')">Login</a> to be the first!</p>';
+                if (allReviews.length === 0 && !currentUser) html += '<p style="color:var(--text-secondary);">No reviews yet. <a style="color:var(--accent);cursor:pointer;" ' + act('showAuth', 'login') + '>Login</a> to be the first!</p>';
                 html += '</div>';
 
                 // Community Hub
@@ -1805,7 +1875,7 @@
                     html += '<div class="game-section"><h3>Post Devlog</h3>';
                     html += '<div class="form-group"><input type="text" class="form-input" id="devlog-title" placeholder="Devlog title"></div>';
                     html += '<div class="form-group"><textarea class="form-textarea" id="devlog-content" placeholder="Write your update..."></textarea></div>';
-                    html += '<button class="btn-accent" onclick="postDevlog(\'' + game.id + '\')">Post Devlog</button></div>';
+                    html += '<button class="btn-accent" ' + act('postDevlog', game.id) + '>Post Devlog</button></div>';
                 }
 
                 html += '</div><div class="game-sidebar">';
@@ -1817,7 +1887,7 @@
                     html += '<h4>⚠️ This game requires WebGPU</h4>';
                     html += '<p>Your browser doesn\'t support WebGPU yet. The game may not work correctly.</p>';
                     html += '<div style="display:flex;gap:8px;margin-top:10px;">';
-                    html += '<button class="btn-secondary" style="font-size:12px;padding:6px 14px;" onclick="document.getElementById(\'webgpu-help\').classList.toggle(\'open\')">How to enable</button>';
+                    html += '<button class="btn-secondary" style="font-size:12px;padding:6px 14px;" ' + act('toggleHelp', 'webgpu-help') + '>How to enable</button>';
                     html += '</div>';
                     html += '<div class="webgpu-instructions" id="webgpu-help">' + getWebGPUInstructions() + '</div>';
                     html += '</div>';
@@ -1827,17 +1897,17 @@
                 if (game.discount > 0) { html += '<span class="purchase-discount">-' + game.discount + '%</span><span class="purchase-original" style="text-decoration:line-through;color:var(--text-secondary);font-size:13px;">$' + game.price.toFixed(2) + '</span>'; }
                 html += '<span class="purchase-final">' + (game.price === 0 ? 'Free to Play' : '$' + (game.price * (1 - game.discount/100)).toFixed(2)) + '</span></div>';
                 html += '<div class="purchase-buttons">';
-                html += '<button class="btn-primary" onclick="playGame(\'' + jsEsc(game.id) + '\',\'' + jsEsc(game.entry_file) + '\')">Play Now</button>';
+                html += '<button class="btn-primary" ' + act('playGame', game.id, game.entry_file) + '>Play Now</button>';
                 if (currentUser) {
-                    html += '<button class="btn-secondary" id="lib-btn-' + game.id + '" onclick="toggleLib(\'' + game.id + '\')">Add to Library</button>';
-                    html += '<button class="btn-wishlist" id="wish-btn-' + game.id + '" onclick="toggleWish(\'' + game.id + '\')">Add to Wishlist</button>';
-                    html += '<button class="btn-secondary" onclick="showAddToListModal(\'' + game.id + '\')" style="font-size:12px;">+ Add to List</button>';
+                    html += '<button class="btn-secondary" id="lib-btn-' + game.id + '" ' + act('toggleLib', game.id) + '>Add to Library</button>';
+                    html += '<button class="btn-wishlist" id="wish-btn-' + game.id + '" ' + act('toggleWish', game.id) + '>Add to Wishlist</button>';
+                    html += '<button class="btn-secondary" ' + act('showAddToListModal', game.id) + ' style="font-size:12px;">+ Add to List</button>';
                 }
                 html += '</div></div>';
 
                 // Info box
                 html += '<div class="info-box">';
-                html += '<div class="info-row"><span class="info-label">Developer</span><span class="info-value"><a onclick="showDeveloper(\'' + jsEsc(game.developer_name) + '\')">' + escapeHtml(game.developer_name) + '</a></span></div>';
+                html += '<div class="info-row"><span class="info-label">Developer</span><span class="info-value"><a ' + act('showDeveloper', game.developer_name) + '>' + escapeHtml(game.developer_name) + '</a></span></div>';
                 html += '<div class="info-row"><span class="info-label">Genre</span><span class="info-value">' + escapeHtml(genreCap) + '</span></div>';
                 html += '<div class="info-row"><span class="info-label">Released</span><span class="info-value">' + escapeHtml(game.created_at || 'Unknown') + '</span></div>';
                 if (game.is_webgpu) html += '<div class="info-row"><span class="info-label">Graphics</span><span class="info-value" style="color:var(--success);">WebGPU Enabled</span></div>';
@@ -1880,7 +1950,7 @@
                         if (wishBtn && wishData.games?.some(g => g.id === game.id)) { wishBtn.textContent = 'On Wishlist ✓'; wishBtn.classList.add('active'); }
                     } catch {}
                 }
-            } catch (e) { document.getElementById('game-detail-content').innerHTML = '<div class="error-state"><p>Failed to load game. <a href="#" onclick="navigate(\'store\')">Try again</a></p></div>'; }
+            } catch (e) { document.getElementById('game-detail-content').innerHTML = '<div class="error-state"><p>Failed to load game. <a href="#" ' + act('navigate', 'store') + '>Try again</a></p></div>'; }
         }
 
         // ============ Media gallery ============
@@ -1915,7 +1985,7 @@
             if (item.type === 'video') {
                 main.innerHTML = '<iframe src="' + escapeHtml(ytAutoplayUrl(item.url)) + '" allow="autoplay; encrypted-media" allowfullscreen></iframe>';
             } else {
-                main.innerHTML = '<img src="' + escapeHtml(item.url) + '" id="media-main-img" onclick="openLightbox(' + idx + ')">';
+                main.innerHTML = '<img src="' + escapeHtml(item.url) + '" id="media-main-img" ' + act('openLightbox', idx) + '>';
             }
             const thumbs = document.querySelectorAll('#media-thumbs .game-media-thumb');
             thumbs.forEach((t, i) => t.classList.toggle('active', i === idx));
@@ -1950,10 +2020,10 @@
                 el.id = 'lightbox';
                 el.className = 'lightbox';
                 el.onclick = function(e) { if (e.target === el) closeLightbox(); };
-                el.innerHTML = '<button class="lightbox-close" onclick="closeLightbox()">&times;</button>' +
-                    '<button class="lightbox-nav lightbox-prev" onclick="lightboxNav(-1)">&lsaquo;</button>' +
+                el.innerHTML = '<button class="lightbox-close" ' + act('closeLightbox') + '>&times;</button>' +
+                    '<button class="lightbox-nav lightbox-prev" ' + act('lightboxNav', -1) + '>&lsaquo;</button>' +
                     '<div class="lightbox-content" id="lightbox-content"></div>' +
-                    '<button class="lightbox-nav lightbox-next" onclick="lightboxNav(1)">&rsaquo;</button>' +
+                    '<button class="lightbox-nav lightbox-next" ' + act('lightboxNav', 1) + '>&rsaquo;</button>' +
                     '<div class="lightbox-counter" id="lightbox-counter"></div>';
                 document.body.appendChild(el);
                 requestAnimationFrame(() => el.classList.add('active'));
@@ -2054,12 +2124,12 @@
                 if (page?.links && page.links.length > 0) { html += '<div class="dev-links">'; page.links.forEach(l => { const u = safeUrl(l.url); if (u) html += '<a href="' + u + '" target="_blank" rel="noopener noreferrer" class="dev-link">' + escapeHtml(l.label) + '</a>'; }); html += '</div>'; }
                 html += '</div></div>';
                 if (isOwnPage) {
-                    html += '<button class="btn-secondary" onclick="navigate(\'deveditor\')">Edit Developer Page</button>';
+                    html += '<button class="btn-secondary" ' + act('navigate', 'deveditor') + '>Edit Developer Page</button>';
                 } else if (currentUser) {
                     // Follow button
                     try {
                         const fData = await api('/followers/' + u.username);
-                        html += '<button class="btn-accent" onclick="toggleFollow(\'' + u.username + '\')">' + (fData.is_following ? 'Unfollow' : 'Follow') + '</button>';
+                        html += '<button class="btn-accent" ' + act('toggleFollow', u.username) + '>' + (fData.is_following ? 'Unfollow' : 'Follow') + '</button>';
                         html += '<span style="color:var(--text-secondary);font-size:13px;margin-left:10px;">' + fData.followers + ' followers</span>';
                     } catch {}
                 }
@@ -2151,7 +2221,7 @@
                 document.getElementById('developer-content').innerHTML = html;
                 navigate('developer', false);
                 suppressHashChange = true; location.hash = 'developer/' + username; suppressHashChange = false;
-            } catch (e) { document.getElementById('developer-content').innerHTML = '<div class="error-state"><p>Failed to load developer page. <a href="#" onclick="navigate(\'store\')">Try again</a></p></div>'; }
+            } catch (e) { document.getElementById('developer-content').innerHTML = '<div class="error-state"><p>Failed to load developer page. <a href="#" ' + act('navigate', 'store') + '>Try again</a></p></div>'; }
         }
 
         /* ============ Developer Editor ============ */
@@ -2170,13 +2240,13 @@
 
             // Templates
             html += '<div class="card-box" style="margin-bottom:15px;">';
-            html += '<div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display===\'none\'?\'block\':\'none\'">';
+            html += '<div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;" ' + act('toggleNext') + '>';
             html += '<label class="form-label" style="margin-bottom:0;cursor:pointer;">🎭 Quick Start Templates</label><span style="color:var(--text-secondary);">▼</span></div>';
             html += '<div style="display:none;margin-top:12px;">';
             html += '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;">';
             Object.entries(pageTemplates).forEach(([key, t]) => {
                 const p = themePresets[t.preset] || themePresets['steam-dark'];
-                html += '<div onclick="applyTemplate(\'' + key + '\')" style="padding:15px 10px;border-radius:8px;background:' + p.bg + ';border:2px solid ' + p.accent + '30;cursor:pointer;text-align:center;transition:all 0.2s;" onmouseenter="this.style.borderColor=\'' + p.accent + '\'" onmouseleave="this.style.borderColor=\'' + p.accent + '30\'">';
+                html += '<div ' + act('applyTemplate', key) + ' style="padding:15px 10px;border-radius:8px;background:' + p.bg + ';border:2px solid ' + p.accent + '30;cursor:pointer;text-align:center;transition:all 0.2s;--tmpl-accent:' + p.accent + ';" class="tmpl-card">';
                 html += '<div style="color:' + p.accent + ';font-size:20px;font-weight:bold;margin-bottom:6px;">Aa</div>';
                 html += '<div style="color:' + p.text + ';font-size:11px;">' + t.name + '</div></div>';
             });
@@ -2184,24 +2254,24 @@
 
             // Display name + banner
             html += '<div class="form-group"><label class="form-label">Display Name</label><input type="text" class="form-input" id="dev-display-name" value="' + escapeHtml(page?.display_name || currentUser.username) + '"></div>';
-            html += '<div class="form-group"><label class="form-label">Banner Image</label><input type="file" class="form-input" style="padding:8px;margin-bottom:5px;" accept="image/*" onchange="uploadImage(this,\'dev-banner\')"><input type="text" class="form-input" id="dev-banner" value="' + escapeHtml(page?.banner_url || '') + '" placeholder="URL or upload above"></div>';
+            html += '<div class="form-group"><label class="form-label">Banner Image</label><input type="file" class="form-input" style="padding:8px;margin-bottom:5px;" accept="image/*" ' + onEv('change', 'uploadImage', 'dev-banner') + '><input type="text" class="form-input" id="dev-banner" value="' + escapeHtml(page?.banner_url || '') + '" placeholder="URL or upload above"></div>';
 
             // Theme + Appearance (collapsible)
             html += '<div class="card-box" style="margin-bottom:15px;">';
-            html += '<div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display===\'none\'?\'block\':\'none\'">';
+            html += '<div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;" ' + act('toggleNext') + '>';
             html += '<label class="form-label" style="margin-bottom:0;cursor:pointer;">🎨 Appearance</label><span style="color:var(--text-secondary);">▼</span></div>';
             html += '<div style="display:none;margin-top:15px;">';
             // Theme presets
             html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:15px;">';
             Object.entries(themePresets).forEach(([key, t]) => {
                 const sel = (page?.theme_preset || 'steam-dark') === key;
-                html += '<div onclick="document.querySelectorAll(\'.theme-pick\').forEach(e=>e.style.borderColor=\'var(--border-color)\');this.style.borderColor=\'' + t.accent + '\';document.getElementById(\'dev-theme-preset\').value=\'' + key + '\';document.getElementById(\'dev-theme-color\').value=\'' + t.accent + '\';" class="theme-pick" style="padding:10px;border-radius:6px;background:' + t.bg + ';border:2px solid ' + (sel ? t.accent : 'var(--border-color)') + ';cursor:pointer;text-align:center;">';
+                html += '<div ' + act('pickTheme', key, t.accent) + ' class="theme-pick" style="padding:10px;border-radius:6px;background:' + t.bg + ';border:2px solid ' + (sel ? t.accent : 'var(--border-color)') + ';cursor:pointer;text-align:center;">';
                 html += '<div style="color:' + t.accent + ';font-size:13px;font-weight:bold;">Aa</div>';
                 html += '<div style="color:' + t.text + ';font-size:10px;margin-top:3px;">' + t.name + '</div></div>';
             });
             html += '</div><input type="hidden" id="dev-theme-preset" value="' + escapeHtml(page?.theme_preset || 'steam-dark') + '">';
             // Accent + fonts
-            html += '<div class="form-row"><div class="form-group" style="margin-bottom:0;"><label class="form-label">Accent <span class="color-preview" id="dev-color-preview" style="background:' + escapeHtml(page?.theme_color || '#66c0f4') + '"></span></label><input type="color" class="form-input" id="dev-theme-color" value="' + escapeHtml(page?.theme_color || '#66c0f4') + '" style="height:36px;padding:3px;" oninput="document.getElementById(\'dev-color-preview\').style.background=this.value"></div>';
+            html += '<div class="form-row"><div class="form-group" style="margin-bottom:0;"><label class="form-label">Accent <span class="color-preview" id="dev-color-preview" style="background:' + escapeHtml(page?.theme_color || '#66c0f4') + '"></span></label><input type="color" class="form-input" id="dev-theme-color" value="' + escapeHtml(page?.theme_color || '#66c0f4') + '" style="height:36px;padding:3px;" ' + onEv('input', 'previewDevColor') + '></div>';
             html += '<div class="form-group" style="margin-bottom:0;"><label class="form-label">Heading Font</label><select class="form-select" id="dev-font-heading" style="padding:8px;">';
             fontOptions.forEach(f => { html += '<option value="' + f + '"' + (f === (page?.font_heading || '') ? ' selected' : '') + '>' + (f || 'Default') + '</option>'; });
             html += '</select></div><div class="form-group" style="margin-bottom:0;"><label class="form-label">Body Font</label><select class="form-select" id="dev-font-body" style="padding:8px;">';
@@ -2210,7 +2280,7 @@
 
             // Custom CSS (advanced)
             html += '<div class="card-box" style="margin-bottom:15px;">';
-            html += '<div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display===\'none\'?\'block\':\'none\'">';
+            html += '<div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;" ' + act('toggleNext') + '>';
             html += '<label class="form-label" style="margin-bottom:0;cursor:pointer;">💻 Custom CSS (advanced)</label><span style="color:var(--text-secondary);">▼</span></div>';
             html += '<div style="display:none;margin-top:12px;">';
             html += '<p style="font-size:11px;color:var(--text-secondary);margin-bottom:8px;">Write custom CSS for your page. Selectors are auto-prefixed with .dev-page</p>';
@@ -2233,21 +2303,21 @@
                 // Header bar
                 html += '<div style="padding:10px 15px;display:flex;align-items:center;gap:10px;background:rgba(0,0,0,0.15);">';
                 html += '<span style="font-size:16px;">' + (icons[sec.type] || '📦') + '</span>';
-                html += '<input type="text" class="form-input" style="flex:1;padding:5px 10px;font-size:13px;background:transparent;border:1px solid transparent;" value="' + escapeHtml(sec.title || sec.type) + '" data-layout-title="' + i + '" onfocus="this.style.borderColor=\'var(--border-color)\'" onblur="this.style.borderColor=\'transparent\'">';
+                html += '<input type="text" class="form-input" style="flex:1;padding:5px 10px;font-size:13px;background:transparent;border:1px solid transparent;" value="' + escapeHtml(sec.title || sec.type) + '" data-layout-title="' + i + '">';
                 html += '<label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text-secondary);white-space:nowrap;"><input type="checkbox" data-layout-enabled="' + i + '"' + (sec.enabled ? ' checked' : '') + ' style="accent-color:var(--accent);"> Show</label>';
                 // Expand button (for sections with editable content)
                 const hasEditor = ['about','featured','links','custom','spacer','embed'].includes(sec.type);
-                if (hasEditor) html += '<button class="btn-secondary" style="padding:3px 8px;font-size:10px;" onclick="toggleSectionEditor(' + i + ')">Edit</button>';
-                html += '<button class="btn-secondary" style="padding:3px 6px;font-size:10px;" onclick="moveLayoutSection(' + i + ',-1)">↑</button>';
-                html += '<button class="btn-secondary" style="padding:3px 6px;font-size:10px;" onclick="moveLayoutSection(' + i + ',1)">↓</button>';
-                html += '<button class="btn-secondary" style="padding:3px 6px;font-size:10px;color:var(--danger);" onclick="removeLayoutSection(' + i + ')">×</button>';
+                if (hasEditor) html += '<button class="btn-secondary" style="padding:3px 8px;font-size:10px;" ' + act('toggleSectionEditor', i) + '>Edit</button>';
+                html += '<button class="btn-secondary" style="padding:3px 6px;font-size:10px;" ' + act('moveLayoutSection', i, -1) + '>↑</button>';
+                html += '<button class="btn-secondary" style="padding:3px 6px;font-size:10px;" ' + act('moveLayoutSection', i, 1) + '>↓</button>';
+                html += '<button class="btn-secondary" style="padding:3px 6px;font-size:10px;color:var(--danger);" ' + act('removeLayoutSection', i) + '>×</button>';
                 html += '</div>';
 
                 // Inline editor (hidden by default)
                 html += '<div id="section-editor-' + i + '" style="display:none;padding:15px;border-top:1px solid var(--border-color);">';
                 if (sec.type === 'about') {
                     html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">';
-                    html += '<textarea class="form-textarea" id="dev-about" style="min-height:180px;font-family:monospace;font-size:12px;" maxlength="2000" oninput="document.getElementById(\'dev-about-preview\').innerHTML=renderMarkdown(this.value)">' + escapeHtml(page?.about || '') + '</textarea>';
+                    html += '<textarea class="form-textarea" id="dev-about" style="min-height:180px;font-family:monospace;font-size:12px;" maxlength="2000" ' + onEv('input', 'previewDevAbout') + '>' + escapeHtml(page?.about || '') + '</textarea>';
                     html += '<div id="dev-about-preview" style="min-height:180px;font-size:12px;line-height:1.5;color:var(--text-secondary);padding:10px;background:rgba(0,0,0,0.2);border-radius:4px;overflow-y:auto;">' + renderMarkdown(page?.about || '') + '</div>';
                     html += '</div><p style="font-size:10px;color:var(--text-secondary);margin-top:5px;">**bold** *italic* [link](url) # heading - list</p>';
                 } else if (sec.type === 'featured' && myGames.length > 0) {
@@ -2266,7 +2336,7 @@
                     (page?.links || []).forEach((l, li) => {
                         html += '<div class="form-row" style="margin-bottom:6px;"><div><input type="text" class="form-input" style="padding:6px 10px;font-size:12px;" placeholder="Label" value="' + escapeHtml(l.label) + '" data-link-label="' + li + '"></div><div><input type="text" class="form-input" style="padding:6px 10px;font-size:12px;" placeholder="URL" value="' + escapeHtml(l.url) + '" data-link-url="' + li + '"></div></div>';
                     });
-                    html += '</div><button class="btn-secondary" style="margin-top:6px;font-size:11px;padding:5px 12px;" onclick="addDevLink()">+ Add Link</button>';
+                    html += '</div><button class="btn-secondary" style="margin-top:6px;font-size:11px;padding:5px 12px;" ' + act('addDevLink') + '>+ Add Link</button>';
                 } else if (sec.type === 'spacer') {
                     html += '<div style="display:flex;align-items:center;gap:10px;"><label style="font-size:12px;color:var(--text-secondary);">Height (px):</label>';
                     html += '<input type="number" style="width:80px;padding:5px;background:rgba(0,0,0,0.3);border:1px solid var(--border-color);border-radius:3px;color:var(--text-primary);font-size:12px;" value="' + (sec.height || 40) + '" data-layout-height="' + i + '"></div>';
@@ -2274,7 +2344,7 @@
                     html += '<textarea class="form-textarea" style="min-height:120px;font-family:monospace;font-size:12px;" data-layout-content="' + i + '" placeholder="Write markdown content...">' + escapeHtml(sec.content || '') + '</textarea>';
                 } else if (sec.type === 'embed') {
                     html += '<p style="font-size:12px;color:var(--text-secondary);margin-bottom:8px;">Paste a URL to embed:</p>';
-                    html += '<select class="form-select" style="padding:6px;font-size:12px;margin-bottom:8px;width:auto;" data-embed-type="' + i + '" onchange="updateEmbedPlaceholder(' + i + ')">';
+                    html += '<select class="form-select" style="padding:6px;font-size:12px;margin-bottom:8px;width:auto;" data-embed-type="' + i + '" ' + onEv('change', 'updateEmbedPlaceholder', i) + '>';
                     html += '<option value="youtube"' + ((sec.content||'').includes('youtube') ? ' selected' : '') + '>YouTube</option>';
                     html += '<option value="discord"' + ((sec.content||'').includes('discord') ? ' selected' : '') + '>Discord Widget</option>';
                     html += '<option value="url">Custom URL</option></select>';
@@ -2285,15 +2355,15 @@
             });
             html += '</div>';
             html += '<div style="display:flex;gap:8px;margin-top:10px;">';
-            html += '<button class="btn-secondary" style="font-size:12px;" onclick="addLayoutSection(\'spacer\')">+ Spacer</button>';
-            html += '<button class="btn-secondary" style="font-size:12px;" onclick="addLayoutSection(\'custom\')">+ Custom</button>';
-            html += '<button class="btn-secondary" style="font-size:12px;" onclick="addLayoutSection(\'embed\')">+ Embed</button>';
-            html += '<button class="btn-secondary" style="font-size:12px;" onclick="addLayoutSection(\'gallery\')">+ Gallery</button>';
+            html += '<button class="btn-secondary" style="font-size:12px;" ' + act('addLayoutSection', 'spacer') + '>+ Spacer</button>';
+            html += '<button class="btn-secondary" style="font-size:12px;" ' + act('addLayoutSection', 'custom') + '>+ Custom</button>';
+            html += '<button class="btn-secondary" style="font-size:12px;" ' + act('addLayoutSection', 'embed') + '>+ Embed</button>';
+            html += '<button class="btn-secondary" style="font-size:12px;" ' + act('addLayoutSection', 'gallery') + '>+ Gallery</button>';
             html += '</div>';
 
             // Save / Preview
-            html += '<div style="display:flex;gap:10px;margin-top:20px;"><button class="btn-primary" style="width:auto;padding:12px 30px;" onclick="saveDevPage()">Save Developer Page</button>';
-            html += '<button class="btn-secondary" onclick="showDeveloper(\'' + jsEsc(currentUser.username) + '\')">Preview</button></div>';
+            html += '<div style="display:flex;gap:10px;margin-top:20px;"><button class="btn-primary" style="width:auto;padding:12px 30px;" ' + act('saveDevPage') + '>Save Developer Page</button>';
+            html += '<button class="btn-secondary" ' + act('showDeveloper', currentUser.username) + '>Preview</button></div>';
             document.getElementById('deveditor-content').innerHTML = html;
         }
 
@@ -2395,9 +2465,9 @@
             inner += '<label style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text-secondary);white-space:nowrap;"><input type="checkbox" data-layout-enabled="' + i + '" checked style="accent-color:var(--accent);"> Show</label>';
             if (type === 'spacer') inner += '<input type="number" style="width:60px;padding:4px;background:rgba(0,0,0,0.3);border:1px solid var(--border-color);border-radius:3px;color:var(--text-primary);font-size:12px;" value="40" data-layout-height="' + i + '">';
             if (type === 'custom') inner += '<input type="text" class="form-input" style="flex:1;padding:6px 10px;font-size:12px;" data-layout-content="' + i + '" placeholder="Markdown content">';
-            inner += '<button class="btn-secondary" style="padding:4px 8px;font-size:11px;" onclick="moveLayoutSection(' + i + ',-1)">↑</button>';
-            inner += '<button class="btn-secondary" style="padding:4px 8px;font-size:11px;" onclick="moveLayoutSection(' + i + ',1)">↓</button>';
-            inner += '<button class="btn-secondary" style="padding:4px 8px;font-size:11px;color:var(--danger);" onclick="removeLayoutSection(' + i + ')">×</button>';
+            inner += '<button class="btn-secondary" style="padding:4px 8px;font-size:11px;" ' + act('moveLayoutSection', i, -1) + '>↑</button>';
+            inner += '<button class="btn-secondary" style="padding:4px 8px;font-size:11px;" ' + act('moveLayoutSection', i, 1) + '>↓</button>';
+            inner += '<button class="btn-secondary" style="padding:4px 8px;font-size:11px;color:var(--danger);" ' + act('removeLayoutSection', i) + '>×</button>';
             d.innerHTML = inner;
             list.appendChild(d);
         }
@@ -2624,7 +2694,7 @@
                         const gd = await api('/games/' + a.game_id);
                         const g = gd.game;
                         const coverSrc = playAsset(g.cover_path) || '';
-                        html += '<div class="recent-card" onclick="showGameDetail(\'' + jsEsc(g.id) + '\')">';
+                        html += '<div class="recent-card" ' + act('showGameDetail', g.id) + '>';
                         if (coverSrc) html += '<img src="' + escapeHtml(coverSrc) + '">'; else html += '<div style="height:100px;background:var(--bg-secondary);"></div>';
                         html += '<div class="recent-card-info"><div class="recent-card-title">' + escapeHtml(g.title) + '</div>';
                         html += '<div class="recent-card-time">' + escapeHtml(a.created_at) + '</div></div></div>';
@@ -2644,7 +2714,7 @@
                 document.getElementById('offers-grid').innerHTML = games.slice(0,3).map(g => {
                     const coverSrc = playAsset(g.cover_path) || '';
                     const final = (g.price * (1 - g.discount/100)).toFixed(2);
-                    return '<div class="offer-card" onclick="showGameDetail(\'' + jsEsc(g.id) + '\')">' +
+                    return '<div class="offer-card" ' + act('showGameDetail', g.id) + '>' +
                         (coverSrc ? '<img src="' + escapeHtml(coverSrc) + '">' : '<div style="height:120px;background:var(--bg-secondary);"></div>') +
                         '<div class="offer-content"><div class="offer-title">' + escapeHtml(g.title) + '</div>' +
                         '<div class="offer-price"><span class="purchase-discount">-' + g.discount + '%</span>' +
@@ -2664,11 +2734,11 @@
                 document.getElementById('wishlist-grid').innerHTML = data.games.map(g => {
                     const coverSrc = playAsset(g.cover_path) || '';
                     const price = g.price === 0 ? 'Free' : '$' + g.price.toFixed(2);
-                    return '<div class="game-card" onclick="showGameDetail(\'' + jsEsc(g.id) + '\')">' +
+                    return '<div class="game-card" ' + act('showGameDetail', g.id) + '>' +
                         (coverSrc ? '<img src="' + escapeHtml(coverSrc) + '">' : '<div style="height:160px;background:var(--bg-secondary);"></div>') +
                         '<div class="game-card-info"><div class="game-card-title">' + escapeHtml(g.title) + '</div>' +
                         '<div class="game-card-footer"><span class="game-card-price">' + price + '</span>' +
-                        '<button class="btn-secondary" style="padding:5px 10px;font-size:11px;" onclick="event.stopPropagation();removeFromWish(\'' + g.id + '\')">Remove</button>' +
+                        '<button class="btn-secondary" style="padding:5px 10px;font-size:11px;" ' + act('removeFromWish', g.id) + '>Remove</button>' +
                         '</div></div></div>';
                 }).join('');
             } catch { document.getElementById('wishlist-section').style.display='none'; }
@@ -2683,7 +2753,7 @@
                 const data = await api('/developer/' + currentUser.username + '/games');
                 const container = document.getElementById('dashboard-content');
                 if (!data.games || data.games.length === 0) {
-                    container.innerHTML = '<div class="empty-state">No uploaded games. <a onclick="navigate(\'upload\')">Upload your first game!</a></div>';
+                    container.innerHTML = '<div class="empty-state">No uploaded games. <a ' + act('navigate', 'upload') + '>Upload your first game!</a></div>';
                     return;
                 }
                 let games = data.games;
@@ -2696,7 +2766,7 @@
 
                 let html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">';
                 html += '<span style="color:var(--text-secondary);font-size:13px;">' + games.length + ' game' + (games.length !== 1 ? 's' : '') + '</span>';
-                html += '<select class="form-select" style="width:auto;padding:6px 10px;font-size:12px;" onchange="dashboardSort=this.value;loadDashboard()">';
+                html += '<select class="form-select" style="width:auto;padding:6px 10px;font-size:12px;" ' + onEv('change', 'setDashboardSort') + '>';
                 ['newest','oldest','popular','rating','title'].forEach(s => html += '<option value="'+s+'"'+(dashboardSort===s?' selected':'')+'>'+s.charAt(0).toUpperCase()+s.slice(1)+'</option>');
                 html += '</select></div>';
 
@@ -2706,18 +2776,18 @@
                         ? '<span style="background:var(--success);color:#000;padding:2px 8px;border-radius:3px;font-size:11px;font-weight:600;">Published</span>'
                         : '<span style="background:var(--text-secondary);color:#000;padding:2px 8px;border-radius:3px;font-size:11px;font-weight:600;">Draft</span>';
                     return '<div class="dashboard-card">' +
-                        (coverSrc ? '<img src="' + escapeHtml(coverSrc) + '" style="width:180px;height:80px;object-fit:cover;border-radius:3px;cursor:pointer;" onclick="showGameDetail(\'' + jsEsc(g.id) + '\')">' : '<div style="width:180px;height:80px;background:var(--bg-secondary);border-radius:3px;"></div>') +
-                        '<div><div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;"><div class="game-card-title" style="cursor:pointer;margin-bottom:0;" onclick="showGameDetail(\'' + jsEsc(g.id) + '\')">' + escapeHtml(g.title) + '</div>' + pubBadge + '</div>' +
+                        (coverSrc ? '<img src="' + escapeHtml(coverSrc) + '" style="width:180px;height:80px;object-fit:cover;border-radius:3px;cursor:pointer;" ' + act('showGameDetail', g.id) + '>' : '<div style="width:180px;height:80px;background:var(--bg-secondary);border-radius:3px;"></div>') +
+                        '<div><div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;"><div class="game-card-title" style="cursor:pointer;margin-bottom:0;" ' + act('showGameDetail', g.id) + '>' + escapeHtml(g.title) + '</div>' + pubBadge + '</div>' +
                         '<div class="dashboard-stats"><span>' + escapeHtml(g.genre) + '</span><span>★ ' + (g.avg_rating||0).toFixed(1) + '</span><span>' + (g.review_count||0) + ' reviews</span><span>' + (g.play_count||0) + ' plays</span></div></div>' +
                         '<div class="dashboard-actions">' +
-                        '<button class="dash-btn dash-btn-edit" onclick="toggleVisibility(\'' + g.id + '\',' + !g.published + ')">' + (g.published ? 'Unpublish' : 'Publish') + '</button>' +
-                        '<button class="dash-btn dash-btn-edit" onclick="showGameDetail(\'' + jsEsc(g.id) + '\')">View</button>' +
-                        '<button class="dash-btn dash-btn-edit" onclick="showAnalytics(\'' + g.id + '\')">Analytics</button>' +
-                        '<button class="dash-btn dash-btn-edit" onclick="editGame(\'' + g.id + '\')">Edit</button>' +
-                        '<button class="dash-btn dash-btn-delete" onclick="deleteGame(\'' + jsEsc(g.id) + '\',\'' + jsEsc(g.title) + '\')">Delete</button></div></div>';
+                        '<button class="dash-btn dash-btn-edit" ' + act('toggleVisibility', g.id, !g.published) + '>' + (g.published ? 'Unpublish' : 'Publish') + '</button>' +
+                        '<button class="dash-btn dash-btn-edit" ' + act('showGameDetail', g.id) + '>View</button>' +
+                        '<button class="dash-btn dash-btn-edit" ' + act('showAnalytics', g.id) + '>Analytics</button>' +
+                        '<button class="dash-btn dash-btn-edit" ' + act('editGame', g.id) + '>Edit</button>' +
+                        '<button class="dash-btn dash-btn-delete" ' + act('deleteGame', g.id, g.title) + '>Delete</button></div></div>';
                 }).join('');
                 container.innerHTML = html;
-            } catch (e) { container.innerHTML = '<div class="error-state"><p>Failed to load dashboard. <a href="#" onclick="navigate(\'dashboard\')">Try again</a></p></div>'; }
+            } catch (e) { container.innerHTML = '<div class="error-state"><p>Failed to load dashboard. <a href="#" ' + act('navigate', 'dashboard') + '>Try again</a></p></div>'; }
         }
 
         async function toggleVisibility(id, published) {
@@ -2746,7 +2816,7 @@
                 const videos = (g.videos && g.videos.length > 0) ? g.videos : (g.video_url ? [g.video_url] : []);
                 let html = '<div class="dev-editor">';
                 html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;"><h2 class="section-title" style="margin-bottom:0;">Edit: ' + escapeHtml(g.title) + '</h2>';
-                html += '<button class="btn-secondary" onclick="loadDashboard()">Back to Dashboard</button></div>';
+                html += '<button class="btn-secondary" ' + act('loadDashboard') + '>Back to Dashboard</button></div>';
 
                 // === Basic Info ===
                 html += '<div class="card-box" style="margin-bottom:20px;"><h3 style="font-size:14px;text-transform:uppercase;letter-spacing:1px;margin-bottom:15px;">Basic Info</h3>';
@@ -2775,7 +2845,7 @@
                     html += '<div id="edit-ss-list" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">';
                     g.screenshots.forEach((s, i) => {
                         html += '<div style="position:relative;"><img src="' + escapeHtml(s) + '" style="height:60px;border-radius:3px;object-fit:cover;">';
-                        html += '<button onclick="deleteScreenshot(\'' + id + '\',' + i + ')" style="position:absolute;top:-6px;right:-6px;background:var(--danger);color:#fff;border:none;border-radius:50%;width:20px;height:20px;font-size:12px;cursor:pointer;line-height:20px;text-align:center;">&times;</button></div>';
+                        html += '<button ' + act('deleteScreenshot', id, i) + ' style="position:absolute;top:-6px;right:-6px;background:var(--danger);color:#fff;border:none;border-radius:50%;width:20px;height:20px;font-size:12px;cursor:pointer;line-height:20px;text-align:center;">&times;</button></div>';
                     });
                     html += '</div>';
                 }
@@ -2785,13 +2855,13 @@
                 html += '<div id="edit-videos-list">';
                 if (videos.length > 0) {
                     videos.forEach((v, i) => {
-                        html += '<div style="display:flex;gap:8px;margin-bottom:6px;" class="edit-video-row"><input type="text" class="form-input" value="' + escapeHtml(v) + '" style="flex:1;"><button class="btn-secondary" style="padding:6px 12px;" onclick="this.parentElement.remove()">Remove</button></div>';
+                        html += '<div style="display:flex;gap:8px;margin-bottom:6px;" class="edit-video-row"><input type="text" class="form-input" value="' + escapeHtml(v) + '" style="flex:1;"><button class="btn-secondary" style="padding:6px 12px;" ' + act('removeParent') + '>Remove</button></div>';
                     });
                 } else {
-                    html += '<div style="display:flex;gap:8px;margin-bottom:6px;" class="edit-video-row"><input type="text" class="form-input" placeholder="https://www.youtube.com/embed/..." style="flex:1;"><button class="btn-secondary" style="padding:6px 12px;" onclick="this.parentElement.remove()">Remove</button></div>';
+                    html += '<div style="display:flex;gap:8px;margin-bottom:6px;" class="edit-video-row"><input type="text" class="form-input" placeholder="https://www.youtube.com/embed/..." style="flex:1;"><button class="btn-secondary" style="padding:6px 12px;" ' + act('removeParent') + '>Remove</button></div>';
                 }
                 html += '</div>';
-                html += '<button class="btn-secondary" style="padding:6px 14px;font-size:12px;" onclick="addVideoRow()">+ Add Video</button></div>';
+                html += '<button class="btn-secondary" style="padding:6px 14px;font-size:12px;" ' + act('addVideoRow') + '>+ Add Video</button></div>';
                 html += '</div>';
 
                 // === Advanced ===
@@ -2810,8 +2880,8 @@
                 html += '</div>';
 
                 // Save button
-                html += '<div style="display:flex;gap:10px;"><button class="btn-primary" style="width:auto;padding:12px 30px;" onclick="saveGameEdit(\'' + id + '\')">Save Changes</button>';
-                html += '<button class="btn-secondary" onclick="loadDashboard()">Cancel</button></div>';
+                html += '<div style="display:flex;gap:10px;"><button class="btn-primary" style="width:auto;padding:12px 30px;" ' + act('saveGameEdit', id) + '>Save Changes</button>';
+                html += '<button class="btn-secondary" ' + act('loadDashboard') + '>Cancel</button></div>';
                 html += '</div>';
                 document.getElementById('dashboard-content').innerHTML = html;
             } catch (e) { toast('Failed to load game: ' + e.message, 'error'); }
@@ -2822,7 +2892,7 @@
             const row = document.createElement('div');
             row.style.cssText = 'display:flex;gap:8px;margin-bottom:6px;';
             row.className = 'edit-video-row';
-            row.innerHTML = '<input type="text" class="form-input" placeholder="https://www.youtube.com/embed/..." style="flex:1;"><button class="btn-secondary" style="padding:6px 12px;" onclick="this.parentElement.remove()">Remove</button>';
+            row.innerHTML = '<input type="text" class="form-input" placeholder="https://www.youtube.com/embed/..." style="flex:1;"><button class="btn-secondary" style="padding:6px 12px;" ' + act('removeParent') + '>Remove</button>';
             list.appendChild(row);
         }
 
@@ -2913,7 +2983,7 @@
                 let html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">';
                 html += '<div><h2 class="section-title" style="margin-bottom:4px;">Analytics: ' + escapeHtml(g.title) + '</h2>';
                 html += '<p style="color:var(--text-secondary);font-size:13px;">Performance overview for your game</p></div>';
-                html += '<button class="btn-secondary" onclick="loadDashboard()">Back to Dashboard</button></div>';
+                html += '<button class="btn-secondary" ' + act('loadDashboard') + '>Back to Dashboard</button></div>';
 
                 // Overview stats (4 columns)
                 html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:15px;margin-bottom:20px;">';
@@ -2952,7 +3022,7 @@
                     html += '<div style="display:flex;align-items:flex-end;gap:2px;height:140px;">';
                     a.views_by_day.forEach(d => {
                         const h = Math.max(3, (d.views / maxViews) * 100);
-                        html += '<div title="' + d.date + ': ' + d.views + ' views" style="flex:1;height:' + h + '%;background:var(--accent);border-radius:2px 2px 0 0;min-width:4px;transition:height 0.3s;cursor:pointer;opacity:0.8;" onmouseenter="this.style.opacity=1" onmouseleave="this.style.opacity=0.8"></div>';
+                        html += '<div title="' + d.date + ': ' + d.views + ' views" style="flex:1;height:' + h + '%;background:var(--accent);border-radius:2px 2px 0 0;min-width:4px;transition:height 0.3s;cursor:pointer;opacity:0.8;" class="bar-hover"></div>';
                     });
                     html += '</div>';
                     html += '<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-secondary);margin-top:5px;">';
@@ -3010,8 +3080,8 @@
                 '<h3 style="font-size:16px;margin-bottom:10px;">Account</h3>' +
                 '<div class="form-group"><label class="form-label">Username</label><input type="text" class="form-input" id="settings-username" value="' + escapeHtml(currentUser?.username || '') + '"></div>' +
                 '<div class="form-group"><label class="form-label">Bio</label><textarea class="form-textarea" id="settings-bio" style="min-height:80px;" placeholder="Tell us about yourself...">' + escapeHtml(currentUser?.bio || '') + '</textarea></div>' +
-                '<div class="form-group"><label class="form-label">Avatar</label><div style="display:flex;gap:10px;"><input type="file" class="form-input" style="padding:8px;flex:1;" accept="image/*" onchange="uploadImage(this,\'settings-avatar\')"><input type="text" class="form-input" id="settings-avatar" value="' + escapeHtml(currentUser?.avatar_url || '') + '" placeholder="URL or upload" style="flex:1;"></div></div>' +
-                '<button class="btn-accent" onclick="saveAccountSettings()">Save Account</button></div>' +
+                '<div class="form-group"><label class="form-label">Avatar</label><div style="display:flex;gap:10px;"><input type="file" class="form-input" style="padding:8px;flex:1;" accept="image/*" ' + onEv('change', 'uploadImage', 'settings-avatar') + '><input type="text" class="form-input" id="settings-avatar" value="' + escapeHtml(currentUser?.avatar_url || '') + '" placeholder="URL or upload" style="flex:1;"></div></div>' +
+                '<button class="btn-accent" ' + act('saveAccountSettings') + '>Save Account</button></div>' +
                 '<div class="card-box">' +
                 '<h3 style="font-size:16px;margin-bottom:10px;">Playback</h3>' +
                 '<label style="display:flex;align-items:center;gap:10px;cursor:pointer;color:var(--text-secondary);font-size:13px;">' +
@@ -3028,31 +3098,31 @@
                 '<div class="sysinfo-item"><span class="sysinfo-label">Browser</span><span class="sysinfo-value">' + browserName + '</span></div>' +
                 '<div class="sysinfo-item"><span class="sysinfo-label">Screen</span><span class="sysinfo-value">' + screen.width + 'x' + screen.height + '</span></div>' +
                 '<div class="sysinfo-item"><span class="sysinfo-label">Platform</span><span class="sysinfo-value">' + esc(navigator.platform) + '</span></div>' +
-                (gpuCapability !== 'webgpu' ? '<div style="margin-top:12px;padding:12px;background:rgba(210,169,96,0.1);border-radius:4px;font-size:12px;color:var(--warning);">WebGPU is not enabled. Some games may not work. <a style="color:var(--accent);cursor:pointer;" onclick="document.getElementById(\'settings-webgpu-help\').classList.toggle(\'open\')">How to enable</a><div class="webgpu-instructions" id="settings-webgpu-help">' + getWebGPUInstructions() + '</div></div>' : '') +
+                (gpuCapability !== 'webgpu' ? '<div style="margin-top:12px;padding:12px;background:rgba(210,169,96,0.1);border-radius:4px;font-size:12px;color:var(--warning);">WebGPU is not enabled. Some games may not work. <a style="color:var(--accent);cursor:pointer;" ' + act('toggleHelp', 'settings-webgpu-help') + '>How to enable</a><div class="webgpu-instructions" id="settings-webgpu-help">' + getWebGPUInstructions() + '</div></div>' : '') +
                 '</div>' +
                 '<div class="card-box">' +
                 '<h3 style="font-size:16px;margin-bottom:10px;">Change Password</h3>' +
                 '<div class="form-group"><label class="form-label">Current Password</label><input type="password" class="form-input" id="settings-current-pw"></div>' +
                 '<div class="form-group"><label class="form-label">New Password (min 6 chars)</label><input type="password" class="form-input" id="settings-new-pw"></div>' +
-                '<button class="btn-accent" onclick="changePassword()">Change Password</button></div>' +
+                '<button class="btn-accent" ' + act('changePassword') + '>Change Password</button></div>' +
                 '<div class="card-box">' +
                 '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><h3 style="font-size:16px;margin-bottom:0;">API Keys</h3>' +
-                '<button class="btn-accent" style="padding:4px 14px;font-size:11px;" onclick="showGenerateKeyModal()">+ Generate Key</button></div>' +
-                '<p style="color:var(--text-secondary);font-size:12px;margin-bottom:12px;">Use API keys to deploy games from the command line or CI/CD. <a style="color:var(--accent);cursor:pointer;" onclick="window.open(\'/deploy.sh\')">Download deploy script</a></p>' +
+                '<button class="btn-accent" style="padding:4px 14px;font-size:11px;" ' + act('showGenerateKeyModal') + '>+ Generate Key</button></div>' +
+                '<p style="color:var(--text-secondary);font-size:12px;margin-bottom:12px;">Use API keys to deploy games from the command line or CI/CD. <a style="color:var(--accent);cursor:pointer;" ' + act('openUrl', '/deploy.sh') + '>Download deploy script</a></p>' +
                 '<div id="api-keys-list" style="color:var(--text-secondary);font-size:13px;">Loading...</div></div>' +
                 '<div class="card-box">' +
                 '<h3 style="font-size:16px;margin-bottom:10px;">Export Backup</h3>' +
                 '<p style="color:var(--text-secondary);font-size:13px;margin-bottom:15px;">Download your profile and activity data as JSON.</p>' +
-                '<button class="btn-accent" onclick="exportBackup()">Export Backup</button></div>' +
+                '<button class="btn-accent" ' + act('exportBackup') + '>Export Backup</button></div>' +
                 '<div class="card-box">' +
                 '<h3 style="font-size:16px;margin-bottom:10px;">Import Backup</h3>' +
                 '<p style="color:var(--text-secondary);font-size:13px;margin-bottom:15px;">Restore from a previously exported backup file.</p>' +
                 '<input type="file" class="form-input" id="import-file" accept=".json" style="padding:8px;margin-bottom:10px;">' +
-                '<button class="btn-secondary" onclick="importBackup()">Import Backup</button></div>' +
+                '<button class="btn-secondary" ' + act('importBackup') + '>Import Backup</button></div>' +
                 '<div class="card-box">' +
                 '<h3 style="font-size:16px;margin-bottom:10px;color:var(--danger);">Delete Account</h3>' +
                 '<p style="color:var(--text-secondary);font-size:13px;margin-bottom:15px;">Permanently delete your account, games, reviews, and all data. This cannot be undone.</p>' +
-                '<button class="btn-secondary" style="border-color:var(--danger);color:var(--danger);" onclick="deleteAccount()">Delete Account</button></div>' +
+                '<button class="btn-secondary" style="border-color:var(--danger);color:var(--danger);" ' + act('deleteAccount') + '>Delete Account</button></div>' +
                 '</div>';
             loadAPIKeys();
         }
@@ -3103,7 +3173,7 @@
                     return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border-color);">' +
                         '<div><strong>' + escapeHtml(k.name) + '</strong>' +
                         '<div style="font-size:11px;color:var(--text-secondary);margin-top:2px;"><code>' + escapeHtml(k.key_prefix) + '...</code> · ' + escapeHtml(k.scopes) + ' · ' + lastUsed + '</div></div>' +
-                        '<button class="btn-secondary" style="padding:3px 10px;font-size:11px;color:var(--danger);" onclick="revokeAPIKey(\'' + jsEsc(k.id) + '\',\'' + jsEsc(k.name) + '\')">Revoke</button></div>';
+                        '<button class="btn-secondary" style="padding:3px 10px;font-size:11px;color:var(--danger);" ' + act('revokeAPIKey', k.id, k.name) + '>Revoke</button></div>';
                 }).join('');
             } catch { el.innerHTML = '<span style="color:var(--danger);">Failed to load keys.</span>'; }
         }
@@ -3121,7 +3191,7 @@
                         showModal('Your API Key',
                             '<p style="color:var(--warning);font-size:13px;margin-bottom:10px;">Copy this key now. You won\'t be able to see it again.</p>' +
                             '<div style="display:flex;gap:6px;"><input type="text" class="form-input" id="raw-key-display" value="' + escapeHtml(data.raw_key) + '" readonly style="font-family:monospace;font-size:12px;">' +
-                            '<button class="btn-accent" style="padding:6px 14px;white-space:nowrap;" onclick="navigator.clipboard.writeText(document.getElementById(\'raw-key-display\').value);toast(\'Copied!\',\'success\')">Copy</button></div>' +
+                            '<button class="btn-accent" style="padding:6px 14px;white-space:nowrap;" ' + act('copyToClipboard', 'raw-key-display') + '>Copy</button></div>' +
                             '<p style="color:var(--text-secondary);font-size:12px;margin-top:12px;">Install the deploy script:<br><code style="font-size:11px;">curl -fsSL ' + location.origin + '/deploy.sh -o playmore-deploy && chmod +x playmore-deploy</code></p>',
                             () => { closeModal(); loadAPIKeys(); });
                         document.querySelector('#modal .modal-confirm').textContent = 'Done';
@@ -3263,7 +3333,7 @@
                 const data = await api('/collections/' + listId);
                 const col = data.collection; const games = data.games || [];
                 let html = '<div style="max-width:1200px;margin:0 auto;padding:20px;">';
-                html += '<div style="margin-bottom:20px;"><a style="color:var(--accent);cursor:pointer;font-size:13px;" onclick="navigate(\'store\')">&larr; Back</a></div>';
+                html += '<div style="margin-bottom:20px;"><a style="color:var(--accent);cursor:pointer;font-size:13px;" ' + act('navigate', 'store') + '>&larr; Back</a></div>';
                 html += '<h2 style="font-size:24px;margin-bottom:8px;">' + escapeHtml(col.name) + '</h2>';
                 if (col.username) html += '<p style="color:var(--text-secondary);font-size:13px;margin-bottom:8px;">by ' + escapeHtml(col.username) + '</p>';
                 if (col.description) html += '<p style="color:var(--text-secondary);margin-bottom:15px;">' + escapeHtml(col.description) + '</p>';
@@ -3296,13 +3366,13 @@
                     if (hasGame) {
                         html += '<span style="color:var(--success);font-size:12px;">Added</span>';
                     } else {
-                        html += '<button class="btn-accent" style="padding:4px 12px;font-size:11px;" onclick="addGameToCollection(\'' + c.id + '\',\'' + gameId + '\');this.textContent=\'Added\';this.disabled=true;">Add</button>';
+                        html += '<button class="btn-accent" style="padding:4px 12px;font-size:11px;" ' + act('addToCollection', c.id, gameId) + '>Add</button>';
                     }
                     html += '</div>';
                 });
             }
             html += '</div><div style="margin-top:12px;"><input type="text" class="form-input" id="new-list-name" placeholder="New list name..." style="margin-bottom:8px;">';
-            html += '<button class="btn-secondary" style="width:100%;padding:8px;" onclick="quickCreateList(\'' + gameId + '\')">Create New List</button></div>';
+            html += '<button class="btn-secondary" style="width:100%;padding:8px;" ' + act('quickCreateList', gameId) + '>Create New List</button></div>';
             showModal('Add to List', html, () => closeModal());
             document.querySelector('#modal .modal-confirm').textContent = 'Done';
         }
@@ -3327,7 +3397,7 @@
             // Tab bar
             let html = '<div style="display:flex;gap:5px;margin-bottom:20px;">';
             ['overview', 'analytics', 'users', 'games'].forEach(t => {
-                html += '<button class="nav-tab' + (adminTab === t ? ' active' : '') + '" onclick="adminTab=\'' + t + '\';loadAdmin();" style="padding:8px 16px;font-size:12px;">' + t.charAt(0).toUpperCase() + t.slice(1) + '</button>';
+                html += '<button class="nav-tab' + (adminTab === t ? ' active' : '') + '" ' + act('setAdminTab', t) + ' style="padding:8px 16px;font-size:12px;">' + t.charAt(0).toUpperCase() + t.slice(1) + '</button>';
             });
             html += '</div>';
 
@@ -3346,7 +3416,7 @@
                         html += '<div class="game-card-title">' + escapeHtml(u.username) + '</div>';
                         html += '<div class="dashboard-stats"><span>' + escapeHtml(u.email) + '</span><span>' + u.game_count + ' games</span><span>' + u.review_count + ' reviews</span><span>' + escapeHtml(u.created_at) + '</span></div>';
                         html += '</div><div class="dashboard-actions">';
-                        html += '<button class="dash-btn dash-btn-delete" onclick="adminDeleteUser(\'' + jsEsc(u.id) + '\',\'' + jsEsc(u.username) + '\')">Delete</button></div></div>';
+                        html += '<button class="dash-btn dash-btn-delete" ' + act('adminDeleteUser', u.id, u.username) + '>Delete</button></div></div>';
                     });
                 } else if (adminTab === 'games') {
                     const games = await api('/admin/games');
@@ -3355,8 +3425,8 @@
                         html += '<div class="game-card-title">' + escapeHtml(g.title) + '</div>';
                         html += '<div class="dashboard-stats"><span>by ' + escapeHtml(g.developer) + '</span><span>' + escapeHtml(g.genre) + '</span><span>' + g.review_count + ' reviews</span><span>' + (g.published ? 'Published' : 'Hidden') + '</span></div>';
                         html += '</div><div class="dashboard-actions">';
-                        html += '<button class="dash-btn dash-btn-edit" onclick="adminTogglePublish(\'' + g.id + '\')">' + (g.published ? 'Hide' : 'Publish') + '</button>';
-                        html += '<button class="dash-btn dash-btn-delete" onclick="adminDeleteGameA(\'' + jsEsc(g.id) + '\',\'' + jsEsc(g.title) + '\')">Delete</button></div></div>';
+                        html += '<button class="dash-btn dash-btn-edit" ' + act('adminTogglePublish', g.id) + '>' + (g.published ? 'Hide' : 'Publish') + '</button>';
+                        html += '<button class="dash-btn dash-btn-delete" ' + act('adminDeleteGameA', g.id, g.title) + '>Delete</button></div></div>';
                     });
                 }
                 container.innerHTML = html;
@@ -3405,7 +3475,7 @@
                 html += '<div class="card-box" style="margin-bottom:20px;"><h3 style="font-size:14px;margin-bottom:12px;">Traffic (Last 24 Hours)</h3>';
                 const maxH = Math.max(...d.hourly.map(h => h.views), 1);
                 html += '<div style="display:flex;align-items:flex-end;gap:2px;height:100px;">';
-                d.hourly.forEach(h => { html += '<div title="' + esc(h.hour) + ': ' + h.views + '" style="flex:1;height:' + Math.max(3, h.views/maxH*100) + '%;background:var(--accent);border-radius:2px 2px 0 0;min-width:6px;opacity:0.8;cursor:pointer;" onmouseenter="this.style.opacity=1" onmouseleave="this.style.opacity=0.8"></div>'; });
+                d.hourly.forEach(h => { html += '<div title="' + esc(h.hour) + ': ' + h.views + '" style="flex:1;height:' + Math.max(3, h.views/maxH*100) + '%;background:var(--accent);border-radius:2px 2px 0 0;min-width:6px;opacity:0.8;cursor:pointer;" class="bar-hover"></div>'; });
                 html += '</div></div>';
             }
 
@@ -3525,6 +3595,9 @@
         });
 
         function switchFeedTab(tab, el) {
+            // el is passed explicitly by the programmatic caller; when invoked via
+            // the delegated click dispatcher it arrives bound as `this`.
+            if (!el && this && this.nodeType === 1) el = this;
             document.querySelectorAll('.feed-tab').forEach(t => t.classList.remove('active'));
             if (el) el.classList.add('active');
             if (tab === 'activity') loadFeedNotifications();
@@ -3543,7 +3616,7 @@
                 if (!data.notifications || data.notifications.length === 0) { list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary);">No notifications.</div>'; return; }
                 const icons = { review: '⭐', follow: '👤', devlog: '📝', new_game: '🎮' };
                 list.innerHTML = data.notifications.map(n =>
-                    '<div class="feed-item" style="' + (!n.read ? 'background:rgba(102,192,244,0.05);' : '') + '" onclick="' + (n.game_id ? "showGameDetail('" + n.game_id + "')" : '') + '">' +
+                    '<div class="feed-item" style="' + (!n.read ? 'background:rgba(102,192,244,0.05);' : '') + '" ' + (n.game_id ? act('showGameDetail', n.game_id) : '') + '">' +
                     '<div style="font-size:20px;width:50px;text-align:center;">' + (icons[n.type] || '🔔') + '</div>' +
                     '<div class="feed-item-info"><div class="feed-item-title">' + escapeHtml(n.message) + '</div>' +
                     '<div class="feed-item-meta">' + escapeHtml(n.created_at) + '</div></div></div>'
@@ -3557,7 +3630,7 @@
                 const data = await api('/activity');
                 if (!data.activity || data.activity.length === 0) { list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary);">No activity yet.</div>'; return; }
                 list.innerHTML = data.activity.slice(0, 15).map(a =>
-                    '<div class="feed-item" onclick="' + (a.game_id ? "showGameDetail('" + a.game_id + "')" : '') + '">' +
+                    '<div class="feed-item" ' + (a.game_id ? act('showGameDetail', a.game_id) : '') + '">' +
                     '<div style="font-size:20px;width:50px;text-align:center;">' + actIcon(a.type) + '</div>' +
                     '<div class="feed-item-info"><div class="feed-item-title">' + actVerb(a.type) + ' <strong>' + escapeHtml(a.game_title) + '</strong></div>' +
                     '<div class="feed-item-meta">' + escapeHtml(a.created_at) + '</div></div></div>'
@@ -3571,7 +3644,7 @@
                 const data = await api('/library');
                 if (!data.games || data.games.length === 0) { list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary);">No games in library.</div>'; return; }
                 list.innerHTML = data.games.slice(0, 15).map(g =>
-                    '<div class="feed-item" onclick="showGameDetail(\'' + jsEsc(g.id) + '\')">' +
+                    '<div class="feed-item" ' + act('showGameDetail', g.id) + '>' +
                     (g.cover_path ? '<img src="' + escapeHtml(playAsset(g.cover_path)) + '">' : '<div style="width:50px;height:35px;background:var(--bg-tertiary);border-radius:3px;"></div>') +
                     '<div class="feed-item-info"><div class="feed-item-title">' + escapeHtml(g.title) + '</div>' +
                     '<div class="feed-item-meta">' + escapeHtml(g.genre) + ' · ' + (g.play_count || 0) + ' plays</div></div></div>'
@@ -3586,7 +3659,7 @@
                 if (!data.games || data.games.length === 0) { list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary);">Wishlist is empty.</div>'; return; }
                 list.innerHTML = data.games.map(g => {
                     const price = g.price === 0 ? 'Free' : '$' + g.price.toFixed(2);
-                    return '<div class="feed-item" onclick="showGameDetail(\'' + jsEsc(g.id) + '\')">' +
+                    return '<div class="feed-item" ' + act('showGameDetail', g.id) + '>' +
                     (g.cover_path ? '<img src="' + escapeHtml(playAsset(g.cover_path)) + '">' : '<div style="width:50px;height:35px;background:var(--bg-tertiary);border-radius:3px;"></div>') +
                     '<div class="feed-item-info"><div class="feed-item-title">' + escapeHtml(g.title) + '</div>' +
                     '<div class="feed-item-meta">' + price + '</div></div></div>';
@@ -3600,7 +3673,7 @@
                 const data = await api('/following');
                 if (!data.following || data.following.length === 0) { list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary);">Not following anyone yet.</div>'; return; }
                 list.innerHTML = data.following.map(u =>
-                    '<div class="feed-item" onclick="showDeveloper(\'' + jsEsc(u.username) + '\')">' +
+                    '<div class="feed-item" ' + act('showDeveloper', u.username) + '>' +
                     '<img src="' + avatarUrl(u) + '" style="width:35px;height:35px;border-radius:50%;object-fit:cover;">' +
                     '<div class="feed-item-info"><div class="feed-item-title">' + escapeHtml(u.username) + '</div>' +
                     '<div class="feed-item-meta">' + escapeHtml(u.bio || 'Developer') + '</div></div></div>'
@@ -3644,13 +3717,13 @@
             container.innerHTML = feedTypes.map(t => {
                 const checked = isFeedTypeEnabled(t.key);
                 return '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:6px 12px;background:' + (checked ? 'rgba(102,192,244,0.15)' : 'rgba(255,255,255,0.05)') + ';border-radius:4px;border:1px solid ' + (checked ? 'var(--accent)' : 'var(--border-color)') + ';font-size:13px;color:' + (checked ? 'var(--accent)' : 'var(--text-secondary)') + ';transition:all 0.2s;">' +
-                    '<input type="checkbox" ' + (checked ? 'checked' : '') + ' onchange="setFeedFilter(\'' + t.key + '\',this.checked);renderFeedFilters();loadFeedPage();" style="accent-color:var(--accent);width:14px;height:14px;">' +
+                    '<input type="checkbox" ' + (checked ? 'checked' : '') + ' ' + onEv('change', 'toggleFeedFilter', t.key) + ' style="accent-color:var(--accent);width:14px;height:14px;">' +
                     t.icon + ' ' + t.label + '</label>';
             }).join('');
         }
 
         async function loadFeedPage() {
-            if (!currentUser) { document.getElementById('feed-page-content').innerHTML = '<div class="empty-state">Please <a onclick="showAuth(\'login\')">login</a> to see your feed.</div>'; return; }
+            if (!currentUser) { document.getElementById('feed-page-content').innerHTML = '<div class="empty-state">Please <a ' + act('showAuth', 'login') + '>login</a> to see your feed.</div>'; return; }
             const container = document.getElementById('feed-page-content');
             container.innerHTML = '<div class="empty-state">Loading feed...</div>';
             renderFeedFilters();
@@ -3660,7 +3733,7 @@
                 // Apply client-side filters
                 items = items.filter(item => isFeedTypeEnabled(item.type));
                 if (items.length === 0) {
-                    container.innerHTML = '<div class="empty-state">Your feed is empty. <a style="color:var(--accent);cursor:pointer;" onclick="navigate(\'store\')">Browse the store</a> and follow some developers to see updates here!</div>';
+                    container.innerHTML = '<div class="empty-state">Your feed is empty. <a style="color:var(--accent);cursor:pointer;" ' + act('navigate', 'store') + '>Browse the store</a> and follow some developers to see updates here!</div>';
                     return;
                 }
 
@@ -3669,7 +3742,7 @@
 
                 let html = '';
                 items.forEach(item => {
-                    html += '<div class="card-box" style="display:flex;gap:15px;align-items:flex-start;cursor:pointer;margin-bottom:10px;" onclick="' + (item.game_id ? "showGameDetail('" + jsEsc(item.game_id) + "')" : '') + '">';
+                    html += '<div class="card-box" style="display:flex;gap:15px;align-items:flex-start;cursor:pointer;margin-bottom:10px;" ' + (item.game_id ? act('showGameDetail', item.game_id) : '') + '">';
                     if (item.cover_path) {
                         html += '<img src="' + esc(playAsset(item.cover_path)) + '" style="width:80px;height:50px;object-fit:cover;border-radius:4px;flex-shrink:0;">';
                     } else {
@@ -3678,7 +3751,7 @@
                     html += '<div style="flex:1;">';
                     html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">';
                     html += '<span style="font-size:11px;padding:2px 8px;background:rgba(102,192,244,0.15);color:var(--accent);border-radius:2px;">' + esc(feedLabels[item.type] || item.type) + '</span>';
-                    if (item.username) html += '<span style="font-size:12px;color:var(--text-secondary);">by <a style="color:var(--accent);cursor:pointer;" onclick="event.stopPropagation();showDeveloper(\'' + jsEsc(item.username) + '\')">' + esc(item.username) + '</a></span>';
+                    if (item.username) html += '<span style="font-size:12px;color:var(--text-secondary);">by <a style="color:var(--accent);cursor:pointer;" ' + act('showDeveloper', item.username) + '>' + esc(item.username) + '</a></span>';
                     html += '</div>';
                     if (item.type === 'devlog') {
                         html += '<div style="font-size:15px;font-weight:bold;margin-bottom:4px;">' + esc(item.title) + '</div>';
@@ -3712,7 +3785,7 @@
                 if (currentUser) {
                     html += '<div style="display:flex;gap:8px;margin-bottom:12px;">';
                     html += '<input type="text" class="form-input" id="comment-input-' + devlogId + '" placeholder="Write a comment..." style="flex:1;padding:8px 12px;font-size:13px;">';
-                    html += '<button class="btn-accent" style="padding:8px 16px;font-size:12px;width:auto;" onclick="postComment(\'' + devlogId + '\')">Post</button></div>';
+                    html += '<button class="btn-accent" style="padding:8px 16px;font-size:12px;width:auto;" ' + act('postComment', devlogId) + '>Post</button></div>';
                 }
                 // Comments list
                 if (data.comments && data.comments.length > 0) {
@@ -3730,10 +3803,10 @@
             html += '<img src="' + avatar + '" style="width:24px;height:24px;border-radius:50%;flex-shrink:0;margin-top:2px;">';
             html += '<div style="flex:1;">';
             html += '<div style="font-size:12px;"><span style="color:var(--accent);font-weight:bold;">' + escapeHtml(c.username) + '</span> <span style="color:var(--text-secondary);">· ' + escapeHtml(c.created_at) + '</span>';
-            if (currentUser && currentUser.id === c.user_id) html += ' <a style="color:var(--danger);cursor:pointer;font-size:11px;margin-left:8px;" onclick="deleteComment(\'' + c.id + '\',\'' + devlogId + '\')">delete</a>';
+            if (currentUser && currentUser.id === c.user_id) html += ' <a style="color:var(--danger);cursor:pointer;font-size:11px;margin-left:8px;" ' + act('deleteComment', c.id, devlogId) + '>delete</a>';
             html += '</div>';
             html += '<p style="font-size:13px;color:var(--text-secondary);margin-top:4px;line-height:1.4;">' + escapeHtml(c.text) + '</p>';
-            if (currentUser && depth < 2) html += '<a style="font-size:11px;color:var(--accent);cursor:pointer;margin-top:4px;display:inline-block;" onclick="showReplyBox(\'' + c.id + '\',\'' + devlogId + '\')">Reply</a>';
+            if (currentUser && depth < 2) html += '<a style="font-size:11px;color:var(--accent);cursor:pointer;margin-top:4px;display:inline-block;" ' + act('showReplyBox', c.id, devlogId) + '>Reply</a>';
             html += '<div id="reply-box-' + c.id + '"></div>';
             html += '</div></div></div>';
             // Render replies
@@ -3746,7 +3819,7 @@
         function showReplyBox(parentId, devlogId) {
             const box = document.getElementById('reply-box-' + parentId);
             if (!box || box.innerHTML) { if (box) box.innerHTML = ''; return; }
-            box.innerHTML = '<div style="display:flex;gap:8px;margin-top:8px;"><input type="text" class="form-input" id="reply-input-' + parentId + '" placeholder="Write a reply..." style="flex:1;padding:6px 10px;font-size:12px;"><button class="btn-accent" style="padding:6px 12px;font-size:11px;width:auto;" onclick="postComment(\'' + devlogId + '\',\'' + parentId + '\')">Reply</button></div>';
+            box.innerHTML = '<div style="display:flex;gap:8px;margin-top:8px;"><input type="text" class="form-input" id="reply-input-' + parentId + '" placeholder="Write a reply..." style="flex:1;padding:6px 10px;font-size:12px;"><button class="btn-accent" style="padding:6px 12px;font-size:11px;width:auto;" ' + act('postComment', devlogId, parentId) + '>Reply</button></div>';
             document.getElementById('reply-input-' + parentId)?.focus();
         }
 
@@ -3771,8 +3844,11 @@
         }
 
         /* ============ Image Upload ============ */
-        async function uploadImage(fileInput, targetInputId) {
-            if (!fileInput.files.length) return;
+        async function uploadImage(targetInputId, fileInput) {
+            // Invoked via the delegated change dispatcher: the file <input> arrives
+            // as `this`; targetInputId is the data-change-args value.
+            fileInput = fileInput || this;
+            if (!fileInput || !fileInput.files || !fileInput.files.length) return;
             const formData = new FormData();
             formData.append('image', fileInput.files[0]);
             try {
@@ -3804,7 +3880,7 @@
                 }
                 results.innerHTML = data.games.map(g => {
                     const coverSrc = playAsset(g.cover_path) || '';
-                    return '<div class="search-result" onclick="document.getElementById(\'global-search-results\').classList.remove(\'open\');document.getElementById(\'global-search-input\').value=\'\';showGameDetail(\'' + g.id + '\')">' +
+                    return '<div class="search-result" ' + act('searchResultClick', g.id) + '>' +
                         (coverSrc ? '<img src="' + escapeHtml(coverSrc) + '">' : '<div style="width:60px;height:35px;background:var(--bg-tertiary);border-radius:3px;"></div>') +
                         '<div><div class="search-result-title">' + escapeHtml(g.title) + '</div>' +
                         '<div class="search-result-meta">' + escapeHtml(g.genre) + ' · by ' + escapeHtml(g.developer_name || 'Unknown') + '</div></div></div>';
