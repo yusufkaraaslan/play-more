@@ -1177,7 +1177,7 @@
         }
 
         function gameCardHTML(g) {
-            const coverSrc = g.cover_path || 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="225"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="%232a475e"/><stop offset="100%" stop-color="%23171a21"/></linearGradient></defs><rect fill="url(%23g)" width="400" height="225"/><text x="200" y="120" text-anchor="middle" fill="%2366c0f4" font-family="Segoe UI" font-size="22" font-weight="bold">' + escapeHtml(g.title) + '</text></svg>');
+            const coverSrc = g.cover_path || 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="225"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#2a475e"/><stop offset="100%" stop-color="#171a21"/></linearGradient></defs><rect fill="url(#g)" width="400" height="225"/><text x="200" y="120" text-anchor="middle" fill="#66c0f4" font-family="Segoe UI" font-size="22" font-weight="bold">' + escapeHtml(g.title) + '</text></svg>');
             const rating = g.avg_rating > 0 ? '★ ' + g.avg_rating.toFixed(1) : '';
             const price = g.price === 0 ? 'Free' : '$' + g.price.toFixed(2);
             return '<div class="game-card" onclick="showGameDetail(\'' + jsEsc(g.id) + '\')">' +
@@ -1354,7 +1354,7 @@
         }
 
         function libraryCardHTML(g) {
-            const coverSrc = g.cover_path || 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="225"><rect fill="%231e1e2e" width="400" height="225"/><text x="200" y="120" text-anchor="middle" fill="%2366c0f4" font-size="20">' + escapeHtml(g.title) + '</text></svg>');
+            const coverSrc = g.cover_path || 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="225"><rect fill="#1e1e2e" width="400" height="225"/><text x="200" y="120" text-anchor="middle" fill="#66c0f4" font-size="20">' + escapeHtml(g.title) + '</text></svg>');
             return '<div class="game-card" onclick="showGameDetail(\'' + jsEsc(g.id) + '\')">' +
                 '<img src="' + coverSrc + '" alt="' + escapeHtml(g.title) + '">' +
                 '<div class="game-card-overlay"><span class="game-card-play">VIEW</span></div>' +
