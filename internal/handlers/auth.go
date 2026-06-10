@@ -101,10 +101,32 @@ func Register(c *gin.Context) {
 		return
 	}
 
+	// Usernames are already publicly enumerable (every profile lives at
+	// /profile/<name> and /developer/<name>), so a username collision can be
+	// reported plainly — it leaks nothing new and gives the user actionable
+	// feedback. Email addresses, by contrast, are secret: see below (#8).
+	if _, err := models.GetUserByUsername(input.Username); err == nil {
+		c.JSON(http.StatusConflict, gin.H{"error": "That username is already taken. Please choose another."})
+		return
+	}
+
+	smtpConfigured := email.Configured()
+
 	user, err := models.CreateUser(input.Username, input.Email, input.Password)
 	if err != nil {
 		if storage.IsUniqueConstraintError(err) {
-			// Return generic error to prevent user enumeration
+			// Username was just checked free, so a UNIQUE failure here is the
+			// email colliding. Do NOT reveal that (account-enumeration, #8).
+			// CreateUser already ran bcrypt (cost-12) before the insert failed,
+			// so this path's timing matches a fresh registration's.
+			if smtpConfigured {
+				// Byte-for-byte identical to the new-account response below —
+				// an attacker cannot tell whether the address already existed.
+				c.JSON(http.StatusOK, gin.H{"message": verificationPendingMsg, "email_pending": true})
+				return
+			}
+			// No email channel to hide behind (demo mode) — keep the old generic
+			// conflict. Email enumeration is moot without a verification flow.
 			c.JSON(http.StatusConflict, gin.H{"error": "Registration failed. Please try again with different information."})
 			return
 		}
@@ -112,24 +134,34 @@ func Register(c *gin.Context) {
 		return
 	}
 
+	if smtpConfigured {
+		// Anti-enumeration: do NOT auto-login. Send the verification link and
+		// return the SAME neutral response as the email-already-exists branch
+		// above, so new vs. existing addresses are indistinguishable. The user
+		// verifies (or simply signs in — login doesn't require verification).
+		vToken := generateToken()
+		models.CreateEmailToken(hashToken(vToken), user.ID, "verify", time.Now().Add(24*time.Hour))
+		go email.SendVerification(input.Email, input.Username, vToken)
+		c.JSON(http.StatusOK, gin.H{"message": verificationPendingMsg, "email_pending": true})
+		return
+	}
+
+	// No SMTP configured (demo): there's no verification step, so auto-login as
+	// before rather than stranding the user at a sign-in screen.
 	token, err := models.CreateSession(user.ID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create session"})
 		return
 	}
-
 	c.SetSameSite(http.SameSiteLaxMode)
 	c.SetCookie("session", token, 30*24*3600, "/", "", middleware.IsSecure(c), true)
-
-	// Send verification email if SMTP is configured
-	if email.Configured() {
-		vToken := generateToken()
-		models.CreateEmailToken(hashToken(vToken), user.ID, "verify", time.Now().Add(24*time.Hour))
-		go email.SendVerification(input.Email, input.Username, vToken)
-	}
-
 	c.JSON(http.StatusCreated, gin.H{"user": user})
 }
+
+// verificationPendingMsg is deliberately non-committal: it is returned verbatim
+// both when a new account is created and when the email is already registered,
+// so the response cannot be used to probe which addresses exist (#8).
+const verificationPendingMsg = "If that email address isn't already registered, a verification link is on its way. Please check your inbox, then sign in."
 
 type loginInput struct {
 	Email    string `json:"email" binding:"required"`

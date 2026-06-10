@@ -1004,7 +1004,16 @@
                     captcha_challenge: sol.challenge,
                     captcha_nonce: sol.nonce,
                 }) });
-                currentUser = data.user; renderHeader(); navigate('store'); toast('Account created! Welcome to PlayMore.', 'success');
+                if (data.user) {
+                    // Demo mode (no email verification configured) — auto-login.
+                    currentUser = data.user; renderHeader(); navigate('store'); toast('Account created! Welcome to PlayMore.', 'success');
+                } else {
+                    // Verification required: the server returns a neutral message
+                    // (identical whether or not the email was already registered).
+                    // Send the user to the sign-in form rather than logging in.
+                    showAuth('login');
+                    toast(data.message || 'Check your email to verify your account, then sign in.', 'success');
+                }
             } catch (e) { document.getElementById('auth-error').textContent = e.message; }
         }
 
