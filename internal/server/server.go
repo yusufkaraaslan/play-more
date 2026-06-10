@@ -281,6 +281,15 @@ func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxi
 			c.String(http.StatusNotFound, "not found")
 			return
 		}
+		// Defense-in-depth: /uploads/ serves user-uploaded image content.
+		// Image validation (UploadImage → ValidateImageBytes) rejects anything
+		// that doesn't decode as PNG/JPG/GIF, but if that validation is ever
+		// loosened or another code path drops a file here, these headers
+		// prevent the file from being abused as a script-executing document.
+		c.Header("X-Content-Type-Options", "nosniff")
+		c.Header("Content-Security-Policy", "default-src 'none'; img-src 'self' data: blob:; style-src 'unsafe-inline'; sandbox")
+		c.Header("Cross-Origin-Opener-Policy", "same-origin")
+		c.Header("Cross-Origin-Resource-Policy", "same-origin")
 		http.ServeContent(c.Writer, c.Request, stat.Name(), stat.ModTime(), f)
 	})
 

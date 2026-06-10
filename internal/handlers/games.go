@@ -729,6 +729,14 @@ func ServeGameFiles(spaOrigin string) gin.HandlerFunc {
 		}
 	}
 	csp := "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; img-src * data: blob:; media-src * data: blob:; font-src * data:; connect-src *; frame-ancestors " + frameAncestors
+	// htmlCSP applies a browser-enforced sandbox on every HTML game response.
+	// Unlike the iframe `sandbox` attribute (which only protects the SPA-launched
+	// player), the `sandbox` CSP directive also covers top-level navigation,
+	// new-tab opens, and popups — so a direct visit to /play/<id>/index.html
+	// cannot mint API keys via same-origin fetch. Omitting allow-same-origin
+	// makes the document an opaque origin: cookies aren't sent on /api/* fetches,
+	// and any request it does make carries Origin: null (rejected by CSRF).
+	htmlCSP := csp + "; sandbox allow-scripts allow-pointer-lock allow-popups allow-popups-to-escape-sandbox allow-forms allow-modals"
 
 	// gameIDRe matches our game ID format (UUIDv4) — prevents Windows path
 	// traversal via gameID = ".." and bounds the lookup to plausible IDs.
@@ -769,12 +777,35 @@ func ServeGameFiles(spaOrigin string) gin.HandlerFunc {
 			return
 		}
 
-		// Permissive CSP for game assets; frame-ancestors gates who can embed.
-		// Iframe sandbox is the primary defense against malicious game code.
-		c.Header("Content-Security-Policy", csp)
+		// CSP: permissive for inert game assets, but any extension that a
+		// browser could render as a script-executing document gets a
+		// server-enforced sandbox so a direct visit to /play/<id>/<file>
+		// cannot mint API keys / read cookies via same-origin fetch.
+		// frame-ancestors gates who can embed.
+		// Sandboxed types:
+		//   .html/.htm  — obvious
+		//   .svg        — XML with native <script> support
+		//   .xml/.xhtml/.xht — browser-renderable XML docs
+		//   .pdf        — PDF.js can execute embedded JS in some contexts
+		//   unknown ext — defense-in-depth against MIME sniffing into a doc
+		ext := strings.ToLower(filepath.Ext(fullPath))
+		needsSandbox := ext == ".html" || ext == ".htm" ||
+			ext == ".svg" || ext == ".xml" || ext == ".xhtml" || ext == ".xht" ||
+			ext == ".pdf" || contentTypeForExt(ext) == ""
+		if needsSandbox {
+			c.Header("Content-Security-Policy", htmlCSP)
+			// Prevent any popped-out / new-tab game window from reaching back
+			// into the SPA via window.opener.
+			c.Header("Cross-Origin-Opener-Policy", "same-origin")
+		} else {
+			c.Header("Content-Security-Policy", csp)
+		}
 		// XFO can't whitelist a cross-origin host — frame-ancestors is the only way to allow split-origin embed.
 		c.Writer.Header().Del("X-Frame-Options")
-		ext := strings.ToLower(filepath.Ext(fullPath))
+		// Sandboxed game documents have an opaque origin, so even fetches to
+		// their own assets are cross-origin. Allow them. Safe because /play/*
+		// only serves public per-game files (auth lives on /api/*).
+		c.Header("Access-Control-Allow-Origin", "*")
 		if ext == ".wasm" || ext == ".js" || ext == ".css" || ext == ".png" || ext == ".jpg" || ext == ".svg" || ext == ".ogg" || ext == ".mp3" {
 			c.Header("Cache-Control", "public, max-age=31536000, immutable")
 		}

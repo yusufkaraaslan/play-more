@@ -1601,9 +1601,21 @@
                 .replace(/>/g, '\\x3e')
                 .replace(/&/g, '\\x26');
         }
+        // safeUrl: defense-in-depth. The server's SanitizeWebURL rejects
+        // javascript:/data:/vbscript: URIs on write, but we re-validate at
+        // render so a future endpoint that skips sanitization doesn't turn
+        // the SPA into an XSS host. Returns "" if the URL is not an
+        // allowed scheme; callers should fall back or omit the attribute.
+        function safeUrl(url) {
+            if (!url) return '';
+            const s = String(url).trim();
+            if (/^(https?:|mailto:|\/|#)/i.test(s)) return esc(s);
+            return '';
+        }
         function avatarUrl(u) {
-            if (u.avatar_url) return esc(u.avatar_url);
-            const name = u.username || u.name || 'user';
+            const safe = u && u.avatar_url ? safeUrl(u.avatar_url) : '';
+            if (safe) return safe;
+            const name = (u && (u.username || u.name)) || 'user';
             return '/avatar/' + encodeURIComponent(name);
         }
         function formatBytes(bytes) {
@@ -2023,14 +2035,14 @@
 
                 let html = '<div class="dev-page" style="--dp-bg:' + preset.bg + ';--dp-accent:' + themeColor + ';--dp-text:' + preset.text + ';--dp-card:' + preset.card + ';background:' + preset.bg + ';padding:20px;border-radius:12px;margin:-20px;margin-bottom:0;' + (fh ? 'font-family:' + fh + ',sans-serif;' : '') + '">';
                 html += '<div class="dev-banner" style="' + (page?.banner_url ? '' : 'background:linear-gradient(135deg, var(--bg-secondary), ' + themeColor + '30);') + '">';
-                if (page?.banner_url) html += '<img src="' + escapeHtml(page.banner_url) + '">';
+                if (page?.banner_url) { const b = safeUrl(page.banner_url); if (b) html += '<img src="' + b + '">'; }
                 html += '</div>';
 
                 html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;">';
                 html += '<div class="dev-profile"><img src="' + avatarUrl(u) + '" class="dev-avatar">';
                 html += '<div><div class="dev-name">' + escapeHtml(page?.display_name || u.username) + '</div>';
                 html += '<div class="dev-meta">@' + escapeHtml(u.username) + ' · ' + stats.games_uploaded + ' games · ' + stats.hours_played.toFixed(0) + ' hours played</div>';
-                if (page?.links && page.links.length > 0) { html += '<div class="dev-links">'; page.links.forEach(l => html += '<a href="' + escapeHtml(l.url) + '" target="_blank" class="dev-link">' + escapeHtml(l.label) + '</a>'); html += '</div>'; }
+                if (page?.links && page.links.length > 0) { html += '<div class="dev-links">'; page.links.forEach(l => { const u = safeUrl(l.url); if (u) html += '<a href="' + u + '" target="_blank" rel="noopener noreferrer" class="dev-link">' + escapeHtml(l.label) + '</a>'; }); html += '</div>'; }
                 html += '</div></div>';
                 if (isOwnPage) {
                     html += '<button class="btn-secondary" onclick="navigate(\'deveditor\')">Edit Developer Page</button>';
@@ -2086,7 +2098,7 @@
                         html += '<h2 class="section-title">' + esc(section.title || 'Links') + '</h2>';
                         if (page?.links?.length > 0) {
                             html += '<div class="dev-links" style="margin-bottom:20px;">';
-                            page.links.forEach(l => html += '<a href="' + esc(l.url) + '" target="_blank" class="dev-link">' + esc(l.label) + '</a>');
+                            page.links.forEach(l => { const u = safeUrl(l.url); if (u) html += '<a href="' + u + '" target="_blank" rel="noopener noreferrer" class="dev-link">' + esc(l.label) + '</a>'; });
                             html += '</div>';
                         } else if (isOwnPage) {
                             html += '<div class="empty-state" style="padding:20px;">No links added yet.</div>';

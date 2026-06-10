@@ -2,6 +2,7 @@ data/
 playmore
 .env
 .claude/
+.security-forensics/
 *.db
 *.db-wal
 *.db-shm
