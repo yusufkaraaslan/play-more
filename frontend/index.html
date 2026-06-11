@@ -419,6 +419,20 @@
         .dash-btn-delete { background: rgba(193,87,87,0.2); color: var(--danger); }
         .dash-btn-delete:hover { background: rgba(193,87,87,0.4); }
 
+        /* Developer Workspace */
+        .dev-layout { display: grid; grid-template-columns: 220px 1fr; gap: 0; min-height: 70vh; }
+        .dev-sidebar { background: rgba(0,0,0,0.25); border-right: 1px solid var(--border-color); padding: 0; overflow-y: auto; max-height: 80vh; position: sticky; top: 0; }
+        .dev-sidebar-group { padding: 6px 0; }
+        .dev-sidebar-label { padding: 6px 14px; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-secondary); font-weight: 600; }
+        .dev-sidebar-item { display: flex; align-items: center; gap: 8px; padding: 7px 14px; cursor: pointer; font-size: 13px; color: var(--text-secondary); transition: all 0.15s; border-left: 3px solid transparent; }
+        .dev-sidebar-item:hover { background: rgba(255,255,255,0.05); color: var(--text-primary); }
+        .dev-sidebar-item.active { background: rgba(102,192,244,0.1); color: var(--accent); border-left-color: var(--accent); }
+        .dev-tabs { display: flex; border-bottom: 1px solid var(--border-color); margin-bottom: 20px; }
+        .dev-tab { padding: 10px 20px; background: transparent; border: none; border-bottom: 2px solid transparent; color: var(--text-secondary); cursor: pointer; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; transition: all 0.15s; }
+        .dev-tab:hover { color: var(--text-primary); }
+        .dev-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+        .dev-content { padding: 0 0 0 20px; }
+
         /* Level Badge */
         .level-badge { display: inline-block; padding: 3px 12px; background: var(--accent); color: white; border-radius: 3px; font-size: 12px; margin-top: 6px; }
 
@@ -470,6 +484,13 @@
             .community-stats { grid-template-columns: 1fr 1fr; }
             .header-actions { gap: 8px; }
             .gpu-badge { display: none; }
+            .dev-layout { grid-template-columns: 1fr; }
+            .dev-sidebar { max-height: none; position: static; border-right: none; border-bottom: 1px solid var(--border-color); display: flex; overflow-x: auto; padding: 8px; gap: 4px; }
+            .dev-sidebar-group { display: contents; }
+            .dev-sidebar-label { display: none; }
+            .dev-sidebar-item { padding: 6px 12px; border-left: none; border-bottom: 2px solid transparent; white-space: nowrap; font-size: 12px; }
+            .dev-sidebar-item.active { border-bottom-color: var(--accent); border-left-color: transparent; }
+            .dev-content { padding: 0; }
         }
         /* Hover/focus effects migrated off inline on* handlers (CSP, #3). */
         .tmpl-card:hover { border-color: var(--tmpl-accent) !important; }
@@ -490,6 +511,7 @@
             <button class="nav-tab" data-tab="library" data-act="navigate" data-act-args="[&quot;library&quot;]" tabindex="0">Library</button>
             <button class="nav-tab" data-tab="feed" data-act="navigate" data-act-args="[&quot;feed&quot;]" id="nav-feed" style="display:none;" tabindex="0">Feed</button>
             <button class="nav-tab" data-tab="upload" data-act="navigate" data-act-args="[&quot;upload&quot;]" tabindex="0">Upload</button>
+            <button class="nav-tab" data-tab="dev" data-act="navigate" data-act-args="[&quot;dev&quot;]" tabindex="0">Dev</button>
             <button class="nav-tab" data-tab="profile" data-act="navigate" data-act-args="[&quot;profile&quot;]" tabindex="0">Profile</button>
         </nav>
         <button data-act="toggleTheme" id="theme-toggle" title="Toggle theme" style="background:none;border:none;font-size:18px;cursor:pointer;padding:5px;">🌙</button>
@@ -647,17 +669,15 @@
 
         <section id="gamedetail-section" class="section"><div id="game-detail-content"></div></section>
         <section id="developer-section" class="section"><div id="developer-content"></div></section>
-        <section id="deveditor-section" class="section">
-            <h2 class="section-title">Edit Developer Page</h2>
-            <div id="deveditor-content" class="dev-editor"></div>
-        </section>
-        <section id="dashboard-section" class="section">
-            <h2 class="section-title">Game Dashboard</h2>
-            <div id="dashboard-content"></div>
-        </section>
-        <section id="settings-section" class="section">
-            <h2 class="section-title">Settings</h2>
-            <div id="settings-content"></div>
+        <section id="dev-section" class="section">
+            <h2 class="section-title">Developer Workspace</h2>
+            <div class="dev-layout">
+                <div class="dev-sidebar" id="dev-sidebar"></div>
+                <div class="dev-content">
+                    <div class="dev-tabs" id="dev-tabs"></div>
+                    <div id="dev-panel"></div>
+                </div>
+            </div>
         </section>
         <section id="admin-section" class="section">
             <h2 class="section-title">Admin Panel</h2>
@@ -1097,11 +1117,9 @@
             window.scrollTo(0, 0);
             if (tab === 'feed') loadFeedPage();
             if (tab === 'store') { loadStore(); loadRecentlyPlayed(); loadOffers(); }
-            if (tab === 'library') { loadLibrary(); loadWishlist(); }
+            if (tab === 'library') { loadLibrary(); }
             if (tab === 'profile') loadProfile();
-            if (tab === 'deveditor') loadDevEditor();
-            if (tab === 'dashboard') loadDashboard();
-            if (tab === 'settings') loadSettings();
+            if (tab === 'dev') loadDev();
             if (tab === 'admin') loadAdmin();
             // Update URL hash
             if (updateHash) {
@@ -1126,8 +1144,11 @@
             } else if (hash.startsWith('reset/')) {
                 showResetPassword(hash.slice(6));
             } else {
-                const validTabs = ['store','library','upload','profile','feed','dashboard','settings','admin','deveditor','gamedetail','developer','auth'];
-                if (validTabs.includes(hash)) {
+                const validTabs = ['store','library','upload','profile','feed','dashboard','settings','admin','deveditor','gamedetail','developer','auth','dev'];
+                // Redirect legacy dev routes to unified #dev
+                if (hash === 'dashboard' || hash === 'settings' || hash === 'deveditor') {
+                    navigate('dev', false);
+                } else if (validTabs.includes(hash)) {
                     navigate(hash, false);
                 } else {
                     // 404
@@ -1140,6 +1161,144 @@
         }
 
         window.addEventListener('hashchange', handleHashRoute);
+
+        /* ============ Developer Workspace ============ */
+        let devTab = 'overview';
+
+        function loadDev() {
+            if (!currentUser) { showAuth('login'); return; }
+            if (devTab === 'overview' || !devTab) devTab = 'overview';
+            renderDevTabs();
+            showDevTab(devTab);
+        }
+
+        function renderDevTabs() {
+            const tabs = ['Overview', 'Games', 'Dev Page', 'Analytics', 'Settings'];
+            const keys = ['overview', 'games', 'devpage', 'analytics', 'settings'];
+            let html = '';
+            tabs.forEach((label, i) => {
+                html += '<button class="dev-tab' + (devTab === keys[i] ? ' active' : '') + '" data-act="showDevTab" data-act-args="[&quot;' + keys[i] + '&quot;]">' + label + '</button>';
+            });
+            document.getElementById('dev-tabs').innerHTML = html;
+        }
+
+        function showDevTab(tab, gameId) {
+            devTab = tab;
+            renderDevTabs();
+            renderDevSidebar(tab, gameId);
+            switch (tab) {
+                case 'overview': loadDevOverview(); break;
+                case 'games': loadDevGames(gameId); break;
+                case 'devpage': loadDevPageTab(); break;
+                case 'analytics': loadDevAnalytics(gameId); break;
+                case 'settings': loadDevSettings(); break;
+            }
+        }
+
+        function renderDevSidebar(tab, gameId) {
+            const sidebar = document.getElementById('dev-sidebar');
+            let html = '';
+            switch (tab) {
+                case 'overview':
+                    html += '<div class="dev-sidebar-group">';
+                    html += '<div class="dev-sidebar-label">Quick Actions</div>';
+                    html += '<div class="dev-sidebar-item" data-act="navigate" data-act-args="[&quot;upload&quot;]">Upload Game</div>';
+                    html += '<div class="dev-sidebar-item" data-act="showDevTab" data-act-args="[&quot;games&quot;]">My Games</div>';
+                    html += '<div class="dev-sidebar-item" data-act="showDevTab" data-act-args="[&quot;devpage&quot;]">Edit Dev Page</div>';
+                    html += '<div class="dev-sidebar-item" data-act="showDevTab" data-act-args="[&quot;analytics&quot;]">Analytics</div>';
+                    html += '</div>';
+                    break;
+                case 'games':
+                    html += '<div class="dev-sidebar-group">';
+                    html += '<div class="dev-sidebar-item" data-act="showDevTab" data-act-args="[&quot;games&quot;]" style="font-weight:bold;color:var(--accent);">All Games</div>';
+                    html += '<div class="dev-sidebar-item" data-act="navigate" data-act-args="[&quot;upload&quot;]">+ Upload New Game</div>';
+                    html += '</div>';
+                    break;
+                case 'devpage':
+                    html += '<div class="dev-sidebar-group">';
+                    html += '<div class="dev-sidebar-label">Sections</div>';
+                    html += '<div class="dev-sidebar-item" data-act="scrollToElement" data-act-args="[&quot;dev-templates-section&quot;]">Templates</div>';
+                    html += '<div class="dev-sidebar-item" data-act="scrollToElement" data-act-args="[&quot;dev-display-name-section&quot;]">Display Name</div>';
+                    html += '<div class="dev-sidebar-item" data-act="scrollToElement" data-act-args="[&quot;dev-appearance-section&quot;]">Appearance</div>';
+                    html += '<div class="dev-sidebar-item" data-act="scrollToElement" data-act-args="[&quot;dev-css-section&quot;]">Custom CSS</div>';
+                    html += '<div class="dev-sidebar-item" data-act="scrollToElement" data-act-args="[&quot;dev-layout-section&quot;]">Page Layout</div>';
+                    html += '</div>';
+                    break;
+                case 'analytics':
+                    html += '<div class="dev-sidebar-group">';
+                    html += '<div class="dev-sidebar-label">View</div>';
+                    html += '<div class="dev-sidebar-item' + (!gameId ? ' active' : '') + '" data-act="showDevTab" data-act-args="[&quot;analytics&quot;]">Overview</div>';
+                    html += '<div class="dev-sidebar-label" style="margin-top:8px;">Games</div>';
+                    html += '<div id="analytics-game-list" style="color:var(--text-secondary);font-size:12px;padding:0 14px;">Loading...</div>';
+                    html += '</div>';
+                    break;
+                case 'settings':
+                    html += '<div class="dev-sidebar-group">';
+                    html += '<div class="dev-sidebar-label">Categories</div>';
+                    html += '<div class="dev-sidebar-item" data-act="scrollToElement" data-act-args="[&quot;dev-settings-account&quot;]">Account</div>';
+                    html += '<div class="dev-sidebar-item" data-act="scrollToElement" data-act-args="[&quot;dev-settings-playback&quot;]">Playback</div>';
+                    html += '<div class="dev-sidebar-item" data-act="scrollToElement" data-act-args="[&quot;dev-settings-security&quot;]">Security</div>';
+                    html += '<div class="dev-sidebar-item" data-act="scrollToElement" data-act-args="[&quot;dev-settings-apikeys&quot;]">API Keys</div>';
+                    html += '<div class="dev-sidebar-item" data-act="scrollToElement" data-act-args="[&quot;dev-settings-data&quot;]">Data</div>';
+                    html += '<div class="dev-sidebar-item" style="color:var(--danger);" data-act="scrollToElement" data-act-args="[&quot;dev-settings-danger&quot;]">Danger Zone</div>';
+                    html += '</div>';
+                    break;
+            }
+            sidebar.innerHTML = html;
+        }
+
+        function scrollToElement(id) {
+            const el = document.getElementById(id);
+            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        /* ============ Dev: Overview ============ */
+        async function loadDevOverview() {
+            const panel = document.getElementById('dev-panel');
+            showLoading('dev-panel');
+            try {
+                const gamesData = await api('/developer/' + currentUser.username + '/games');
+                const games = gamesData.games || [];
+                const totalPlays = games.reduce((s, g) => s + (g.play_count || 0), 0);
+                const totalReviews = games.reduce((s, g) => s + (g.review_count || 0), 0);
+
+                let html = '';
+                html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:15px;margin-bottom:20px;">';
+                html += statCard(games.length, 'Games');
+                html += statCard(totalPlays, 'Total Plays');
+                html += statCard(totalReviews, 'Reviews');
+                html += statCard(games.filter(g => g.published).length, 'Published');
+                html += '</div>';
+
+                // System info
+                const browserName = { firefox: 'Firefox/Zen', chrome: 'Chrome', edge: 'Edge', safari: 'Safari', opera: 'Opera', other: 'Unknown' }[detectBrowser()] || 'Unknown';
+                const gpuStatus = gpuCapability === 'webgpu' ? '<span style="color:var(--success);">WebGPU Supported</span>' : gpuCapability === 'webgl2' ? '<span style="color:var(--warning);">WebGL2 only</span>' : '<span style="color:var(--danger);">Not Available</span>';
+
+                html += '<div class="card-box">';
+                html += '<h3 style="font-size:16px;margin-bottom:15px;">System Info</h3>';
+                html += '<div class="sysinfo-grid">';
+                html += '<div class="sysinfo-item"><span class="sysinfo-label">WebGPU</span><span class="sysinfo-value">' + gpuStatus + '</span></div>';
+                html += '<div class="sysinfo-item"><span class="sysinfo-label">WebGL2</span><span class="sysinfo-value">' + (hasWebGL2 ? '<span style="color:var(--success);">Supported</span>' : '<span style="color:var(--danger);">Not Available</span>') + '</span></div>';
+                if (gpuAdapterName) html += '<div class="sysinfo-item"><span class="sysinfo-label">GPU</span><span class="sysinfo-value">' + esc(gpuAdapterName) + '</span></div>';
+                html += '<div class="sysinfo-item"><span class="sysinfo-label">Browser</span><span class="sysinfo-value">' + browserName + '</span></div>';
+                html += '<div class="sysinfo-item"><span class="sysinfo-label">Screen</span><span class="sysinfo-value">' + screen.width + 'x' + screen.height + '</span></div>';
+                html += '<div class="sysinfo-item"><span class="sysinfo-label">Platform</span><span class="sysinfo-value">' + esc(navigator.platform) + '</span></div>';
+                html += '</div>';
+                if (gpuCapability !== 'webgpu') {
+                    html += '<div style="margin-top:12px;padding:12px;background:rgba(210,169,96,0.1);border-radius:4px;font-size:12px;color:var(--warning);">WebGPU is not enabled. Some games may not work. <a style="color:var(--accent);cursor:pointer;" ' + act('toggleHelp', 'dev-webgpu-help') + '>How to enable</a><div class="webgpu-instructions" id="dev-webgpu-help">' + getWebGPUInstructions() + '</div></div>';
+                }
+                html += '</div>';
+
+                // Quick actions
+                html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:15px;">';
+                html += '<div class="card-box" style="text-align:center;margin-bottom:0;cursor:pointer;" ' + act('navigate', 'upload') + '><div style="font-size:28px;margin-bottom:8px;">📁</div><div style="font-size:14px;font-weight:bold;">Upload Game</div><div style="font-size:12px;color:var(--text-secondary);">Add a new game</div></div>';
+                html += '<div class="card-box" style="text-align:center;margin-bottom:0;cursor:pointer;" ' + act('showDevTab', 'devpage') + '><div style="font-size:28px;margin-bottom:8px;">🎨</div><div style="font-size:14px;font-weight:bold;">Edit Dev Page</div><div style="font-size:12px;color:var(--text-secondary);">Customize your storefront</div></div>';
+                html += '<div class="card-box" style="text-align:center;margin-bottom:0;cursor:pointer;" ' + act('showDeveloper', currentUser.username) + '><div style="font-size:28px;margin-bottom:8px;">👁</div><div style="font-size:14px;font-weight:bold;">View Public Page</div><div style="font-size:12px;color:var(--text-secondary);">See what players see</div></div>';
+                html += '</div>';
+
+                panel.innerHTML = html;
+            } catch (e) { panel.innerHTML = '<div class="error-state"><p>Failed to load overview.</p></div>'; }
+        }
 
         /* ============ Utilities ============ */
         function showLoading(containerId) {
@@ -1534,7 +1693,7 @@
                 html += '<span class="level-badge">Level ' + level + '</span>';
                 html += '<div class="dev-meta" style="margin-top:6px;">' + escapeHtml(u.bio || 'No bio yet.') + '</div>';
                 html += '</div></div>';
-                html += '<button class="btn-secondary" ' + act('navigate', 'settings') + '>Settings</button></div>';
+                html += '<button class="btn-secondary" ' + act('navigate', 'dev') + '>Dev Workspace</button></div>';
 
                 // Stats
                 html += '<div class="stats-grid">';
@@ -1548,11 +1707,11 @@
                 html += '<p style="color:var(--text-secondary);font-size:13px;">Your storefront</p></div>';
                 html += '<div style="display:flex;gap:8px;">';
                 html += '<button class="btn-secondary" ' + act('showDeveloper', u.username) + '>View</button>';
-                html += '<button class="btn-accent" ' + act('navigate', 'deveditor') + '>Edit</button></div></div>';
+                html += '<button class="btn-accent" ' + act('navigate', 'dev') + '>Edit</button></div></div>';
                 html += '<div class="card-box" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0;">';
-                html += '<div><h3 style="font-size:16px;margin-bottom:4px;">Dashboard</h3>';
-                html += '<p style="color:var(--text-secondary);font-size:13px;">Manage games</p></div>';
-                html += '<button class="btn-accent" ' + act('navigate', 'dashboard') + '>Open</button></div>';
+                html += '<div><h3 style="font-size:16px;margin-bottom:4px;">Dev Workspace</h3>';
+                html += '<p style="color:var(--text-secondary);font-size:13px;">Games &amp; settings</p></div>';
+                html += '<button class="btn-accent" ' + act('navigate', 'dev') + '>Open</button></div>';
                 // Admin (if applicable)
                 try {
                     await api('/admin/stats');
@@ -2088,7 +2247,7 @@
             try { await api('/library/'+id, {method:'DELETE'}); toast('Removed from library.', 'info'); loadLibrary(); } catch (e) { toast(e.message, 'error'); }
         }
         async function removeFromWish(id) {
-            try { await api('/wishlist/'+id, {method:'DELETE'}); toast('Removed from wishlist.', 'info'); loadWishlist(); } catch (e) { toast(e.message, 'error'); }
+            try { await api('/wishlist/'+id, {method:'DELETE'}); toast('Removed from wishlist.', 'info'); loadLibrary(); } catch (e) { toast(e.message, 'error'); }
         }
 
         /* ============ Developer Page ============ */
@@ -2124,7 +2283,7 @@
                 if (page?.links && page.links.length > 0) { html += '<div class="dev-links">'; page.links.forEach(l => { const u = safeUrl(l.url); if (u) html += '<a href="' + u + '" target="_blank" rel="noopener noreferrer" class="dev-link">' + escapeHtml(l.label) + '</a>'; }); html += '</div>'; }
                 html += '</div></div>';
                 if (isOwnPage) {
-                    html += '<button class="btn-secondary" ' + act('navigate', 'deveditor') + '>Edit Developer Page</button>';
+                    html += '<button class="btn-secondary" ' + act('navigate', 'dev') + '>Edit Developer Page</button>';
                 } else if (currentUser) {
                     // Follow button
                     try {
@@ -2184,10 +2343,25 @@
                         }
                     } else if (section.type === 'devlogs') {
                         html += '<h2 class="section-title">' + esc(section.title || 'Devlogs') + '</h2>';
+                        let foundDevlogs = false;
                         try {
                             const dlData = await api('/developer/' + username + '/games');
-                            // Devlogs rendered if any game has them — handled elsewhere
+                            const games = dlData.games || [];
+                            for (const g of games) {
+                                try {
+                                    const devlogs = await api('/games/' + g.id + '/devlogs');
+                                    if (devlogs.devlogs && devlogs.devlogs.length > 0) {
+                                        foundDevlogs = true;
+                                        devlogs.devlogs.slice(0, 5).forEach(d => {
+                                            html += '<div class="review-card"><div style="font-size:13px;color:var(--accent);margin-bottom:4px;">' + esc(g.title) + ' — ' + esc(d.title) + '</div>';
+                                            html += '<div style="font-size:12px;color:var(--text-secondary);margin-bottom:8px;">' + esc(d.created_at) + '</div>';
+                                            html += '<div style="font-size:13px;line-height:1.5;color:var(--text-secondary);">' + renderMarkdown(d.body || '') + '</div></div>';
+                                        });
+                                    }
+                                } catch {}
+                            }
                         } catch {}
+                        if (!foundDevlogs) html += '<div class="empty-state" style="padding:20px;">No devlogs posted yet.</div>';
                     } else if (section.type === 'custom' && section.content) {
                         if (section.title) html += '<h2 class="section-title">' + esc(section.title) + '</h2>';
                         html += '<div class="dev-about">' + renderMarkdown(section.content) + '</div>';
@@ -2201,13 +2375,27 @@
                             html += '<div style="border-radius:8px;overflow:hidden;margin-bottom:20px;"><iframe width="100%" height="' + embedH + '" src="https://www.youtube.com/embed/' + esc(ytMatch[1]) + '" frameborder="0" allowfullscreen style="border:none;"></iframe></div>';
                         }
                         // Discord
-                        else if (embedUrl.match(/discord/i) || embedUrl.match(/^\d{10,}$/)) {
+                        else if (embedUrl.match(/discord\.com/i) || embedUrl.match(/^\d{16,20}$/)) {
                             const serverId = embedUrl.replace(/[^0-9]/g, '') || embedUrl;
                             html += '<iframe src="https://discord.com/widget?id=' + esc(serverId) + '&theme=dark" width="100%" height="' + embedH + '" allowtransparency="true" frameborder="0" sandbox="allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts" style="border-radius:8px;"></iframe>';
                         }
                         // Generic URL — only allow embeds from explicit allowlist
                         else if (isAllowedEmbed(embedUrl)) {
                             html += '<iframe src="' + esc(embedUrl) + '" width="100%" height="' + embedH + '" frameborder="0" sandbox="allow-scripts" style="border-radius:8px;border:1px solid var(--border-color);"></iframe>';
+                        }
+                    } else if (section.type === 'gallery') {
+                        if (section.title) html += '<h2 class="section-title">' + esc(section.title) + '</h2>';
+                        if (section.content) {
+                            const imgUrls = section.content.split(',').map(u => u.trim()).filter(u => u);
+                            if (imgUrls.length > 0) {
+                                html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-bottom:20px;">';
+                                imgUrls.forEach(url => {
+                                    html += '<div style="border-radius:8px;overflow:hidden;background:var(--bg-secondary);"><img src="' + esc(url) + '" style="width:100%;height:160px;object-fit:cover;" loading="lazy"></div>';
+                                });
+                                html += '</div>';
+                            }
+                        } else if (isOwnPage) {
+                            html += '<div class="empty-state" style="padding:20px;">No images added yet.</div>';
                         }
                     }
                 }
@@ -2239,7 +2427,7 @@
             }
 
             // Templates
-            html += '<div class="card-box" style="margin-bottom:15px;">';
+            html += '<div class="card-box" style="margin-bottom:15px;" id="dev-templates-section">';
             html += '<div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;" ' + act('toggleNext') + '>';
             html += '<label class="form-label" style="margin-bottom:0;cursor:pointer;">🎭 Quick Start Templates</label><span style="color:var(--text-secondary);">▼</span></div>';
             html += '<div style="display:none;margin-top:12px;">';
@@ -2253,11 +2441,11 @@
             html += '</div></div></div>';
 
             // Display name + banner
-            html += '<div class="form-group"><label class="form-label">Display Name</label><input type="text" class="form-input" id="dev-display-name" value="' + escapeHtml(page?.display_name || currentUser.username) + '"></div>';
+            html += '<div class="form-group" id="dev-display-name-section"><label class="form-label">Display Name</label><input type="text" class="form-input" id="dev-display-name" value="' + escapeHtml(page?.display_name || currentUser.username) + '"></div>';
             html += '<div class="form-group"><label class="form-label">Banner Image</label><input type="file" class="form-input" style="padding:8px;margin-bottom:5px;" accept="image/*" ' + onEv('change', 'uploadImage', 'dev-banner') + '><input type="text" class="form-input" id="dev-banner" value="' + escapeHtml(page?.banner_url || '') + '" placeholder="URL or upload above"></div>';
 
             // Theme + Appearance (collapsible)
-            html += '<div class="card-box" style="margin-bottom:15px;">';
+            html += '<div class="card-box" style="margin-bottom:15px;" id="dev-appearance-section">';
             html += '<div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;" ' + act('toggleNext') + '>';
             html += '<label class="form-label" style="margin-bottom:0;cursor:pointer;">🎨 Appearance</label><span style="color:var(--text-secondary);">▼</span></div>';
             html += '<div style="display:none;margin-top:15px;">';
@@ -2279,7 +2467,7 @@
             html += '</select></div></div></div></div>';
 
             // Custom CSS (advanced)
-            html += '<div class="card-box" style="margin-bottom:15px;">';
+            html += '<div class="card-box" style="margin-bottom:15px;" id="dev-css-section">';
             html += '<div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;" ' + act('toggleNext') + '>';
             html += '<label class="form-label" style="margin-bottom:0;cursor:pointer;">💻 Custom CSS (advanced)</label><span style="color:var(--text-secondary);">▼</span></div>';
             html += '<div style="display:none;margin-top:12px;">';
@@ -2289,6 +2477,7 @@
             html += '</div></div>';
 
             // Page Layout — sections with inline editors
+            html += '<div id="dev-layout-section">';
             const layout = (page?.page_layout?.length > 0) ? page.page_layout : [
                 {type:'about',enabled:true,title:'About'},{type:'featured',enabled:true,title:'Featured Games'},
                 {type:'games',enabled:true,title:'All Games'},{type:'links',enabled:true,title:'Links'},{type:'devlogs',enabled:true,title:'Devlogs'}
@@ -2361,13 +2550,27 @@
             html += '<button class="btn-secondary" style="font-size:12px;" ' + act('addLayoutSection', 'gallery') + '>+ Gallery</button>';
             html += '</div>';
 
+            html += '</div>'; // close dev-layout-section
+
             // Save / Preview
             html += '<div style="display:flex;gap:10px;margin-top:20px;"><button class="btn-primary" style="width:auto;padding:12px 30px;" ' + act('saveDevPage') + '>Save Developer Page</button>';
             html += '<button class="btn-secondary" ' + act('showDeveloper', currentUser.username) + '>Preview</button></div>';
-            document.getElementById('deveditor-content').innerHTML = html;
+            document.getElementById('dev-panel').innerHTML = html;
         }
 
+        function loadDevPageTab() { loadDevEditor(); }
+
         function addDevLink() { const l=document.getElementById('dev-links-list'); const i=l.children.length; const d=document.createElement('div'); d.className='form-row'; d.style.marginBottom='8px'; d.innerHTML='<div><input type="text" class="form-input" placeholder="Label" data-link-label="'+i+'"></div><div><input type="text" class="form-input" placeholder="URL" data-link-url="'+i+'"></div>'; l.appendChild(d); }
+
+        function updateEmbedPlaceholder(idx) {
+            const sel = this;
+            const input = document.querySelector('[data-layout-content="' + idx + '"][type="text"]');
+            if (!input) return;
+            const val = sel.value;
+            if (val === 'youtube') input.placeholder = 'https://www.youtube.com/watch?v=...';
+            else if (val === 'discord') input.placeholder = 'Discord server ID (e.g. 1234567890)';
+            else input.placeholder = 'https://...';
+        }
 
         // CSS sanitizer — prefix selectors + strip dangerous patterns
         function sanitizeCSS(css) {
@@ -2421,10 +2624,15 @@
                 const enabledEl = el.querySelector('[data-layout-enabled="'+i+'"]');
                 const heightEl = el.querySelector('[data-layout-height="'+i+'"]');
                 const contentEl = el.querySelector('[data-layout-content="'+i+'"]');
-                const type = el.querySelector('span')?.textContent;
-                const typeMap = {'📝':'about','⭐':'featured','🎮':'games','🔗':'links','📖':'devlogs','↕️':'spacer','📄':'custom','🖼️':'gallery'};
+                // Prefer explicit section-type attribute; fall back to icon detection
+                let type = el.dataset.sectionType;
+                if (!type) {
+                    const iconText = el.querySelector('span')?.textContent || '';
+                    const typeMap = {'📝':'about','⭐':'featured','🎮':'games','🔗':'links','📖':'devlogs','↕️':'spacer','📄':'custom','🖼️':'gallery'};
+                    type = Object.entries(typeMap).find(([icon]) => iconText.includes(icon))?.[1] || 'custom';
+                }
                 sections.push({
-                    type: Object.entries(typeMap).find(([icon]) => type?.includes(icon))?.[1] || 'custom',
+                    type: type,
                     enabled: enabledEl?.checked || false,
                     title: titleEl?.value || '',
                     height: heightEl ? parseInt(heightEl.value) || 40 : 0,
@@ -2460,11 +2668,14 @@
             d.className = 'card-box';
             d.style.cssText = 'margin-bottom:0;padding:10px 15px;display:flex;align-items:center;gap:10px;';
             d.dataset.layoutIdx = i;
+            d.dataset.sectionType = type;
             let inner = '<span style="font-size:16px;">' + icons[type] + '</span>';
             inner += '<input type="text" class="form-input" style="flex:1;padding:6px 10px;font-size:13px;" value="' + titles[type] + '" data-layout-title="' + i + '">';
             inner += '<label style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text-secondary);white-space:nowrap;"><input type="checkbox" data-layout-enabled="' + i + '" checked style="accent-color:var(--accent);"> Show</label>';
             if (type === 'spacer') inner += '<input type="number" style="width:60px;padding:4px;background:rgba(0,0,0,0.3);border:1px solid var(--border-color);border-radius:3px;color:var(--text-primary);font-size:12px;" value="40" data-layout-height="' + i + '">';
             if (type === 'custom') inner += '<input type="text" class="form-input" style="flex:1;padding:6px 10px;font-size:12px;" data-layout-content="' + i + '" placeholder="Markdown content">';
+            if (type === 'embed') inner += '<input type="text" class="form-input" style="flex:1;padding:6px 10px;font-size:12px;" data-layout-content="' + i + '" placeholder="https://www.youtube.com/watch?v=...">';
+            if (type === 'gallery') inner += '<input type="text" class="form-input" style="flex:1;padding:6px 10px;font-size:12px;" data-layout-content="' + i + '" placeholder="Image URLs (comma separated)">';
             inner += '<button class="btn-secondary" style="padding:4px 8px;font-size:11px;" ' + act('moveLayoutSection', i, -1) + '>↑</button>';
             inner += '<button class="btn-secondary" style="padding:4px 8px;font-size:11px;" ' + act('moveLayoutSection', i, 1) + '>↓</button>';
             inner += '<button class="btn-secondary" style="padding:4px 8px;font-size:11px;color:var(--danger);" ' + act('removeLayoutSection', i) + '>×</button>';
@@ -2724,34 +2935,77 @@
             } catch { document.getElementById('offers-section').style.display='none'; }
         }
 
-        /* ============ Wishlist ============ */
-        async function loadWishlist() {
-            if (!currentUser) { document.getElementById('wishlist-section').style.display='none'; return; }
-            try {
-                const data = await api('/wishlist');
-                if (!data.games || data.games.length === 0) { document.getElementById('wishlist-section').style.display='none'; return; }
-                document.getElementById('wishlist-section').style.display='block';
-                document.getElementById('wishlist-grid').innerHTML = data.games.map(g => {
-                    const coverSrc = playAsset(g.cover_path) || '';
-                    const price = g.price === 0 ? 'Free' : '$' + g.price.toFixed(2);
-                    return '<div class="game-card" ' + act('showGameDetail', g.id) + '>' +
-                        (coverSrc ? '<img src="' + escapeHtml(coverSrc) + '">' : '<div style="height:160px;background:var(--bg-secondary);"></div>') +
-                        '<div class="game-card-info"><div class="game-card-title">' + escapeHtml(g.title) + '</div>' +
-                        '<div class="game-card-footer"><span class="game-card-price">' + price + '</span>' +
-                        '<button class="btn-secondary" style="padding:5px 10px;font-size:11px;" ' + act('removeFromWish', g.id) + '>Remove</button>' +
-                        '</div></div></div>';
-                }).join('');
-            } catch { document.getElementById('wishlist-section').style.display='none'; }
-        }
-
         /* ============ Dashboard ============ */
         let dashboardSort = 'newest';
-        async function loadDashboard() {
-            if (!currentUser) { showAuth('login'); return; }
-            showLoading('dashboard-content');
+        function loadDevGames(gameId) {
+            loadDashboard();
+        }
+
+        async function loadDevAnalytics(gameId) {
+            // Always populate analytics sidebar with game list
+            try {
+                const gamesData = await api('/developer/' + currentUser.username + '/games');
+                const games = gamesData.games || [];
+                const list = document.getElementById('analytics-game-list');
+                if (list) {
+                    let sideHtml = '<div class="dev-sidebar-item' + (!gameId ? ' active' : '') + '" data-act="showDevTab" data-act-args="[&quot;analytics&quot;]">Overview</div>';
+                    games.forEach(g => {
+                        sideHtml += '<div class="dev-sidebar-item' + (gameId === g.id ? ' active' : '') + '" data-act="showDevTab" data-act-args="[&quot;analytics&quot;,&quot;' + g.id + '&quot;]" style="font-size:12px;padding:4px 14px;">' + escapeHtml(g.title) + '</div>';
+                    });
+                    list.innerHTML = sideHtml;
+                }
+            } catch {}
+
+            if (gameId) {
+                showAnalytics(gameId);
+                return;
+            }
+            const panel = document.getElementById('dev-panel');
+            showLoading('dev-panel');
             try {
                 const data = await api('/developer/' + currentUser.username + '/games');
-                const container = document.getElementById('dashboard-content');
+                const games = data.games || [];
+                const totalPlays = games.reduce((s, g) => s + (g.play_count || 0), 0);
+                const totalReviews = games.reduce((s, g) => s + (g.review_count || 0), 0);
+
+                let html = '<h3 style="font-size:16px;margin-bottom:15px;">All Games Overview</h3>';
+                html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:15px;margin-bottom:20px;">';
+                html += statCard(games.length, 'Total Games');
+                html += statCard(totalPlays, 'Total Plays');
+                html += statCard(totalReviews, 'Total Reviews');
+                html += statCard(games.filter(g => g.published).length, 'Published');
+                html += '</div>';
+
+                if (games.length > 0) {
+                    html += '<h3 style="font-size:16px;margin-bottom:15px;">Top Games by Plays</h3>';
+                    const sorted = [...games].sort((a, b) => (b.play_count || 0) - (a.play_count || 0)).slice(0, 5);
+                    sorted.forEach((g, i) => {
+                        html += '<div class="dashboard-card" style="cursor:pointer;" ' + act('showDevTab', 'analytics', g.id) + '>';
+                        html += '<span style="font-size:24px;font-weight:bold;color:var(--text-secondary);text-align:center;">#' + (i + 1) + '</span>';
+                        html += '<div><div style="font-size:14px;font-weight:bold;">' + escapeHtml(g.title) + '</div>';
+                        html += '<div class="dashboard-stats" style="margin-top:4px;"><span>' + (g.play_count || 0) + ' plays</span><span>★ ' + (g.avg_rating || 0).toFixed(1) + '</span></div></div>';
+                        html += '<div style="text-align:right;"><span style="color:var(--accent);font-size:13px;">View Analytics →</span></div>';
+                        html += '</div>';
+                    });
+                    html += '<p style="color:var(--text-secondary);font-size:13px;margin-top:10px;">Click a game to see detailed analytics.</p>';
+                } else {
+                    html += '<div class="empty-state">No games to analyze. <a ' + act('navigate', 'upload') + '>Upload your first game!</a></div>';
+                }
+
+                panel.innerHTML = html;
+            } catch (e) { panel.innerHTML = '<div class="error-state"><p>Failed to load analytics overview.</p></div>'; }
+        }
+
+        function loadDevSettings() {
+            loadSettings();
+        }
+
+        async function loadDashboard() {
+            if (!currentUser) { showAuth('login'); return; }
+            showLoading('dev-panel');
+            try {
+                const data = await api('/developer/' + currentUser.username + '/games');
+                const container = document.getElementById('dev-panel');
                 if (!data.games || data.games.length === 0) {
                     container.innerHTML = '<div class="empty-state">No uploaded games. <a ' + act('navigate', 'upload') + '>Upload your first game!</a></div>';
                     return;
@@ -2782,12 +3036,12 @@
                         '<div class="dashboard-actions">' +
                         '<button class="dash-btn dash-btn-edit" ' + act('toggleVisibility', g.id, !g.published) + '>' + (g.published ? 'Unpublish' : 'Publish') + '</button>' +
                         '<button class="dash-btn dash-btn-edit" ' + act('showGameDetail', g.id) + '>View</button>' +
-                        '<button class="dash-btn dash-btn-edit" ' + act('showAnalytics', g.id) + '>Analytics</button>' +
+                        '<button class="dash-btn dash-btn-edit" ' + act('showDevTab', 'analytics', g.id) + '>Analytics</button>' +
                         '<button class="dash-btn dash-btn-edit" ' + act('editGame', g.id) + '>Edit</button>' +
                         '<button class="dash-btn dash-btn-delete" ' + act('deleteGame', g.id, g.title) + '>Delete</button></div></div>';
                 }).join('');
                 container.innerHTML = html;
-            } catch (e) { container.innerHTML = '<div class="error-state"><p>Failed to load dashboard. <a href="#" ' + act('navigate', 'dashboard') + '>Try again</a></p></div>'; }
+            } catch (e) { container.innerHTML = '<div class="error-state"><p>Failed to load dashboard. <a href="#" ' + act('navigate', 'dev') + '>Try again</a></p></div>'; }
         }
 
         async function toggleVisibility(id, published) {
@@ -2816,7 +3070,7 @@
                 const videos = (g.videos && g.videos.length > 0) ? g.videos : (g.video_url ? [g.video_url] : []);
                 let html = '<div class="dev-editor">';
                 html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;"><h2 class="section-title" style="margin-bottom:0;">Edit: ' + escapeHtml(g.title) + '</h2>';
-                html += '<button class="btn-secondary" ' + act('loadDashboard') + '>Back to Dashboard</button></div>';
+                html += '<button class="btn-secondary" ' + act('showDevTab', 'games') + '>Back to Games</button></div>';
 
                 // === Basic Info ===
                 html += '<div class="card-box" style="margin-bottom:20px;"><h3 style="font-size:14px;text-transform:uppercase;letter-spacing:1px;margin-bottom:15px;">Basic Info</h3>';
@@ -2881,9 +3135,9 @@
 
                 // Save button
                 html += '<div style="display:flex;gap:10px;"><button class="btn-primary" style="width:auto;padding:12px 30px;" ' + act('saveGameEdit', id) + '>Save Changes</button>';
-                html += '<button class="btn-secondary" ' + act('loadDashboard') + '>Cancel</button></div>';
+                html += '<button class="btn-secondary" ' + act('showDevTab', 'games') + '>Cancel</button></div>';
                 html += '</div>';
-                document.getElementById('dashboard-content').innerHTML = html;
+                document.getElementById('dev-panel').innerHTML = html;
             } catch (e) { toast('Failed to load game: ' + e.message, 'error'); }
         }
 
@@ -2976,14 +3230,14 @@
                 const data = await api('/games/' + gameId + '/analytics');
                 const a = data.analytics;
                 const g = gameData.game;
-                const container = document.getElementById('dashboard-content');
+                const container = document.getElementById('dev-panel');
                 const playRate = a.total_views > 0 ? Math.round(a.total_plays / a.total_views * 100) : 0;
                 const addRate = a.total_views > 0 ? Math.round(a.library_adds / a.total_views * 100) : 0;
 
                 let html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">';
                 html += '<div><h2 class="section-title" style="margin-bottom:4px;">Analytics: ' + escapeHtml(g.title) + '</h2>';
                 html += '<p style="color:var(--text-secondary);font-size:13px;">Performance overview for your game</p></div>';
-                html += '<button class="btn-secondary" ' + act('loadDashboard') + '>Back to Dashboard</button></div>';
+                html += '<button class="btn-secondary" ' + act('showDevTab', 'analytics') + '>Back to Analytics</button></div>';
 
                 // Overview stats (4 columns)
                 html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:15px;margin-bottom:20px;">';
@@ -3074,15 +3328,15 @@
             const gpuStatus = gpuCapability === 'webgpu' ? '<span style="color:var(--success);">Supported</span>' : gpuCapability === 'webgl2' ? '<span style="color:var(--warning);">WebGL2 only</span>' : '<span style="color:var(--danger);">Not Available</span>';
             const webgl2Status = hasWebGL2 ? '<span style="color:var(--success);">Supported</span>' : '<span style="color:var(--danger);">Not Available</span>';
 
-            document.getElementById('settings-content').innerHTML =
+            document.getElementById('dev-panel').innerHTML =
                 '<div style="max-width:600px;">' +
-                '<div class="card-box">' +
+                '<div class="card-box" id="dev-settings-account">' +
                 '<h3 style="font-size:16px;margin-bottom:10px;">Account</h3>' +
                 '<div class="form-group"><label class="form-label">Username</label><input type="text" class="form-input" id="settings-username" value="' + escapeHtml(currentUser?.username || '') + '"></div>' +
                 '<div class="form-group"><label class="form-label">Bio</label><textarea class="form-textarea" id="settings-bio" style="min-height:80px;" placeholder="Tell us about yourself...">' + escapeHtml(currentUser?.bio || '') + '</textarea></div>' +
                 '<div class="form-group"><label class="form-label">Avatar</label><div style="display:flex;gap:10px;"><input type="file" class="form-input" style="padding:8px;flex:1;" accept="image/*" ' + onEv('change', 'uploadImage', 'settings-avatar') + '><input type="text" class="form-input" id="settings-avatar" value="' + escapeHtml(currentUser?.avatar_url || '') + '" placeholder="URL or upload" style="flex:1;"></div></div>' +
                 '<button class="btn-accent" ' + act('saveAccountSettings') + '>Save Account</button></div>' +
-                '<div class="card-box">' +
+                '<div class="card-box" id="dev-settings-playback">' +
                 '<h3 style="font-size:16px;margin-bottom:10px;">Playback</h3>' +
                 '<label style="display:flex;align-items:center;gap:10px;cursor:pointer;color:var(--text-secondary);font-size:13px;">' +
                 '<input type="checkbox" id="settings-autoplay" style="width:16px;height:16px;cursor:pointer;"' + (currentUser?.autoplay_media ? ' checked' : '') + '>' +
@@ -3090,27 +3344,17 @@
                 '</label>' +
                 '<p style="color:var(--text-secondary);font-size:12px;margin-top:8px;">When enabled, a game\'s YouTube trailer starts playing automatically on page load. Saved with the Save Account button above.</p>' +
                 '</div>' +
-                '<div class="card-box">' +
-                '<h3 style="font-size:16px;margin-bottom:10px;">System Info</h3>' +
-                '<div class="sysinfo-item"><span class="sysinfo-label">WebGPU</span><span class="sysinfo-value">' + gpuStatus + '</span></div>' +
-                '<div class="sysinfo-item"><span class="sysinfo-label">WebGL2</span><span class="sysinfo-value">' + webgl2Status + '</span></div>' +
-                (gpuAdapterName ? '<div class="sysinfo-item"><span class="sysinfo-label">GPU</span><span class="sysinfo-value">' + esc(gpuAdapterName) + '</span></div>' : '') +
-                '<div class="sysinfo-item"><span class="sysinfo-label">Browser</span><span class="sysinfo-value">' + browserName + '</span></div>' +
-                '<div class="sysinfo-item"><span class="sysinfo-label">Screen</span><span class="sysinfo-value">' + screen.width + 'x' + screen.height + '</span></div>' +
-                '<div class="sysinfo-item"><span class="sysinfo-label">Platform</span><span class="sysinfo-value">' + esc(navigator.platform) + '</span></div>' +
-                (gpuCapability !== 'webgpu' ? '<div style="margin-top:12px;padding:12px;background:rgba(210,169,96,0.1);border-radius:4px;font-size:12px;color:var(--warning);">WebGPU is not enabled. Some games may not work. <a style="color:var(--accent);cursor:pointer;" ' + act('toggleHelp', 'settings-webgpu-help') + '>How to enable</a><div class="webgpu-instructions" id="settings-webgpu-help">' + getWebGPUInstructions() + '</div></div>' : '') +
-                '</div>' +
-                '<div class="card-box">' +
+                '<div class="card-box" id="dev-settings-security">' +
                 '<h3 style="font-size:16px;margin-bottom:10px;">Change Password</h3>' +
                 '<div class="form-group"><label class="form-label">Current Password</label><input type="password" class="form-input" id="settings-current-pw"></div>' +
                 '<div class="form-group"><label class="form-label">New Password (min 6 chars)</label><input type="password" class="form-input" id="settings-new-pw"></div>' +
                 '<button class="btn-accent" ' + act('changePassword') + '>Change Password</button></div>' +
-                '<div class="card-box">' +
+                '<div class="card-box" id="dev-settings-apikeys">' +
                 '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><h3 style="font-size:16px;margin-bottom:0;">API Keys</h3>' +
                 '<button class="btn-accent" style="padding:4px 14px;font-size:11px;" ' + act('showGenerateKeyModal') + '>+ Generate Key</button></div>' +
                 '<p style="color:var(--text-secondary);font-size:12px;margin-bottom:12px;">Use API keys to deploy games from the command line or CI/CD. <a style="color:var(--accent);cursor:pointer;" ' + act('openUrl', '/deploy.sh') + '>Download deploy script</a></p>' +
                 '<div id="api-keys-list" style="color:var(--text-secondary);font-size:13px;">Loading...</div></div>' +
-                '<div class="card-box">' +
+                '<div class="card-box" id="dev-settings-data">' +
                 '<h3 style="font-size:16px;margin-bottom:10px;">Export Backup</h3>' +
                 '<p style="color:var(--text-secondary);font-size:13px;margin-bottom:15px;">Download your profile and activity data as JSON.</p>' +
                 '<button class="btn-accent" ' + act('exportBackup') + '>Export Backup</button></div>' +
@@ -3119,7 +3363,7 @@
                 '<p style="color:var(--text-secondary);font-size:13px;margin-bottom:15px;">Restore from a previously exported backup file.</p>' +
                 '<input type="file" class="form-input" id="import-file" accept=".json" style="padding:8px;margin-bottom:10px;">' +
                 '<button class="btn-secondary" ' + act('importBackup') + '>Import Backup</button></div>' +
-                '<div class="card-box">' +
+                '<div class="card-box" id="dev-settings-danger">' +
                 '<h3 style="font-size:16px;margin-bottom:10px;color:var(--danger);">Delete Account</h3>' +
                 '<p style="color:var(--text-secondary);font-size:13px;margin-bottom:15px;">Permanently delete your account, games, reviews, and all data. This cannot be undone.</p>' +
                 '<button class="btn-secondary" style="border-color:var(--danger);color:var(--danger);" ' + act('deleteAccount') + '>Delete Account</button></div>' +
@@ -3194,7 +3438,7 @@
                             '<button class="btn-accent" style="padding:6px 14px;white-space:nowrap;" ' + act('copyToClipboard', 'raw-key-display') + '>Copy</button></div>' +
                             '<p style="color:var(--text-secondary);font-size:12px;margin-top:12px;">Install the deploy script:<br><code style="font-size:11px;">curl -fsSL ' + location.origin + '/deploy.sh -o playmore-deploy && chmod +x playmore-deploy</code></p>',
                             () => { closeModal(); loadAPIKeys(); });
-                        document.querySelector('#modal .modal-confirm').textContent = 'Done';
+                        document.getElementById('modal-confirm').textContent = 'Done';
                     } catch (e) { toast(e.message, 'error'); }
                 });
         }
@@ -3374,7 +3618,7 @@
             html += '</div><div style="margin-top:12px;"><input type="text" class="form-input" id="new-list-name" placeholder="New list name..." style="margin-bottom:8px;">';
             html += '<button class="btn-secondary" style="width:100%;padding:8px;" ' + act('quickCreateList', gameId) + '>Create New List</button></div>';
             showModal('Add to List', html, () => closeModal());
-            document.querySelector('#modal .modal-confirm').textContent = 'Done';
+            document.getElementById('modal-confirm').textContent = 'Done';
         }
 
         async function quickCreateList(gameId) {
