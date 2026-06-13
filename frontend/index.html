@@ -135,14 +135,6 @@
         .auth-toggle a { color: var(--accent); cursor: pointer; text-decoration: none; }
         .error-msg { color: var(--danger); font-size: 13px; margin-top: 10px; }
 
-        /* Hero Banner */
-        .hero-banner { background: linear-gradient(135deg, var(--bg-tertiary) 0%, var(--bg-secondary) 100%); border-radius: 8px; padding: 40px; margin-bottom: 30px; position: relative; overflow: hidden; min-height: 280px; display: flex; align-items: center; }
-        .hero-content { max-width: 500px; z-index: 1; }
-        .hero-title { font-size: 36px; margin-bottom: 15px; color: var(--text-primary); }
-        .hero-subtitle { font-size: 16px; color: var(--text-secondary); margin-bottom: 25px; line-height: 1.6; }
-        .hero-btn { padding: 12px 30px; background: linear-gradient(135deg, var(--accent), var(--accent-hover)); border: none; color: white; font-size: 14px; font-weight: bold; border-radius: 3px; cursor: pointer; transition: all 0.3s ease; }
-        .hero-btn:hover { transform: translateY(-2px); box-shadow: 0 5px 20px rgba(102, 192, 244, 0.4); }
-
         /* Search/Filter Bar */
         .filter-bar { display: flex; gap: 10px; margin-bottom: 20px; align-items: center; }
         .search-input { padding: 10px 15px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: 3px; color: var(--text-primary); width: 300px; font-size: 14px; transition: border-color 0.3s; }
@@ -192,7 +184,6 @@
         .game-card-meta { font-size: 12px; color: var(--text-secondary); margin-bottom: 8px; }
         .game-card-footer { display: flex; justify-content: space-between; align-items: center; }
         .game-card-genre { display: inline-block; padding: 2px 8px; background: rgba(255,255,255,0.1); border-radius: 2px; font-size: 11px; color: var(--text-secondary); }
-        .game-card-price { font-size: 14px; font-weight: bold; color: var(--price); }
         .webgpu-badge { padding: 2px 8px; background: rgba(161,205,68,0.2); color: var(--success); font-size: 11px; border-radius: 2px; }
 
         /* Game Detail */
@@ -240,10 +231,6 @@
         .game-sidebar { display: flex; flex-direction: column; gap: 15px; }
         .purchase-box { background: linear-gradient(135deg, rgba(0,0,0,0.4), rgba(0,0,0,0.2)); border-radius: 8px; padding: 20px; border: 1px solid var(--border-color); }
         .purchase-title { font-size: 18px; margin-bottom: 12px; }
-        .purchase-price-row { display: flex; align-items: center; gap: 10px; margin-bottom: 15px; }
-        .purchase-discount { background: var(--discount-bg); color: var(--price); padding: 3px 8px; font-size: 16px; font-weight: bold; }
-        .purchase-original { text-decoration: line-through; color: var(--text-secondary); font-size: 13px; }
-        .purchase-final { color: var(--price); font-size: 22px; font-weight: bold; }
         .purchase-buttons { display: flex; flex-direction: column; gap: 10px; }
         .info-box { background: rgba(0,0,0,0.2); border-radius: 8px; padding: 15px; }
         .info-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border-color); font-size: 13px; }
@@ -365,15 +352,6 @@
         .upload-progress { display: none; height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; margin-bottom: 15px; overflow: hidden; }
         .upload-progress-bar { height: 100%; width: 0%; background: var(--accent); border-radius: 2px; transition: width 0.3s ease; }
 
-        /* Special Offers */
-        .offers-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 30px; }
-        .offer-card { background: var(--card-bg); border-radius: 8px; overflow: hidden; cursor: pointer; transition: all 0.3s ease; border: 1px solid var(--border-color); }
-        .offer-card:hover { transform: translateY(-5px); border-color: var(--accent); box-shadow: 0 5px 20px rgba(102,192,244,0.15); }
-        .offer-card img { width: 100%; height: 120px; object-fit: cover; }
-        .offer-content { padding: 12px 15px; }
-        .offer-title { font-size: 14px; margin-bottom: 8px; }
-        .offer-price { display: flex; align-items: center; gap: 10px; }
-
         /* Recently Played */
         .recently-played { margin-bottom: 30px; }
         .recently-scroll { display: flex; gap: 15px; overflow-x: auto; padding-bottom: 10px; }
@@ -442,10 +420,7 @@
             .game-layout { grid-template-columns: 1fr; }
             .stats-grid { grid-template-columns: repeat(2, 1fr); }
             .community-stats { grid-template-columns: repeat(2, 1fr); }
-            .hero-banner { min-height: 200px; padding: 25px; }
-            .hero-title { font-size: 28px; }
             .nav-tab { padding: 8px 14px; font-size: 12px; }
-            .offers-grid { grid-template-columns: repeat(2, 1fr); }
             .dashboard-card { grid-template-columns: 120px 1fr auto; }
         }
         /* 1024px - tablet landscape */
@@ -455,7 +430,6 @@
             .filter-bar { flex-wrap: wrap; }
             .search-input { width: 100%; }
             .form-row { grid-template-columns: 1fr; }
-            .hero-subtitle { font-size: 14px; }
             .dev-banner { height: 180px; }
             .game-media-main { max-height: 360px; }
             .nav-tabs { gap: 2px; }
@@ -468,10 +442,6 @@
             .game-card img { height: 120px; }
             .game-card-overlay { height: 120px; }
             .stats-grid { grid-template-columns: 1fr 1fr; }
-            .hero-banner { padding: 20px; min-height: 160px; }
-            .hero-title { font-size: 22px; }
-            .hero-btn { padding: 10px 20px; font-size: 13px; }
-            .offers-grid { grid-template-columns: 1fr; }
             .dev-profile { flex-direction: column; text-align: center; }
             .dev-avatar { width: 60px; height: 60px; }
             .dashboard-card { grid-template-columns: 1fr; gap: 10px; }
@@ -534,20 +504,9 @@
         </section>
 
         <section id="store-section" class="section active">
-            <div class="hero-banner">
-                <div class="hero-content">
-                    <h1 class="hero-title">Welcome to PlayMore</h1>
-                    <p class="hero-subtitle">Your self-hosted game publishing platform. Upload, play, and share HTML5 games with WebGPU support.</p>
-                    <button class="hero-btn" data-act="navigate" data-act-args="[&quot;upload&quot;]">Upload a Game</button>
-                </div>
-            </div>
             <div class="recently-played" id="recently-played" style="display:none;">
                 <h2 class="section-title">Recently Played</h2>
                 <div class="recently-scroll" id="recently-played-list"></div>
-            </div>
-            <div id="offers-section" style="display:none;">
-                <h2 class="section-title">Special Offers</h2>
-                <div class="offers-grid" id="offers-grid"></div>
             </div>
             <div class="filter-bar">
                 <input type="text" class="search-input" id="store-search" placeholder="Search games..." data-input="loadStore">
@@ -567,8 +526,6 @@
                     <option value="popular">Most Popular</option>
                     <option value="rating">Highest Rated</option>
                     <option value="title">A-Z</option>
-                    <option value="price-low">Price: Low to High</option>
-                    <option value="price-high">Price: High to Low</option>
                 </select>
             </div>
             <div class="game-grid" id="store-grid"></div>
@@ -629,16 +586,6 @@
                 <div class="form-group">
                     <label class="form-label">Description</label>
                     <textarea class="form-textarea" id="upload-description" placeholder="Describe your game..."></textarea>
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label class="form-label">Price ($)</label>
-                        <input type="number" class="form-input" id="upload-price" placeholder="0.00 (free)" step="0.01" min="0">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Discount (%)</label>
-                        <input type="number" class="form-input" id="upload-discount" placeholder="0" min="0" max="100">
-                    </div>
                 </div>
                 <div class="form-row">
                     <div class="form-group">
@@ -1115,7 +1062,7 @@
             if (navTab) { navTab.classList.add('active'); navTab.setAttribute('aria-current', 'page'); }
             window.scrollTo(0, 0);
             if (tab === 'feed') loadFeedPage();
-            if (tab === 'store') { loadStore(); loadRecentlyPlayed(); loadOffers(); }
+            if (tab === 'store') { loadStore(); loadRecentlyPlayed(); }
             if (tab === 'library') { loadLibrary(); }
             if (tab === 'profile') loadProfile();
             if (tab === 'dev') loadDev();
@@ -1350,7 +1297,6 @@
         function gameCardHTML(g) {
             const coverSrc = playAsset(g.cover_path) || 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="225"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#2a475e"/><stop offset="100%" stop-color="#171a21"/></linearGradient></defs><rect fill="url(#g)" width="400" height="225"/><text x="200" y="120" text-anchor="middle" fill="#66c0f4" font-family="Segoe UI" font-size="22" font-weight="bold">' + escapeHtml(g.title) + '</text></svg>');
             const rating = g.avg_rating > 0 ? '★ ' + g.avg_rating.toFixed(1) : '';
-            const price = g.price === 0 ? 'Free' : '$' + g.price.toFixed(2);
             return '<div class="game-card" ' + act('showGameDetail', g.id) + '>' +
                 '<img src="' + coverSrc + '" alt="' + escapeHtml(g.title) + '">' +
                 '<div class="game-card-overlay"><span class="game-card-play">VIEW GAME</span></div>' +
@@ -1360,7 +1306,6 @@
                 '<div class="game-card-footer">' +
                 '<span class="game-card-genre" ' + act('searchByTag', g.genre) + '>' + escapeHtml(g.genre) + '</span>' +
                 (g.is_webgpu ? '<span class="webgpu-badge">WebGPU</span>' : '') +
-                '<span class="game-card-price">' + price + '</span>' +
                 '</div></div></div>';
         }
 
@@ -2051,9 +1996,6 @@
                     html += '</div>';
                 }
                 html += '<div class="purchase-box"><div class="purchase-title">' + escapeHtml(game.title) + '</div>';
-                html += '<div class="purchase-price-row">';
-                if (game.discount > 0) { html += '<span class="purchase-discount">-' + game.discount + '%</span><span class="purchase-original" style="text-decoration:line-through;color:var(--text-secondary);font-size:13px;">$' + game.price.toFixed(2) + '</span>'; }
-                html += '<span class="purchase-final">' + (game.price === 0 ? 'Free to Play' : '$' + (game.price * (1 - game.discount/100)).toFixed(2)) + '</span></div>';
                 html += '<div class="purchase-buttons">';
                 html += '<button class="btn-primary" ' + act('playGame', game.id, game.entry_file) + '>Play Now</button>';
                 if (currentUser) {
@@ -2914,26 +2856,6 @@
             } catch { document.getElementById('recently-played').style.display='none'; }
         }
 
-        /* ============ Special Offers ============ */
-        async function loadOffers() {
-            try {
-                const data = await api('/games?limit=6&sort=newest');
-                const games = (data.games||[]).filter(g => g.discount > 0);
-                if (games.length === 0) { document.getElementById('offers-section').style.display='none'; return; }
-                document.getElementById('offers-section').style.display='block';
-                document.getElementById('offers-grid').innerHTML = games.slice(0,3).map(g => {
-                    const coverSrc = playAsset(g.cover_path) || '';
-                    const final = (g.price * (1 - g.discount/100)).toFixed(2);
-                    return '<div class="offer-card" ' + act('showGameDetail', g.id) + '>' +
-                        (coverSrc ? '<img src="' + escapeHtml(coverSrc) + '">' : '<div style="height:120px;background:var(--bg-secondary);"></div>') +
-                        '<div class="offer-content"><div class="offer-title">' + escapeHtml(g.title) + '</div>' +
-                        '<div class="offer-price"><span class="purchase-discount">-' + g.discount + '%</span>' +
-                        '<span class="purchase-original" style="text-decoration:line-through;color:var(--text-secondary);font-size:12px;">$' + g.price.toFixed(2) + '</span>' +
-                        '<span style="color:var(--price);font-weight:bold;">$' + final + '</span></div></div></div>';
-                }).join('');
-            } catch { document.getElementById('offers-section').style.display='none'; }
-        }
-
         /* ============ Dashboard ============ */
         let dashboardSort = 'newest';
         function loadDevGames(gameId) {
@@ -3074,13 +2996,11 @@
                 // === Basic Info ===
                 html += '<div class="card-box" style="margin-bottom:20px;"><h3 style="font-size:14px;text-transform:uppercase;letter-spacing:1px;margin-bottom:15px;">Basic Info</h3>';
                 html += '<div class="form-group"><label class="form-label">Title</label><input type="text" class="form-input" id="edit-game-title" value="' + escapeHtml(g.title) + '"></div>';
-                html += '<div class="form-row"><div class="form-group"><label class="form-label">Genre</label><select class="form-select" id="edit-game-genre">';
+                html += '<div class="form-group"><label class="form-label">Genre</label><select class="form-select" id="edit-game-genre">';
                 ['action','adventure','rpg','strategy','puzzle','racing','horror','experimental'].forEach(gen => {
                     html += '<option value="' + gen + '"' + (gen === g.genre ? ' selected' : '') + '>' + gen.charAt(0).toUpperCase() + gen.slice(1) + '</option>';
                 });
                 html += '</select></div>';
-                html += '<div class="form-group"><label class="form-label">Price ($)</label><input type="number" class="form-input" id="edit-game-price" value="' + g.price + '" step="0.01"></div>';
-                html += '<div class="form-group"><label class="form-label">Discount (%)</label><input type="number" class="form-input" id="edit-game-discount" value="' + (g.discount||0) + '" min="0" max="100"></div></div>';
                 html += '<div class="form-group"><label class="form-label">Tags (comma separated)</label><input type="text" class="form-input" id="edit-game-tags" value="' + escapeHtml((g.tags||[]).join(', ')) + '"></div>';
                 html += '<div class="form-group"><label class="form-label">Description</label><textarea class="form-textarea" id="edit-game-desc">' + escapeHtml(g.description || '') + '</textarea></div>';
                 html += '<div class="form-group"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--text-secondary);"><input type="checkbox" id="edit-game-webgpu"' + (g.is_webgpu ? ' checked' : '') + ' style="accent-color:var(--accent);width:16px;height:16px;"> Uses WebGPU</label></div>';
@@ -3170,8 +3090,6 @@
                     body: JSON.stringify({
                         title: document.getElementById('edit-game-title').value,
                         genre: document.getElementById('edit-game-genre').value,
-                        price: parseFloat(document.getElementById('edit-game-price').value) || 0,
-                        discount: parseInt(document.getElementById('edit-game-discount').value) || 0,
                         description: document.getElementById('edit-game-desc').value,
                         tags: tags,
                         is_webgpu: document.getElementById('edit-game-webgpu').checked,
@@ -3901,11 +3819,10 @@
                 const data = await api('/wishlist');
                 if (!data.games || data.games.length === 0) { list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary);">Wishlist is empty.</div>'; return; }
                 list.innerHTML = data.games.map(g => {
-                    const price = g.price === 0 ? 'Free' : '$' + g.price.toFixed(2);
                     return '<div class="feed-item" ' + act('showGameDetail', g.id) + '>' +
                     (g.cover_path ? '<img src="' + escapeHtml(playAsset(g.cover_path)) + '">' : '<div style="width:50px;height:35px;background:var(--bg-tertiary);border-radius:3px;"></div>') +
                     '<div class="feed-item-info"><div class="feed-item-title">' + escapeHtml(g.title) + '</div>' +
-                    '<div class="feed-item-meta">' + price + '</div></div></div>';
+                    '<div class="feed-item-meta">' + escapeHtml(g.genre || '') + ' · ' + (g.play_count || 0) + ' plays' + '</div></div></div>';
                 }).join('');
             } catch { list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary);">Failed to load.</div>'; }
         }
@@ -4193,7 +4110,7 @@
             if (location.hash && location.hash.length > 1) {
                 handleHashRoute();
             } else {
-                loadStore(); loadRecentlyPlayed(); loadOffers();
+                loadStore(); loadRecentlyPlayed();
             }
             checkResumeOnLoad();
         });
