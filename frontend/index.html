@@ -1836,15 +1836,48 @@
                 const genreCap = game.genre.charAt(0).toUpperCase() + game.genre.slice(1);
 
                 let html = '<div class="game-detail">';
-                // Breadcrumbs
-                html += '<div class="breadcrumbs"><a ' + act('navigate', 'store') + '>All Games</a> &gt; <a ' + act('navigate', 'store') + '>' + escapeHtml(genreCap) + '</a> &gt; ' + escapeHtml(game.title) + '</div>';
-                // Header
-                html += '<div class="game-header">';
-                if (coverSrc) html += '<img src="' + esc(coverSrc) + '" class="game-header-bg">';
-                html += '<div class="game-header-content"><h1>' + escapeHtml(game.title) + '</h1>';
-                html += '<div class="game-header-meta">by <a ' + act('showDeveloper', game.developer_name) + '>' + escapeHtml(game.developer_name) + '</a> · ' + escapeHtml(genreCap);
-                if (game.avg_rating > 0) html += ' · ★ ' + game.avg_rating.toFixed(1);
-                html += '</div></div></div>';
+
+                // Steam-like top action bar
+                html += '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;margin-bottom:10px;border-bottom:1px solid var(--border-color);">';
+                html += '<div class="breadcrumbs" style="margin-bottom:0;flex:1;"><a ' + act('navigate', 'store') + '>All Games</a> &gt; <a ' + act('navigate', 'store') + '>' + escapeHtml(genreCap) + '</a> &gt; ' + escapeHtml(game.title) + '</div>';
+                html += '<button class="btn-primary" style="padding:8px 20px;font-size:13px;" ' + act('playGame', game.id, game.entry_file) + '>▶ Play Now</button>';
+                if (currentUser) {
+                    html += '<button class="btn-secondary" style="padding:8px 16px;font-size:13px;" id="lib-btn-' + game.id + '" ' + act('toggleLib', game.id) + '>＋ Library</button>';
+                    html += '<button class="btn-wishlist" style="padding:8px 16px;font-size:13px;" id="wish-btn-' + game.id + '" ' + act('toggleWish', game.id) + '>♡ Wishlist</button>';
+                }
+                html += '</div>';
+
+                // Steam-like header: cover + title + review summary
+                html += '<div style="display:flex;gap:20px;margin-bottom:25px;">';
+                html += '<div style="flex:0 0 200px;">';
+                if (coverSrc) html += '<img src="' + esc(coverSrc) + '" style="width:200px;height:auto;border-radius:4px;box-shadow:0 4px 20px rgba(0,0,0,0.5);">';
+                else html += '<div style="width:200px;height:267px;background:var(--bg-secondary);border-radius:4px;"></div>';
+                html += '</div>';
+                html += '<div style="flex:1;display:flex;flex-direction:column;justify-content:center;">';
+                html += '<h1 style="font-size:28px;font-weight:bold;margin-bottom:8px;line-height:1.2;">' + escapeHtml(game.title) + '</h1>';
+                html += '<div style="color:var(--text-secondary);font-size:14px;margin-bottom:12px;">by <a ' + act('showDeveloper', game.developer_name) + ' style="color:var(--accent);">' + escapeHtml(game.developer_name) + '</a> · ' + escapeHtml(genreCap) + '</div>';
+                if (allReviews.length > 0) {
+                    const revLabel = posPct >= 90 ? 'Overwhelmingly Positive' : posPct >= 70 ? 'Very Positive' : posPct >= 50 ? 'Mixed' : 'Negative';
+                    const revColor = posPct >= 70 ? 'var(--success)' : posPct >= 50 ? 'var(--warning)' : 'var(--danger)';
+                    html += '<div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">';
+                    html += '<div style="background:rgba(255,255,255,0.05);padding:8px 16px;border-radius:4px;">';
+                    html += '<div style="color:' + revColor + ';font-size:18px;font-weight:bold;">' + revLabel + '</div>';
+                    html += '<div style="color:var(--text-secondary);font-size:12px;">' + allReviews.length + ' reviews (' + posPct + '% positive)</div></div>';
+                    html += '</div>';
+                }
+                html += '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;">';
+                html += '<span class="tag" style="font-size:12px;">' + escapeHtml(genreCap) + '</span>';
+                if (game.is_webgpu) html += '<span class="tag" style="font-size:12px;color:var(--success);">WebGPU</span>';
+                html += '</div>';
+                html += '</div>';
+                // Right side: action buttons for non-logged-in
+                if (!currentUser) {
+                    html += '<div style="flex:0 0 auto;display:flex;flex-direction:column;gap:10px;justify-content:center;">';
+                    html += '<button class="btn-primary" style="padding:12px 30px;font-size:14px;" ' + act('playGame', game.id, game.entry_file) + '>▶ Play Now</button>';
+                    html += '<button class="btn-secondary" style="font-size:12px;padding:8px 16px;" ' + act('showAuth', 'login') + '>Login to Save</button>';
+                    html += '</div>';
+                }
+                html += '</div>';
 
                 html += '<div class="game-layout"><div>';
 
@@ -1983,7 +2016,6 @@
 
                 html += '</div><div class="game-sidebar">';
 
-                // Purchase box
                 // WebGPU compatibility warning
                 if (game.is_webgpu && gpuCapability !== 'webgpu') {
                     html += '<div class="webgpu-warning">';
@@ -1995,17 +2027,8 @@
                     html += '<div class="webgpu-instructions" id="webgpu-help">' + getWebGPUInstructions() + '</div>';
                     html += '</div>';
                 }
-                html += '<div class="purchase-box"><div class="purchase-title">' + escapeHtml(game.title) + '</div>';
-                html += '<div class="purchase-buttons">';
-                html += '<button class="btn-primary" ' + act('playGame', game.id, game.entry_file) + '>Play Now</button>';
-                if (currentUser) {
-                    html += '<button class="btn-secondary" id="lib-btn-' + game.id + '" ' + act('toggleLib', game.id) + '>Add to Library</button>';
-                    html += '<button class="btn-wishlist" id="wish-btn-' + game.id + '" ' + act('toggleWish', game.id) + '>Add to Wishlist</button>';
-                    html += '<button class="btn-secondary" ' + act('showAddToListModal', game.id) + ' style="font-size:12px;">+ Add to List</button>';
-                }
-                html += '</div></div>';
 
-                // Info box
+                // Info box (Steam-style compact)
                 html += '<div class="info-box">';
                 html += '<div class="info-row"><span class="info-label">Developer</span><span class="info-value"><a ' + act('showDeveloper', game.developer_name) + '>' + escapeHtml(game.developer_name) + '</a></span></div>';
                 html += '<div class="info-row"><span class="info-label">Genre</span><span class="info-value">' + escapeHtml(genreCap) + '</span></div>';
@@ -2013,6 +2036,9 @@
                 if (game.is_webgpu) html += '<div class="info-row"><span class="info-label">Graphics</span><span class="info-value" style="color:var(--success);">WebGPU Enabled</span></div>';
                 if (fileSize > 0) html += '<div class="info-row"><span class="info-label">Size</span><span class="info-value">' + formatBytes(fileSize) + '</span></div>';
                 html += '</div>';
+                if (currentUser) {
+                    html += '<button class="btn-secondary" style="width:100%;margin-bottom:10px;font-size:12px;padding:8px;" ' + act('showAddToListModal', game.id) + '>+ Add to Collection</button>';
+                }
                 if (game.tags && game.tags.length > 0) { html += '<div class="tag-list">'; game.tags.forEach(t => html += '<span class="tag">' + escapeHtml(t) + '</span>'); html += '</div>'; }
 
                 html += '</div></div>';
