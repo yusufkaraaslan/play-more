@@ -246,6 +246,8 @@ func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxi
 		admin.GET("/games", middleware.RateLimit(120, 3600), handlers.AdminListGames)
 		admin.DELETE("/games/:id", middleware.RateLimit(10, 3600), handlers.AdminDeleteGame)
 		admin.PUT("/games/:id/publish", middleware.RateLimit(30, 3600), handlers.AdminTogglePublish)
+		admin.GET("/featured", middleware.RateLimit(120, 3600), handlers.AdminGetFeatured)
+		admin.PUT("/featured", middleware.RateLimit(60, 3600), handlers.AdminSetFeatured)
 		admin.GET("/analytics", middleware.RateLimit(120, 3600), handlers.AdminSiteAnalytics)
 	}
 
