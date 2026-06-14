@@ -364,7 +364,7 @@
         .hero-rail-rating { color: var(--success); font-size: 12px; }
         .hero-shots { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
         .hero-shot { padding-top: 56%; background-size: cover; background-position: center; border-radius: 3px; background-color: #22303c; }
-        .hero-desc { font-size: 13px; line-height: 1.5; color: var(--text-secondary); display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; }
+        .hero-desc { font-size: 13px; line-height: 1.5; color: var(--text-secondary); display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
         .hero-rail-dev { color: var(--text-secondary); font-size: 12px; }
         .hero-tags { display: flex; gap: 5px; flex-wrap: wrap; }
         .hero-tag { font-size: 10px; background: rgba(255,255,255,0.08); color: #9fb4c4; padding: 3px 8px; border-radius: 3px; cursor: pointer; }
@@ -1089,6 +1089,7 @@
             window.scrollTo(0, 0);
             if (tab === 'feed') loadFeedPage();
             if (tab === 'store') { loadStore(); loadRecentlyPlayed(); loadStoreHero(); }
+            else { stopHeroAuto(); } // stop the hero carousel when leaving the store tab
             if (tab === 'library') { loadLibrary(); }
             if (tab === 'profile') loadProfile();
             if (tab === 'dev') loadDev();

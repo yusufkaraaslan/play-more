@@ -137,8 +137,20 @@ func SetFeaturedPins(ids []string) error {
 	if _, err := tx.Exec(`UPDATE games SET featured_rank = 0 WHERE featured_rank > 0`); err != nil {
 		return err
 	}
-	for i, id := range ids {
-		if _, err := tx.Exec(`UPDATE games SET featured_rank = ? WHERE id = ?`, i+1, id); err != nil {
+	// Skip IDs that don't exist or aren't published so the stored pins always
+	// match what the hero can actually show (no phantom "pinned" entries). Ranks
+	// stay contiguous via a running counter.
+	rank := 0
+	for _, id := range ids {
+		var n int
+		if err := tx.QueryRow(`SELECT COUNT(*) FROM games WHERE id = ? AND published = 1`, id).Scan(&n); err != nil {
+			return err
+		}
+		if n == 0 {
+			continue
+		}
+		rank++
+		if _, err := tx.Exec(`UPDATE games SET featured_rank = ? WHERE id = ?`, rank, id); err != nil {
 			return err
 		}
 	}

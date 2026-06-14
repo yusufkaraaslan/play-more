@@ -153,7 +153,7 @@ func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxi
 		// Games
 		api.GET("/games", handlers.ListGames)
 		api.GET("/games/:id", handlers.GetGame)
-		api.GET("/featured", handlers.GetFeatured)
+		api.GET("/featured", middleware.RateLimit(120, 3600), handlers.GetFeatured)
 		api.POST("/games", middleware.AuthRequired(), handlers.RequireVerifiedEmail(), middleware.RateLimit(10, 3600), limitBody(uploadCap), handlers.UploadGame)
 		api.PUT("/games/:id", middleware.AuthRequired(), handlers.RequireVerifiedEmail(), middleware.RateLimit(60, 3600), handlers.UpdateGame)
 		api.DELETE("/games/:id", middleware.AuthRequired(), middleware.RateLimit(10, 3600), handlers.DeleteGame)
