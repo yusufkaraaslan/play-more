@@ -3,6 +3,7 @@ playmore
 .env
 .claude/
 .security-forensics/
+.superpowers/
 *.db
 *.db-wal
 *.db-shm
