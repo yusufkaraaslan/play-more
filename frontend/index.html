@@ -1941,7 +1941,7 @@
         function removeParent() { if (this.parentElement) this.parentElement.remove(); }
         function openUrl(u) { window.open(u); }
         function copyToClipboard(id) { var el = document.getElementById(id); if (el) { navigator.clipboard.writeText(el.value); toast('Copied!', 'success'); } }
-        function setAdminTab(t) { adminTab = t; loadAdmin(); }
+        function setAdminTab(t) { adminTab = t; adminFeaturedLoaded = false; loadAdmin(); }
         function searchResultClick(id) {
             var r = document.getElementById('global-search-results'); if (r) r.classList.remove('open');
             var inp = document.getElementById('global-search-input'); if (inp) inp.value = '';
@@ -3727,7 +3727,7 @@
             const container = document.getElementById('admin-content');
             // Tab bar
             let html = '<div style="display:flex;gap:5px;margin-bottom:20px;">';
-            ['overview', 'analytics', 'users', 'games'].forEach(t => {
+            ['overview', 'analytics', 'users', 'games', 'featured'].forEach(t => {
                 html += '<button class="nav-tab' + (adminTab === t ? ' active' : '') + '" ' + act('setAdminTab', t) + ' style="padding:8px 16px;font-size:12px;">' + t.charAt(0).toUpperCase() + t.slice(1) + '</button>';
             });
             html += '</div>';
@@ -3759,11 +3759,73 @@
                         html += '<button class="dash-btn dash-btn-edit" ' + act('adminTogglePublish', g.id) + '>' + (g.published ? 'Hide' : 'Publish') + '</button>';
                         html += '<button class="dash-btn dash-btn-delete" ' + act('adminDeleteGameA', g.id, g.title) + '>Delete</button></div></div>';
                     });
+                } else if (adminTab === 'featured') {
+                    html += await renderAdminFeatured();
                 }
                 container.innerHTML = html;
             } catch (e) {
                 container.innerHTML = '<div class="empty-state">Admin access required. Only the first registered user is admin.</div>';
             }
+        }
+
+        /* ----- Admin: Featured pin management ----- */
+        let adminFeaturedLoaded = false;
+        let adminPinned = [];          // ordered array of pinned game ids (unsaved working copy)
+        let adminGameMap = {};         // id -> game object (for titles/meta)
+        let adminAllGames = [];        // candidate games to pin
+
+        async function renderAdminFeatured() {
+            if (!adminFeaturedLoaded) {
+                const [pinnedData, allData] = await Promise.all([
+                    api('/admin/featured').catch(() => ({ games: [] })),
+                    api('/games?limit=50&sort=newest').catch(() => ({ games: [] })),
+                ]);
+                adminPinned = (pinnedData.games || []).map(g => g.id);
+                adminAllGames = allData.games || [];
+                adminGameMap = {};
+                (pinnedData.games || []).concat(adminAllGames).forEach(g => { adminGameMap[g.id] = g; });
+                adminFeaturedLoaded = true;
+            }
+
+            let h = '<p style="color:var(--text-secondary);font-size:13px;margin-bottom:12px;">Pinned games lead the store hero, in order. Empty slots auto-fill from trending + newest.</p>';
+            h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">';
+            h += '<h3 style="font-size:14px;">Pinned (' + adminPinned.length + ')</h3>';
+            h += '<button class="btn-accent" ' + act('adminSaveFeatured') + ' style="font-size:12px;padding:6px 14px;">Save</button></div>';
+
+            if (adminPinned.length === 0) {
+                h += '<div style="color:var(--text-secondary);font-size:12px;font-style:italic;margin-bottom:14px;">No pins — the hero is fully auto-filled.</div>';
+            } else {
+                adminPinned.forEach((id, i) => {
+                    const g = adminGameMap[id] || { title: id };
+                    h += '<div class="dashboard-card"><div></div><div><div class="game-card-title">' + (i + 1) + '. ' + escapeHtml(g.title) + '</div></div><div class="dashboard-actions">';
+                    if (i > 0) h += '<button class="dash-btn dash-btn-edit" ' + act('adminMovePin', id, -1) + '>↑</button>';
+                    if (i < adminPinned.length - 1) h += '<button class="dash-btn dash-btn-edit" ' + act('adminMovePin', id, 1) + '>↓</button>';
+                    h += '<button class="dash-btn dash-btn-delete" ' + act('adminUnpin', id) + '>Unpin</button></div></div>';
+                });
+            }
+
+            h += '<h3 style="font-size:14px;margin:16px 0 8px;">Add a game</h3>';
+            adminAllGames.filter(g => adminPinned.indexOf(g.id) === -1).forEach(g => {
+                h += '<div class="dashboard-card"><div></div><div><div class="game-card-title">' + escapeHtml(g.title) + '</div><div class="dashboard-stats"><span>by ' + escapeHtml(g.developer_name || 'Unknown') + '</span><span>' + escapeHtml(g.genre) + '</span></div></div><div class="dashboard-actions"><button class="dash-btn dash-btn-edit" ' + act('adminPin', g.id) + '>Pin</button></div></div>';
+            });
+            return h;
+        }
+
+        // These mutate the local working copy then re-render (loadAdmin keeps the
+        // loaded cache because they don't reset adminFeaturedLoaded).
+        function adminPin(id) { if (adminPinned.indexOf(id) === -1) adminPinned.push(id); loadAdmin(); }
+        function adminUnpin(id) { adminPinned = adminPinned.filter(x => x !== id); loadAdmin(); }
+        function adminMovePin(id, dir) {
+            const i = adminPinned.indexOf(id), j = i + dir;
+            if (i < 0 || j < 0 || j >= adminPinned.length) return;
+            const t = adminPinned[i]; adminPinned[i] = adminPinned[j]; adminPinned[j] = t;
+            loadAdmin();
+        }
+        async function adminSaveFeatured() {
+            try {
+                await api('/admin/featured', { method: 'PUT', body: JSON.stringify({ game_ids: adminPinned }) });
+                toast('Featured games saved.', 'success');
+            } catch (e) { toast('Failed to save featured games.', 'error'); }
         }
 
         function barChart(items, maxVal, colorFn) {
