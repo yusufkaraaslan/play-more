@@ -117,6 +117,8 @@ func migrate() error {
 		`CREATE INDEX IF NOT EXISTS idx_upload_sessions_expires ON upload_sessions(expires_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_games_published ON games(published)`,
 		`CREATE INDEX IF NOT EXISTS idx_playtime_game ON playtime(game_id)`,
+		`ALTER TABLE games ADD COLUMN featured_rank INTEGER DEFAULT 0`,
+		`CREATE INDEX IF NOT EXISTS idx_games_featured_rank ON games(featured_rank)`,
 	}
 	for _, m := range migrations {
 		if _, err := DB.Exec(m); err != nil {
