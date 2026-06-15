@@ -931,6 +931,30 @@
             renderHeader();
         }
 
+        function initials(name) {
+            var s = (name || '').trim();
+            if (!s) return '?';
+            return s.slice(0, 2).toUpperCase();
+        }
+        let accountMenuOpen = false;
+        function toggleAccountMenu() {
+            const menu = document.getElementById('account-menu');
+            const chip = document.getElementById('account-chip');
+            if (!menu) return;
+            accountMenuOpen = !accountMenuOpen;
+            menu.classList.toggle('open', accountMenuOpen);
+            if (chip) chip.setAttribute('aria-expanded', accountMenuOpen ? 'true' : 'false');
+        }
+        function closeAccountMenu() {
+            if (!accountMenuOpen) return;
+            accountMenuOpen = false;
+            document.getElementById('account-menu')?.classList.remove('open');
+            document.getElementById('account-chip')?.setAttribute('aria-expanded', 'false');
+        }
+        function openSettings() {
+            navigate('dev');
+            showDevTab('settings');
+        }
         function renderHeader() {
             const el = document.getElementById('header-actions');
             document.getElementById('nav-feed').style.display = currentUser ? '' : 'none';
@@ -947,8 +971,15 @@
                     '<button class="feed-tab" ' + act('switchFeedTab', 'wishlist') + '>Wishlist</button>' +
                     '<button class="feed-tab" ' + act('switchFeedTab', 'following') + '>Following</button>' +
                     '</div><div class="feed-list" id="feed-list"></div></div></div> ' +
-                    '<span class="user-info">Welcome, <strong>' + escapeHtml(currentUser.username) + '</strong></span> ' +
-                    '<button class="btn-secondary" ' + act('logout') + '>Logout</button>';
+                    '<div class="account">' +
+                    '<button class="account-chip" id="account-chip" ' + act('toggleAccountMenu') + ' aria-haspopup="menu" aria-expanded="false" aria-controls="account-menu">' +
+                    '<span class="account-avatar">' + escapeHtml(initials(currentUser.username)) + '</span>' +
+                    '<span>' + escapeHtml(currentUser.username) + '</span> ▾</button>' +
+                    '<div class="account-menu" id="account-menu" role="menu">' +
+                    '<button role="menuitem" ' + act('navigate', 'profile') + '>Profile</button>' +
+                    '<button role="menuitem" ' + act('openSettings') + '>Settings</button>' +
+                    '<button role="menuitem" ' + act('logout') + '>Logout</button>' +
+                    '</div></div>';
             } else {
                 el.innerHTML = '<button class="btn-secondary" ' + act('showAuth', 'login') + '>Login</button> <button class="btn-accent" ' + act('showAuth', 'register') + '>Register</button>';
             }
@@ -4070,6 +4101,13 @@
                 feedOpen = false;
             }
         });
+        // Close account menu on outside click (item clicks also close it & still fire their action)
+        document.addEventListener('click', (e) => {
+            if (!accountMenuOpen) return;
+            if (e.target.closest('#account-chip')) return; // chip toggle handles itself
+            closeAccountMenu();
+        });
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeAccountMenu(); });
 
         function switchFeedTab(tab, el) {
             // el is passed explicitly by the programmatic caller; when invoked via
