@@ -74,8 +74,6 @@
         .nav-tab:hover { color: var(--text-primary); background: rgba(255,255,255,0.05); }
         .nav-tab.active { color: var(--accent); background: rgba(102, 192, 244, 0.1); }
         .header-actions { display: flex; align-items: center; gap: 15px; }
-        .user-info { color: var(--text-secondary); font-size: 14px; }
-        .user-info strong { color: var(--accent); }
 
         /* Global Search */
         .global-search { position: relative; }
@@ -952,10 +950,15 @@
             document.getElementById('account-chip')?.setAttribute('aria-expanded', 'false');
         }
         function openSettings() {
+            // Land on the Dev workspace's Settings tab. loadDev() honours a pre-set
+            // devTab (it only forces 'overview' when devTab is empty/'overview'), so
+            // setting it before navigate() renders Settings directly in one pass.
+            // (There is no top-level settings section.)
+            devTab = 'settings';
             navigate('dev');
-            showDevTab('settings');
         }
         function renderHeader() {
+            accountMenuOpen = false;
             const el = document.getElementById('header-actions');
             document.getElementById('nav-feed').style.display = currentUser ? '' : 'none';
             // Show verify banner if user is logged in but email not verified
@@ -974,7 +977,7 @@
                     '<div class="account">' +
                     '<button class="account-chip" id="account-chip" ' + act('toggleAccountMenu') + ' aria-haspopup="menu" aria-expanded="false" aria-controls="account-menu">' +
                     '<span class="account-avatar">' + escapeHtml(initials(currentUser.username)) + '</span>' +
-                    '<span>' + escapeHtml(currentUser.username) + '</span> ▾</button>' +
+                    '<span>' + escapeHtml(currentUser.username) + '</span> <span aria-hidden="true">▾</span></button>' +
                     '<div class="account-menu" id="account-menu" role="menu">' +
                     '<button role="menuitem" ' + act('navigate', 'profile') + '>Profile</button>' +
                     '<button role="menuitem" ' + act('openSettings') + '>Settings</button>' +
