@@ -248,6 +248,7 @@
         .play-box button { width: 100%; }
         .review-summary-compact { display: flex; flex-direction: column; gap: 2px; background: rgba(0,0,0,0.2); border-radius: 8px; padding: 12px; text-align: center; }
         .review-summary-compact-meta { color: var(--text-secondary); font-size: 12px; }
+        .mobile-play-bar { display: none; }
         .purchase-box { background: linear-gradient(135deg, rgba(0,0,0,0.4), rgba(0,0,0,0.2)); border-radius: 8px; padding: 20px; border: 1px solid var(--border-color); }
         .purchase-title { font-size: 18px; margin-bottom: 12px; }
         .purchase-buttons { display: flex; flex-direction: column; gap: 10px; }
@@ -478,6 +479,8 @@
         @media (max-width: 1400px) {
             .game-layout { grid-template-columns: 1fr; }
             .game-sidebar { position: static; max-height: none; overflow: visible; }
+            .mobile-play-bar { display: block; position: fixed; bottom: 0; left: 0; right: 0; z-index: 900; padding: 10px 16px; background: var(--bg-secondary); border-top: 1px solid var(--border-color); box-shadow: 0 -4px 16px rgba(0,0,0,0.3); }
+            .game-detail { padding-bottom: 72px; }
             .stats-grid { grid-template-columns: repeat(2, 1fr); }
             .community-stats { grid-template-columns: repeat(2, 1fr); }
             .nav-tab { padding: 8px 14px; font-size: 12px; }
@@ -2118,6 +2121,8 @@
                 html += '<h1 class="detail-title">' + escapeHtml(game.title) + '</h1>';
                 html += '<div class="detail-by">by <a ' + act('showDeveloper', game.developer_name) + '>' + escapeHtml(game.developer_name) + '</a> &middot; ' + escapeHtml(genreCap) + '</div>';
                 html += '</div>';
+
+                html += '<div class="mobile-play-bar"><button class="btn-primary" ' + act('playGame', game.id, game.entry_file) + '>▶ Play Now</button></div>';
 
                 html += '<div class="game-layout"><div>';
 
