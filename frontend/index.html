@@ -351,6 +351,26 @@
         /* Upload Progress */
         .upload-progress { display: none; height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; margin-bottom: 15px; overflow: hidden; }
         .upload-progress-bar { height: 100%; width: 0%; background: var(--accent); border-radius: 2px; transition: width 0.3s ease; }
+        .upload-progress-wrap { margin-top: 15px; margin-bottom: 15px; }
+        .upload-progress-big { background: rgba(255,255,255,0.06); border-radius: 6px; overflow: hidden; height: 20px; position: relative; }
+        .upload-progress-fill { height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent), #4fc3f7); border-radius: 6px; transition: width 0.3s ease; position: relative; overflow: hidden; }
+        .upload-progress-fill::after { content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.3) 50%, transparent 100%); animation: shimmer 1.5s infinite; }
+        .upload-progress-fill.indeterminate { width: 100% !important; background: linear-gradient(90deg, var(--accent) 0%, #4fc3f7 25%, var(--accent) 50%, #4fc3f7 75%, var(--accent) 100%); background-size: 200% 100%; animation: indeterminateBar 1.5s linear infinite; }
+        .upload-progress-fill.indeterminate::after { display: none; }
+        .upload-progress-label { text-align: center; font-size: 13px; color: var(--text-secondary); margin-top: 6px; }
+        @keyframes shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+        @keyframes indeterminateBar { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
+        /* Upload result panel */
+        .upload-result { background: rgba(161,205,68,0.08); border: 1px solid rgba(161,205,68,0.3); border-radius: 8px; padding: 20px; text-align: center; margin-bottom: 15px; animation: fadeSlideIn 0.4s ease; }
+        .upload-result-icon { font-size: 36px; margin-bottom: 8px; }
+        .upload-result-title { font-size: 16px; font-weight: bold; color: var(--success); margin-bottom: 4px; }
+        .upload-result-link { display: inline-block; margin-top: 10px; padding: 8px 20px; background: var(--accent); color: #000; border-radius: 4px; text-decoration: none; font-size: 13px; cursor: pointer; transition: transform 0.2s; }
+        .upload-result-link:hover { transform: scale(1.05); }
+        @keyframes fadeSlideIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+        /* Upload button states */
+        .btn-uploading { opacity: 0.7; pointer-events: none; position: relative; }
+        .btn-spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spin 0.6s linear infinite; margin-right: 8px; vertical-align: middle; }
+        @keyframes spin { to { transform: rotate(360deg); } }
 
         /* Featured Hero */
         .store-hero { margin-bottom: 30px; }
@@ -587,7 +607,9 @@
                 <p style="font-size:13px; color:var(--text-secondary); margin-top:8px;">HTML, JS, or ZIP files supported</p>
             </div>
             <div id="upload-status"></div>
+            <div id="upload-result"></div>
             <div class="upload-progress" id="upload-progress"><div class="upload-progress-bar" id="upload-progress-bar"></div></div>
+            <div id="upload-progress-wrap"></div>
             <div class="upload-form">
                 <div class="form-group">
                     <label class="form-label">Game Title</label>
@@ -634,7 +656,7 @@
                         </label>
                     </div>
                 </div>
-                <button class="btn-primary" data-act="submitUpload">Upload Game</button>
+                <button class="btn-primary" id="upload-submit-btn" data-act="submitUpload">Upload Game</button>
             </div>
         </section>
 
@@ -877,32 +899,17 @@
         // `#upload-progress` element (which is the FileReader-stage bar in
         // handleUploadFile) — uses id `chunked-upload-progress` to avoid clash.
         function showUploadProgress(fraction) {
-            let el = document.getElementById('chunked-upload-progress');
-            if (!el) {
-                const anchor = document.getElementById('upload-status') ||
-                               document.getElementById('upload-section') ||
-                               document.body;
-                const wrap = document.createElement('div');
-                wrap.id = 'chunked-upload-progress-wrap';
-                wrap.style.cssText = 'margin-top:1em;';
-                wrap.innerHTML =
-                    '<div style="background:#222;border-radius:4px;overflow:hidden;height:8px;">' +
-                    '  <div id="chunked-upload-progress" style="background:#4caf50;height:100%;width:0%;transition:width .2s"></div>' +
-                    '</div>' +
-                    '<div id="chunked-upload-progress-label" style="text-align:center;font-size:.85em;margin-top:.25em">0%</div>';
-                anchor.appendChild(wrap);
-                el = document.getElementById('chunked-upload-progress');
-            }
-            const pct = Math.round(fraction * 100);
-            el.style.width = pct + '%';
-            const label = document.getElementById('chunked-upload-progress-label');
-            if (label) label.textContent = pct + '%';
+            const wrap = document.getElementById('upload-progress-wrap');
             if (fraction >= 1) {
-                setTimeout(() => {
-                    const w = document.getElementById('chunked-upload-progress-wrap');
-                    if (w) w.remove();
-                }, 1000);
+                setTimeout(() => { wrap.innerHTML = ''; }, 2000);
             }
+            wrap.innerHTML =
+                '<div class="upload-progress-wrap">' +
+                '  <div class="upload-progress-big">' +
+                '    <div class="upload-progress-fill' + (fraction < 0 ? ' indeterminate' : '') + '" style="width:' + Math.max(0, Math.round(fraction * 100)) + '%"></div>' +
+                '  </div>' +
+                '  <div class="upload-progress-label">' + (fraction < 0 ? 'Processing...' : Math.round(fraction * 100) + '%') + '</div>' +
+                '</div>';
         }
 
         /* ============ Toast Notifications ============ */
@@ -1077,7 +1084,7 @@
 		function navigate(tab, updateHash = true) {
 			currentTab = tab;
 			if (lightboxOpen) closeLightbox();
-			currentGameData = null;
+			if (tab !== 'gamedetail') currentGameData = null;
             detachMediaKeyNav();
             document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
             document.querySelectorAll('.nav-tab').forEach(t => { t.classList.remove('active'); t.removeAttribute('aria-current'); });
@@ -1652,6 +1659,9 @@
             progressEl.style.display = 'block';
             progressBar.style.width = '0%';
             showStatus('Reading: ' + file.name + ' (' + size + ')...', 'success');
+            document.getElementById('upload-result').innerHTML = '';
+            const area = document.getElementById('upload-area');
+            area.innerHTML = '<p style="font-size:32px;margin-bottom:10px;">&#x1F4C4;</p><p style="font-size:15px;">Reading file...</p><p style="font-size:12px;color:var(--text-secondary);margin-top:4px;">' + escapeHtml(file.name) + '</p>';
             // Use FileReader to show progress
             const reader = new FileReader();
             reader.onprogress = (e) => { if (e.lengthComputable) progressBar.style.width = Math.round(e.loaded/e.total*100) + '%'; };
@@ -1659,9 +1669,80 @@
                 pendingFile = file;
                 progressBar.style.width = '100%';
                 showStatus('Ready: ' + file.name + ' (' + size + ')' + (file.name.endsWith('.zip') ? ' [ZIP]' : ''), 'success');
+                area.innerHTML = '<p style="font-size:32px;margin-bottom:10px;">&#x1F4E6;</p><p style="font-size:15px;font-weight:bold;">' + escapeHtml(file.name) + '</p><p style="font-size:12px;color:var(--text-secondary);margin-top:4px;">' + size + (file.name.endsWith('.zip') ? ' &middot; ZIP archive' : '') + '</p><p style="font-size:11px;color:var(--text-secondary);margin-top:4px;">Click to select a different file</p>';
             };
             reader.onerror = () => { showStatus('Error reading file.', 'error'); progressEl.style.display = 'none'; };
             reader.readAsArrayBuffer(file);
+        }
+
+        function setUploadButtonLoading(loading) {
+            const btn = document.getElementById('upload-submit-btn');
+            if (loading) {
+                btn.disabled = true;
+                btn.classList.add('btn-uploading');
+                btn.innerHTML = '<span class="btn-spinner"></span>Uploading...';
+            } else {
+                btn.disabled = false;
+                btn.classList.remove('btn-uploading');
+                btn.textContent = 'Upload Game';
+            }
+        }
+
+        function showUploadResult(gameId, title) {
+            const el = document.getElementById('upload-result');
+            el.innerHTML =
+                '<div class="upload-result">' +
+                '  <div class="upload-result-icon">&#x2705;</div>' +
+                '  <div class="upload-result-title">Upload Complete!</div>' +
+                '  <p style="color:var(--text-secondary);font-size:13px;margin-bottom:4px;">' + escapeHtml(title) + '</p>' +
+                '  <a class="upload-result-link" ' + act('showGameDetail', gameId) + '>View Game Page</a>' +
+                '  <button class="btn-secondary" style="margin-left:8px;padding:8px 16px;font-size:13px;" ' + act('clearUploadResult') + '>Upload Another</button>' +
+                '</div>';
+            document.getElementById('upload-progress-wrap').innerHTML = '';
+        }
+
+        function clearUploadResult() {
+            document.getElementById('upload-result').innerHTML = '';
+            resetUploadForm();
+        }
+
+        function resetUploadForm() {
+            pendingFile = null;
+            document.getElementById('upload-title').value = '';
+            document.getElementById('upload-description').value = '';
+            document.getElementById('upload-tags').value = '';
+            document.getElementById('upload-genre').value = 'action';
+            document.getElementById('upload-webgpu').checked = false;
+            document.getElementById('upload-video').value = '';
+            document.getElementById('upload-cover').value = '';
+            document.getElementById('upload-screenshots').value = '';
+            document.getElementById('upload-progress').style.display = 'none';
+            document.getElementById('upload-progress-bar').style.width = '0%';
+            showStatus('', '');
+            setUploadButtonLoading(false);
+            const area = document.getElementById('upload-area');
+            area.innerHTML = '<p style="font-size:48px; margin-bottom:15px;">&#x1F4C1;</p><p style="font-size:18px;">Drag &amp; drop your game files here</p><p style="font-size:13px; color:var(--text-secondary); margin-top:8px;">HTML, JS, or ZIP files supported</p>';
+        }
+
+        function uploadSingleShot(file, formData, onProgress) {
+            return new Promise((resolve, reject) => {
+                const xhr = new XMLHttpRequest();
+                xhr.open('POST', '/api/games');
+                xhr.withCredentials = true;
+                xhr.upload.onprogress = (e) => {
+                    if (e.lengthComputable && onProgress) onProgress(e.loaded / e.total);
+                };
+                xhr.onload = () => {
+                    try {
+                        const data = JSON.parse(xhr.responseText);
+                        if (xhr.status >= 200 && xhr.status < 300) resolve(data);
+                        else reject(new Error(data.error || 'Upload failed'));
+                    } catch (e) { reject(new Error('Upload failed')); }
+                };
+                xhr.onerror = () => reject(new Error('Network error'));
+                xhr.ontimeout = () => reject(new Error('Upload timed out'));
+                xhr.send(formData);
+            });
         }
 
         async function submitUpload() {
@@ -1669,10 +1750,11 @@
             if (!pendingFile) { showStatus('Please select a game file first.', 'error'); return; }
             const title = document.getElementById('upload-title').value.trim();
             if (!title) { showStatus('Please enter a game title.', 'error'); return; }
+            setUploadButtonLoading(true);
+            showStatus('', '');
+            document.getElementById('upload-result').innerHTML = '';
             try {
                 if (pendingFile.size > CHUNKED_THRESHOLD) {
-                    // Chunked path — large files use init/chunks/finalize, then cover/screenshots/
-                    // video_url are attached out-of-band against the created game.
                     const tagsStr = document.getElementById('upload-tags').value;
                     const metadata = {
                         title: title,
@@ -1690,7 +1772,6 @@
                     );
                     const gameId = finalized.game_id;
 
-                    // Out-of-band: cover image (POST to /api/games/:id/cover).
                     const coverFile = document.getElementById('upload-cover').files[0];
                     if (coverFile) {
                         const coverFD = new FormData();
@@ -1699,7 +1780,6 @@
                         if (!coverRes.ok) { const d = await coverRes.json().catch(() => ({})); throw new Error(d.error || 'Cover upload failed'); }
                     }
 
-                    // Out-of-band: screenshots (POST to /api/games/:id/screenshots).
                     const ssFiles = document.getElementById('upload-screenshots').files;
                     if (ssFiles && ssFiles.length > 0) {
                         const ssFD = new FormData();
@@ -1708,7 +1788,6 @@
                         if (!ssRes.ok) { const d = await ssRes.json().catch(() => ({})); throw new Error(d.error || 'Screenshot upload failed'); }
                     }
 
-                    // Out-of-band: video URL (PUT video_url on the game).
                     const videoUrl = document.getElementById('upload-video').value.trim();
                     if (videoUrl) {
                         await api('/games/' + gameId, {
@@ -1717,14 +1796,14 @@
                         });
                     }
 
-                    pendingFile = null;
-                    document.getElementById('upload-title').value = '';
-                    document.getElementById('upload-description').value = '';
-                    document.getElementById('upload-tags').value = '';
+                    showUploadProgress(-1);
+                    await new Promise(r => setTimeout(r, 600));
+                    showUploadProgress(1);
                     showStatus('', '');
+                    setUploadButtonLoading(false);
+                    showUploadResult(gameId, title);
                     toast('"' + title + '" uploaded successfully!', 'success');
                 } else {
-                    // Single-shot path — unchanged.
                     const formData = new FormData();
                     formData.append('game_file', pendingFile);
                     formData.append('title', title);
@@ -1739,17 +1818,21 @@
                     const ssFiles = document.getElementById('upload-screenshots').files;
                     for (let i = 0; i < ssFiles.length; i++) formData.append('screenshots', ssFiles[i]);
                     showStatus('Uploading...', 'success');
-                    const res = await fetch('/api/games', { method: 'POST', body: formData, credentials: 'same-origin' });
-                    const data = await res.json();
-                    if (!res.ok) throw new Error(data.error);
-                    pendingFile = null;
-                    document.getElementById('upload-title').value = '';
-                    document.getElementById('upload-description').value = '';
-                    document.getElementById('upload-tags').value = '';
+                    showUploadProgress(0);
+                    const data = await uploadSingleShot(pendingFile, formData, p => showUploadProgress(p));
+                    showUploadProgress(-1);
+                    await new Promise(r => setTimeout(r, 400));
+                    showUploadProgress(1);
                     showStatus('', '');
+                    setUploadButtonLoading(false);
+                    showUploadResult(data.game.id, title);
                     toast('"' + title + '" uploaded successfully!', 'success');
                 }
-            } catch (e) { showStatus('Upload failed: ' + e.message, 'error'); }
+            } catch (e) {
+                showUploadProgress(1);
+                showStatus('Upload failed: ' + e.message, 'error');
+                setUploadButtonLoading(false);
+            }
         }
 
         function showStatus(msg, type) {
@@ -2203,7 +2286,7 @@
                 selectedRating = 0;
                 navigate('gamedetail', false);
                 attachMediaKeyNav();
-                suppressHashChange = true; location.hash = 'game/' + gameId; suppressHashChange = false;
+                suppressHashChange = true; location.hash = 'game/' + gameId; setTimeout(() => { suppressHashChange = false; }, 100);
                 // Track view
                 api('/games/' + gameId + '/view', { method: 'POST' }).catch(() => {});
                 // Check library/wishlist status
@@ -2331,8 +2414,11 @@
         function selectStar(n) { selectedRating=n; document.querySelectorAll('#star-selector .star-select').forEach((s,i) => { s.classList.toggle('active',i<n); s.textContent=i<n?'★':'☆'; }); }
 
         async function submitGameReview() {
-            if (!currentGameData || selectedRating === 0) { toast('Please select a rating.', 'error'); return; }
-            const text = document.getElementById('review-text').value.trim();
+            if (!currentGameData) { toast('Game not loaded. Please refresh the page.', 'error'); return; }
+            if (selectedRating === 0) { toast('Please select a rating by clicking a star.', 'error'); return; }
+            const textEl = document.getElementById('review-text');
+            if (!textEl) { toast('Review form not found. Please refresh.', 'error'); return; }
+            const text = textEl.value.trim();
             if (!text) { toast('Please write a review.', 'error'); return; }
             try { await api('/games/' + currentGameData.id + '/reviews', { method:'POST', body:JSON.stringify({rating:selectedRating,text}) }); toast('Review submitted!', 'success'); showGameDetail(currentGameData.id); } catch (e) { toast(e.message, 'error'); }
         }
@@ -2518,7 +2604,7 @@
                 html += '</div>';
                 document.getElementById('developer-content').innerHTML = html;
                 navigate('developer', false);
-                suppressHashChange = true; location.hash = 'developer/' + username; suppressHashChange = false;
+                suppressHashChange = true; location.hash = 'developer/' + username; setTimeout(() => { suppressHashChange = false; }, 100);
             } catch (e) { document.getElementById('developer-content').innerHTML = '<div class="error-state"><p>Failed to load developer page. <a href="#" ' + act('navigate', 'store') + '>Try again</a></p></div>'; }
         }
 
@@ -3678,7 +3764,7 @@
                 const sec = document.getElementById('store-section');
                 sec.classList.add('active');
                 document.getElementById('store-grid').innerHTML = html;
-                suppressHashChange = true; location.hash = 'list/' + listId; suppressHashChange = false;
+                suppressHashChange = true; location.hash = 'list/' + listId; setTimeout(() => { suppressHashChange = false; }, 100);
             } catch (e) { toast('List not found.', 'error'); navigate('store'); }
         }
 
