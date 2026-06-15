@@ -235,7 +235,17 @@
         .game-media-main img { cursor: pointer; }
         .game-section { background: rgba(0,0,0,0.2); border-radius: 8px; padding: 20px; margin-bottom: 20px; }
         .game-section h3 { font-size: 16px; text-transform: uppercase; margin-bottom: 15px; letter-spacing: 1px; }
-        .game-sidebar { display: flex; flex-direction: column; gap: 15px; }
+        .game-sidebar { display: flex; flex-direction: column; gap: 15px; position: sticky; top: 70px; max-height: calc(100vh - 80px); overflow-y: auto; }
+        .detail-header { margin-bottom: 20px; }
+        .detail-header .breadcrumbs { margin-bottom: 8px; }
+        .detail-title { font-size: 28px; font-weight: bold; line-height: 1.2; margin-bottom: 6px; }
+        .detail-by { color: var(--text-secondary); font-size: 14px; }
+        .detail-by a { color: var(--accent); cursor: pointer; }
+        .detail-capsule { width: 100%; border-radius: 6px; display: block; box-shadow: 0 4px 16px rgba(0,0,0,0.4); }
+        .play-box { display: flex; flex-direction: column; gap: 8px; background: rgba(0,0,0,0.2); border-radius: 8px; padding: 12px; }
+        .play-box button { width: 100%; }
+        .review-summary-compact { display: flex; flex-direction: column; gap: 2px; background: rgba(0,0,0,0.2); border-radius: 8px; padding: 12px; text-align: center; }
+        .review-summary-compact-meta { color: var(--text-secondary); font-size: 12px; }
         .purchase-box { background: linear-gradient(135deg, rgba(0,0,0,0.4), rgba(0,0,0,0.2)); border-radius: 8px; padding: 20px; border: 1px solid var(--border-color); }
         .purchase-title { font-size: 18px; margin-bottom: 12px; }
         .purchase-buttons { display: flex; flex-direction: column; gap: 10px; }
@@ -465,6 +475,7 @@
         /* 1366px - small desktop */
         @media (max-width: 1400px) {
             .game-layout { grid-template-columns: 1fr; }
+            .game-sidebar { position: static; max-height: none; overflow: visible; }
             .stats-grid { grid-template-columns: repeat(2, 1fr); }
             .community-stats { grid-template-columns: repeat(2, 1fr); }
             .nav-tab { padding: 8px 14px; font-size: 12px; }
