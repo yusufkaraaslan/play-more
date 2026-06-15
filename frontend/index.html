@@ -65,8 +65,8 @@
         .account-avatar { width: 28px; height: 28px; border-radius: 50%; background: linear-gradient(135deg, var(--accent), #2a6f97); color: #0b1620; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0; }
         .account-menu { display: none; position: absolute; top: 46px; right: 0; min-width: 170px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; z-index: 1001; box-shadow: 0 10px 40px rgba(0,0,0,0.5); }
         .account-menu.open { display: block; }
-        .account-menu button { display: block; width: 100%; text-align: left; padding: 10px 14px; background: none; border: none; color: var(--text-primary); font-size: 13px; cursor: pointer; }
-        .account-menu button:hover { background: rgba(255,255,255,0.06); color: var(--accent); }
+        .header .account-menu button { display: block; width: 100%; text-align: left; padding: 10px 14px; background: none; border: none; color: var(--text-primary); font-size: 13px; cursor: pointer; }
+        .header .account-menu button:hover { background: rgba(255,255,255,0.06); color: var(--accent); }
         .logo { display: flex; align-items: center; gap: 10px; font-size: 24px; font-weight: bold; color: var(--accent); cursor: pointer; }
         .logo svg { width: 32px; height: 32px; fill: var(--accent); }
         .nav-tabs { display: flex; gap: 5px; }
@@ -342,10 +342,6 @@
         .activity-icon { width: 32px; height: 32px; background: rgba(255,255,255,0.1); border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
         .activity-text strong { color: var(--text-primary); }
 
-        /* Header WebGPU Badge */
-        .gpu-badge { padding: 5px 12px; font-size: 11px; border-radius: 3px; text-transform: uppercase; }
-        .gpu-badge-ok { background: var(--discount-bg); color: var(--success); }
-        .gpu-badge-no { background: #3d3d3d; color: var(--text-secondary); }
         .webgpu-warning { background: rgba(210,169,96,0.15); border: 1px solid var(--warning); border-radius: 8px; padding: 15px; margin-bottom: 15px; }
         .webgpu-warning h4 { color: var(--warning); font-size: 14px; margin-bottom: 8px; }
         .webgpu-warning p { color: var(--text-secondary); font-size: 13px; line-height: 1.5; }
@@ -506,7 +502,6 @@
             .review-summary { flex-direction: column; gap: 15px; }
             .community-stats { grid-template-columns: 1fr 1fr; }
             .header-actions { gap: 8px; }
-            .gpu-badge { display: none; }
             .dev-layout { grid-template-columns: 1fr; }
             .dev-sidebar { max-height: none; position: static; border-right: none; border-bottom: 1px solid var(--border-color); display: flex; overflow-x: auto; padding: 8px; gap: 4px; }
             .dev-sidebar-group { display: contents; }
@@ -3047,8 +3042,7 @@
                     if (a) {
                         gpuCapability = 'webgpu';
                         gpuAdapterName = a.info?.device || a.info?.description || 'Unknown';
-                        badge.textContent = 'WebGPU: Enabled';
-                        badge.className = 'gpu-badge gpu-badge-ok';
+                        if (badge) { badge.textContent = 'WebGPU: Enabled'; badge.className = 'gpu-badge gpu-badge-ok'; }
                         // Also check WebGL2
                         try { hasWebGL2 = !!document.createElement('canvas').getContext('webgl2'); } catch {}
                         return;
@@ -3059,14 +3053,12 @@
                 if (document.createElement('canvas').getContext('webgl2')) {
                     gpuCapability = 'webgl2';
                     hasWebGL2 = true;
-                    badge.textContent = 'WebGL2: Enabled';
-                    badge.className = 'gpu-badge gpu-badge-ok';
+                    if (badge) { badge.textContent = 'WebGL2: Enabled'; badge.className = 'gpu-badge gpu-badge-ok'; }
                     return;
                 }
             } catch {}
             gpuCapability = 'none';
-            badge.textContent = 'GPU: Not Available';
-            badge.className = 'gpu-badge gpu-badge-no';
+            if (badge) { badge.textContent = 'GPU: Not Available'; badge.className = 'gpu-badge gpu-badge-no'; }
         }
 
         function detectBrowser() {
