@@ -148,7 +148,6 @@ func RollbackBuildHandler(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to roll back"})
 		return
 	}
-	// TODO: fire webhook.Dispatch(WebhookEventBuildRolledBack, ...)
 	webhook.Dispatch(models.WebhookEventBuildRolledBack, user.ID, gin.H{
 		"build_id":                  prev.ID,
 		"game_id":                   gameID,

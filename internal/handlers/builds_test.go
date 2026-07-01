@@ -38,6 +38,60 @@ func TestBuilds_ActivateRoundTrip(t *testing.T) {
 	}
 }
 
+func TestBuilds_GetOne(t *testing.T) {
+	ts := testutil.NewTestServer(t)
+	owner := testutil.SeedUser(t, nil, testutil.SeedUserOpts{EmailVerified: true})
+	gameID := testutil.SeedGame(t, nil, owner.ID, "GetOneGame")
+	buildID := testutil.SeedBuild(t, nil, gameID, owner.ID, "beta")
+
+	w, body := ts.DoAuthed(t, "GET", "/api/v1/games/"+gameID+"/builds/"+buildID, nil, owner)
+	if w.Code != 200 {
+		t.Fatalf("get: %d %s", w.Code, body)
+	}
+	if !strings.Contains(string(body), buildID) {
+		t.Errorf("build_id missing: %s", body)
+	}
+}
+
+func TestBuilds_DeleteRefusesActive(t *testing.T) {
+	ts := testutil.NewTestServer(t)
+	owner := testutil.SeedUser(t, nil, testutil.SeedUserOpts{EmailVerified: true})
+	gameID := testutil.SeedGame(t, nil, owner.ID, "DeleteActiveGame")
+
+	// The backfill migration created one active stable build.
+	// Find it via list.
+	w, body := ts.DoAuthed(t, "GET", "/api/v1/games/"+gameID+"/builds", nil, owner)
+	if w.Code != 200 {
+		t.Fatalf("list: %d", w.Code)
+	}
+	var listed struct {
+		Builds []struct {
+			ID       string `json:"id"`
+			IsActive bool   `json:"is_active"`
+		} `json:"builds"`
+	}
+	testutil.DecodeJSON(t, body, &listed)
+	if len(listed.Builds) == 0 {
+		t.Fatal("no builds seeded")
+	}
+	var activeID string
+	for _, b := range listed.Builds {
+		if b.IsActive {
+			activeID = b.ID
+			break
+		}
+	}
+	if activeID == "" {
+		t.Fatal("no active build found")
+	}
+
+	// Try to delete the active build — should 400.
+	w, _ = ts.DoAuthed(t, "DELETE", "/api/v1/games/"+gameID+"/builds/"+activeID, nil, owner)
+	if w.Code != 400 {
+		t.Errorf("delete active: %d, want 400", w.Code)
+	}
+}
+
 // TestBuilds_ReuploadGoesThroughBuildChannels is the integration
 // test for the reupload-via-build-channels refactor (#4 fix 3.12).
 // A successful reupload should: create a new build row,

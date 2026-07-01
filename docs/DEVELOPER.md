@@ -377,4 +377,89 @@ STATUS=$(curl -s -H "Authorization: Bearer $KEY" "$SERVER/api/v1/uploads/$UPLOAD
 - `sha256` field on finalize is optional; if present, server verifies and rejects on mismatch.
 - Upload sessions expire 24 h from creation; expired sessions and partial files are GC'd every 10 minutes.
 - Max session size: 500 MiB (same as the existing single-shot limit).
+
+## Build channels
+
+Every game has up to three named build channels: `stable`,
+`beta`, and `internal`. One build is active per channel; the
+public serve path always points at the active stable build.
+Reuploads and new chunked uploads create a new build row
+and activate it for the `stable` channel; the previous
+active stable build stays on disk as inactive history.
+
+### Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET    | `/api/v1/games/:id/builds` | List builds (optional `?channel=`) |
+| GET    | `/api/v1/games/:id/builds/:build_id` | Get one |
+| PUT    | `/api/v1/games/:id/builds/:build_id/activate` | Promote to active for its channel |
+| POST   | `/api/v1/games/:id/builds/:build_id/rollback` | Roll back the channel's active build to the previous one |
+| DELETE | `/api/v1/games/:id/builds/:build_id` | Delete a non-active build |
+
+### Retention
+
+`MaxBuildsPerGame = 5` most-recent builds per game. Active
+builds are never deleted by the sweep — only inactive
+history is GC'd. The retention runs in the same transaction
+as the upload that pushed the count past the cap.
+
+### Events
+
+Activating or rolling back a build dispatches a
+`build.promoted` / `build.rolled_back` webhook event
+(see [Webhooks](#webhooks)).
+
+## Webhooks
+
+Subscribe to platform events and receive HMAC-SHA256-signed
+JSON POSTs at a URL you control. Up to 20 webhooks per
+account.
+
+### Events
+
+| Event | Fired when |
+|-------|-----------|
+| `game.published` | A game is set to published |
+| `game.unpublished` | A game is set to unpublished |
+| `build.promoted` | A build is activated (POST `/activate` or reupload) |
+| `build.rolled_back` | A channel's active build is rolled back |
+| `review.created` | A review is posted on your game |
+| `devlog.created` | A devlog is posted on your game |
+| `comment.created` | A comment is posted on a devlog of your game |
+
+### Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST   | `/api/v1/webhooks` | Create (returns the secret exactly once) |
+| GET    | `/api/v1/webhooks` | List (secrets redacted) |
+| GET    | `/api/v1/webhooks/:id` | Get one |
+| PUT    | `/api/v1/webhooks/:id` | Update (url, events, active) |
+| DELETE | `/api/v1/webhooks/:id` | Revoke |
+| GET    | `/api/v1/webhooks/:id/deliveries` | Recent delivery attempts (status code, body excerpt) |
+
+The secret cannot be rotated; revoke + recreate to rotate.
+
+### Signature
+
+Each delivery carries an `X-PlayMore-Signature: sha256=<hex>`
+header. The signature is `HMAC-SHA256(secret, body)`. Verify
+in your handler with constant-time comparison:
+
+```
+expected = "sha256=" + hex(hmac_sha256(secret, body))
+hmac.compare_digest(signature_header, expected)  # Python
+```
+
+The Go SDK has helpers: `playmore.VerifySignature(secret, body, sig)`
+and `playmore.VerifySignatureFromRequest(secret, r)`.
+
+### Retries and disabling
+
+3 attempts total, exponential backoff (0s, 5s, 30s). 4xx
+is treated as permanent (URL is bad — fix it). 5xx and
+network errors retry. After 10 consecutive failures the
+webhook is auto-disabled (set `active=true` via PUT to
+re-enable after fixing the receiver).
 - Below 64 MiB, prefer the existing single-shot `POST /api/games` for fewer round-trips.

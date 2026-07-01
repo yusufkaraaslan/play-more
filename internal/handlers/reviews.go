@@ -79,9 +79,9 @@ func CreateReview(c *gin.Context) {
 
 	CheckAchievements(user.ID)
 	webhook.Dispatch(models.WebhookEventReviewCreated, user.ID, gin.H{
-		"review_id": review.ID,
-		"game_id":   gameID,
-		"rating":    input.Rating,
+		"review_id":    review.ID,
+		"game_id":      gameID,
+		"rating":       input.Rating,
 		"developer_id": game.DeveloperID,
 	})
 	c.JSON(http.StatusCreated, gin.H{"review": review})
