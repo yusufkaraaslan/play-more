@@ -153,3 +153,16 @@ func StartRateLimitCleanup() {
 		}
 	}()
 }
+
+// ResetLimiters clears the in-memory rate-limit state. Tests use
+// it to keep counters from accumulating across runs in the same
+// process. NOT safe to call concurrently with live requests — the
+// rate-limit map would be observed mid-clear.
+func ResetLimiters() {
+	limiter.mu.Lock()
+	limiter.requests = make(map[string][]time.Time)
+	limiter.mu.Unlock()
+	backoffMu.Lock()
+	backoffMap = map[string]*backoffEntry{}
+	backoffMu.Unlock()
+}

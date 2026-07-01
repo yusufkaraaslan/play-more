@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/yusufkaraaslan/play-more/internal/middleware"
 	"github.com/yusufkaraaslan/play-more/internal/models"
+	"github.com/yusufkaraaslan/play-more/internal/webhook"
 )
 
 func ListReviews(c *gin.Context) {
@@ -77,6 +78,12 @@ func CreateReview(c *gin.Context) {
 	}
 
 	CheckAchievements(user.ID)
+	webhook.Dispatch(models.WebhookEventReviewCreated, user.ID, gin.H{
+		"review_id": review.ID,
+		"game_id":   gameID,
+		"rating":    input.Rating,
+		"developer_id": game.DeveloperID,
+	})
 	c.JSON(http.StatusCreated, gin.H{"review": review})
 }
 
