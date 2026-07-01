@@ -117,7 +117,10 @@ type Collection struct {
 	CreatedAt   string   `json:"created_at"`
 }
 
-func scanCollections(rows interface{ Next() bool; Scan(...any) error }) []Collection {
+func scanCollections(rows interface {
+	Next() bool
+	Scan(...any) error
+}) []Collection {
 	collections := []Collection{}
 	for rows.Next() {
 		var col Collection

@@ -321,10 +321,18 @@ func parseGameJSON(g *Game, tagsJSON, screenshotsJSON, videosJSON, featuresJSON 
 	json.Unmarshal([]byte(screenshotsJSON), &g.Screenshots)
 	json.Unmarshal([]byte(videosJSON), &g.Videos)
 	json.Unmarshal([]byte(featuresJSON), &g.Features)
-	if g.Tags == nil { g.Tags = []string{} }
-	if g.Screenshots == nil { g.Screenshots = []string{} }
-	if g.Videos == nil { g.Videos = []string{} }
-	if g.Features == nil { g.Features = []string{} }
+	if g.Tags == nil {
+		g.Tags = []string{}
+	}
+	if g.Screenshots == nil {
+		g.Screenshots = []string{}
+	}
+	if g.Videos == nil {
+		g.Videos = []string{}
+	}
+	if g.Features == nil {
+		g.Features = []string{}
+	}
 	// Backward compat: derive video_url from first video
 	if g.VideoURL == "" && len(g.Videos) > 0 {
 		g.VideoURL = g.Videos[0]
@@ -342,7 +350,9 @@ func scanGame(row *sql.Row) (*Game, error) {
 		&g.CreatedAt, &g.UpdatedAt,
 		&g.DeveloperName, &g.AvgRating, &g.ReviewCount, &g.PlayCount,
 	)
-	if err != nil { return nil, fmt.Errorf("scan game row: %w", err) }
+	if err != nil {
+		return nil, fmt.Errorf("scan game row: %w", err)
+	}
 	parseGameJSON(g, tagsJSON, screenshotsJSON, videosJSON, featuresJSON)
 	return g, nil
 }
@@ -358,7 +368,9 @@ func scanGameRow(rows *sql.Rows) (*Game, error) {
 		&g.CreatedAt, &g.UpdatedAt,
 		&g.DeveloperName, &g.AvgRating, &g.ReviewCount, &g.PlayCount,
 	)
-	if err != nil { return nil, fmt.Errorf("scan game rows: %w", err) }
+	if err != nil {
+		return nil, fmt.Errorf("scan game rows: %w", err)
+	}
 	parseGameJSON(g, tagsJSON, screenshotsJSON, videosJSON, featuresJSON)
 	return g, nil
 }

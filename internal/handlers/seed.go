@@ -193,9 +193,9 @@ func SeedData(c *gin.Context) {
 				reviewer, _ := models.GetUserByUsername(r.Username)
 				if reviewer == nil {
 					// Random password per reviewer — demo accounts, not used for login.
-				pw := make([]byte, 8)
-				rand.Read(pw)
-				reviewer, _ = models.CreateUser(r.Username, r.Username+"@playmore.dev", hex.EncodeToString(pw))
+					pw := make([]byte, 8)
+					rand.Read(pw)
+					reviewer, _ = models.CreateUser(r.Username, r.Username+"@playmore.dev", hex.EncodeToString(pw))
 				}
 				if reviewer != nil {
 					models.CreateReview(game.ID, reviewer.ID, r.Rating, r.Text)

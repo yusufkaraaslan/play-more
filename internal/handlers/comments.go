@@ -8,6 +8,7 @@ import (
 	"github.com/yusufkaraaslan/play-more/internal/middleware"
 	"github.com/yusufkaraaslan/play-more/internal/models"
 	"github.com/yusufkaraaslan/play-more/internal/storage"
+	"github.com/yusufkaraaslan/play-more/internal/webhook"
 )
 
 type Comment struct {
@@ -139,6 +140,12 @@ func CreateComment(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, gin.H{"id": id, "message": "comment posted"})
+
+	webhook.Dispatch(models.WebhookEventCommentCreated, user.ID, gin.H{
+		"comment_id": id,
+		"devlog_id":  devlogID,
+		"parent_id":  input.ParentID,
+	})
 }
 
 func DeleteComment(c *gin.Context) {

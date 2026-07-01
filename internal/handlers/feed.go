@@ -11,7 +11,7 @@ import (
 )
 
 type FeedItem struct {
-	Type      string `json:"type"`      // "devlog", "new_game", "review", "played"
+	Type      string `json:"type"` // "devlog", "new_game", "review", "played"
 	Title     string `json:"title"`
 	Detail    string `json:"detail"`
 	GameID    string `json:"game_id"`

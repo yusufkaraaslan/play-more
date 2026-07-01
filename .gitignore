@@ -9,3 +9,9 @@ playmore
 *.db-shm
 *.log
 
+# Chunked-upload tests write game files into the cwd under
+# UUID-named directories. .gitignore the pattern so test runs
+# don't accidentally `git add` them.
+internal/handlers/[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]-*/
+internal/handlers/uploads/
+

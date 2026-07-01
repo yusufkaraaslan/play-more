@@ -9,6 +9,7 @@ import (
 	"github.com/yusufkaraaslan/play-more/internal/middleware"
 	"github.com/yusufkaraaslan/play-more/internal/models"
 	"github.com/yusufkaraaslan/play-more/internal/storage"
+	"github.com/yusufkaraaslan/play-more/internal/webhook"
 )
 
 type Devlog struct {
@@ -106,6 +107,11 @@ func CreateDevlog(c *gin.Context) {
 
 	models.LogActivity(user.ID, "devlog", gameID, input.Title)
 	CheckAchievements(user.ID)
+	webhook.Dispatch(models.WebhookEventDevlogCreated, user.ID, gin.H{
+		"devlog_id": id,
+		"game_id":   gameID,
+		"title":     input.Title,
+	})
 	c.JSON(http.StatusCreated, gin.H{"id": id, "message": "devlog created"})
 }
 

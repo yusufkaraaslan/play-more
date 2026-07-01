@@ -13,9 +13,11 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/yusufkaraaslan/play-more/internal/middleware"
 	"github.com/yusufkaraaslan/play-more/internal/models"
 	"github.com/yusufkaraaslan/play-more/internal/storage"
+	"github.com/yusufkaraaslan/play-more/internal/webhook"
 )
 
 // videoURLAllowedPrefixes — only embed URLs from trusted providers are accepted.
@@ -194,6 +196,18 @@ func UploadGame(c *gin.Context) {
 	}
 
 	game.UpdateFiles(storage.GameDir(game.ID), entryFile)
+
+	// Record the initial upload as build #1 so the game has build
+	// history from the start — the builds API and rollback both
+	// need a row to point at. The original files live in the game
+	// dir (not a builds/ subdir), so the entry stays game-root
+	// relative and the retention sweep will never delete this dir
+	// (removeBuildDirsUnderGame only touches the builds/ tree).
+	if b, err := models.CreateBuild(game.ID, storage.GameDir(game.ID), entryFile, written, "", "", string(models.BuildChannelStable), user.ID); err == nil {
+		_ = models.SetActiveBuild(b.ID, game.ID, user.ID)
+	} else {
+		log.Printf("initial build row for game %s failed: %v", game.ID, err)
+	}
 
 	// Handle cover image — must decode as a real image (no HTML-as-PNG XSS).
 	coverFile, coverHeader, err := c.Request.FormFile("cover")
@@ -414,6 +428,17 @@ func ToggleVisibility(c *gin.Context) {
 		return
 	}
 	storage.DB.Exec(`UPDATE games SET published = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, input.Published, game.ID)
+	if input.Published {
+		webhook.Dispatch(models.WebhookEventGamePublished, user.ID, gin.H{
+			"game_id": game.ID,
+			"title":   game.Title,
+		})
+	} else {
+		webhook.Dispatch(models.WebhookEventGameUnpublished, user.ID, gin.H{
+			"game_id": game.ID,
+			"title":   game.Title,
+		})
+	}
 	c.JSON(http.StatusOK, gin.H{"published": input.Published})
 }
 
@@ -575,6 +600,24 @@ func DeleteGame(c *gin.Context) {
 }
 
 // ReuploadGameFiles replaces game files for an existing game.
+//
+// This is the single-shot (≤ 500 MiB) reupload path; for larger
+// files, use the chunked upload pipeline at
+// /api/v1/uploads/{init,chunks,status,finalize}. The reupload
+// flow goes through the build-channels machinery: the uploaded
+// file is extracted into a new build directory, a build row is
+// inserted, and the new build is activated for the `stable`
+// channel. The active stable build is what the public sees, so
+// promoting a build = publishing. The previous active build
+// stays on disk and demoted in the DB; the retention sweep
+// (models.CreateBuild) will GC it after MaxBuildsPerGame - 1
+// inactive builds accumulate.
+//
+// The atomicity guarantee from the previous implementation
+// (extract-then-swap) is preserved by the build-channels path:
+// extraction failure leaves no build row, so games.file_path
+// still points at the old build's files. The build row + the
+// files in {gameID}/builds/{newBuildID}/ are the new state.
 func ReuploadGameFiles(c *gin.Context) {
 	user := middleware.GetUser(c)
 	if user == nil {
@@ -628,46 +671,35 @@ func ReuploadGameFiles(c *gin.Context) {
 		return
 	}
 
-	// Extract-then-swap so a failed extraction never destroys the live files.
-	// Steps:
-	//   1. Extract new files into <gameDir>.new staging directory.
-	//   2. On extraction failure: remove staging, leave live files untouched.
-	//   3. On success: rename liveDir → liveDir+.old, staging → liveDir, then
-	//      remove liveDir+.old. Each rename is atomic on POSIX so a crash
-	//      mid-swap leaves the dir in a recoverable state (either liveDir
-	//      contains the old files, or .old / .new exist and the next reupload
-	//      cleans them up).
-	liveDir := storage.GameDir(game.ID)
-	stagingDir := liveDir + ".new"
-	backupDir := liveDir + ".old"
-	// Belt-and-suspenders: remove any stale staging/backup dirs from a prior
-	// crashed reupload.
-	_ = os.RemoveAll(stagingDir)
-	_ = os.RemoveAll(backupDir)
+	// Allocate a fresh build ID + directory. The build row is
+	// inserted after extraction succeeds; if extraction fails
+	// the dir is removed and the row never exists.
+	buildID := "build_" + uuid.NewString()
+	buildDir := storage.BuildDir(game.ID, buildID)
 
 	switch {
 	case strings.HasSuffix(lowerName, ".zip"):
-		ef, err := storage.ExtractZipToDir(stagingDir, tmp, written)
+		ef, err := storage.ExtractZipToDir(buildDir, tmp, written)
 		if err != nil {
-			_ = os.RemoveAll(stagingDir)
+			_ = os.RemoveAll(buildDir)
 			log.Printf("ZIP extraction failed for game %s: %v", game.ID, err)
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid game archive"})
 			return
 		}
 		entryFile = ef
 	case strings.HasSuffix(lowerName, ".html"), strings.HasSuffix(lowerName, ".htm"):
-		if err := os.MkdirAll(stagingDir, 0755); err != nil {
+		if err := os.MkdirAll(buildDir, 0755); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to stage upload"})
 			return
 		}
 		htmlData, err := io.ReadAll(tmp)
 		if err != nil {
-			_ = os.RemoveAll(stagingDir)
+			_ = os.RemoveAll(buildDir)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read file"})
 			return
 		}
-		if err := os.WriteFile(filepath.Join(stagingDir, fileName), htmlData, 0644); err != nil {
-			_ = os.RemoveAll(stagingDir)
+		if err := os.WriteFile(filepath.Join(buildDir, fileName), htmlData, 0644); err != nil {
+			_ = os.RemoveAll(buildDir)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save file"})
 			return
 		}
@@ -676,38 +708,50 @@ func ReuploadGameFiles(c *gin.Context) {
 		return
 	}
 
-	// Atomic swap. If liveDir doesn't exist (first reupload after a delete?),
-	// skip the move-aside step. We always Stat first so we know whether to
-	// restore on swap failure.
-	hadLive := false
-	if _, err := os.Stat(liveDir); err == nil {
-		hadLive = true
-		if err := os.Rename(liveDir, backupDir); err != nil {
-			_ = os.RemoveAll(stagingDir)
-			log.Printf("reupload: rename live→backup failed for %s: %v", game.ID, err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to swap files"})
-			return
-		}
-	}
-	if err := os.Rename(stagingDir, liveDir); err != nil {
-		// Restore the old files if we moved them aside.
-		if hadLive {
-			if rerr := os.Rename(backupDir, liveDir); rerr != nil {
-				log.Printf("reupload: CRITICAL — failed to restore backup for %s: rename err=%v restore err=%v", game.ID, err, rerr)
-			}
-		}
-		_ = os.RemoveAll(stagingDir)
-		log.Printf("reupload: rename staging→live failed for %s: %v", game.ID, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to swap files"})
+	// The serve handler roots at the game dir, so the stored entry
+	// must be relative to it: builds/<buildID>/<entry-within-build>.
+	// (ExtractZipToDir / the single-file path both return an entry
+	// relative to buildDir.)
+	relEntry := filepath.ToSlash(filepath.Join("builds", buildID, entryFile))
+
+	// Register the build row. The retention GC inside
+	// CreateBuild keeps MaxBuildsPerGame - 1 older INACTIVE
+	// builds; active builds are never deleted.
+	build, err := models.CreateBuild(game.ID, buildDir, relEntry, written, "", "", string(models.BuildChannelStable), user.ID)
+	if err != nil {
+		_ = os.RemoveAll(buildDir)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to register build"})
 		return
 	}
-	// Success — backup no longer needed.
-	if hadLive {
-		_ = os.RemoveAll(backupDir)
+
+	// Promote the new build to active for the stable channel.
+	// SetActiveBuild updates games.file_path + games.entry_file
+	// inside the same tx, so reads of /api/v1/games/:id after
+	// this point see the new files.
+	if err := models.SetActiveBuild(build.ID, game.ID, user.ID); err != nil {
+		// The build row committed in its own tx; if activation
+		// fails, delete it (and its dir) so we don't leave an
+		// orphaned row pointing at files the next activate would
+		// serve as a dead path.
+		_ = models.DeleteBuild(build.ID, game.ID, user.ID)
+		_ = os.RemoveAll(buildDir)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to activate build"})
+		return
 	}
 
-	game.UpdateFiles(liveDir, entryFile)
-	c.JSON(http.StatusOK, gin.H{"message": "game files updated"})
+	webhook.Dispatch(models.WebhookEventBuildPromoted, user.ID, gin.H{
+		"build_id":     build.ID,
+		"game_id":      game.ID,
+		"build_number": build.BuildNumber,
+		"channel":      "stable",
+		"via":          "reupload",
+	})
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":      "game files updated",
+		"build_id":     build.ID,
+		"build_number": build.BuildNumber,
+	})
 }
 
 // ServeGameFiles serves game files for the iframe player. spaOrigin is the
@@ -801,6 +845,26 @@ func ServeGameFiles(spaOrigin, gamesDomain string) gin.HandlerFunc {
 		filePath := c.Param("filepath")
 		if filePath == "" || filePath == "/" {
 			filePath = "/" + game.EntryFile
+		}
+
+		// The builds/ tree holds every build (previous versions, and
+		// any non-stable channel). Only the ACTIVE build's own
+		// subdirectory may be served publicly — otherwise anyone
+		// could fetch a non-active build by guessing its id. The
+		// active build's dir is the first two segments of the game's
+		// entry_file when it lives under builds/ (builds/<id>/...).
+		reqRel := strings.TrimPrefix(filepath.ToSlash(filePath), "/")
+		if strings.HasPrefix(reqRel, "builds/") {
+			activePrefix := ""
+			if strings.HasPrefix(game.EntryFile, "builds/") {
+				if parts := strings.SplitN(game.EntryFile, "/", 3); len(parts) >= 2 {
+					activePrefix = "builds/" + parts[1] + "/"
+				}
+			}
+			if activePrefix == "" || !strings.HasPrefix(reqRel, activePrefix) {
+				c.String(http.StatusNotFound, "not found")
+				return
+			}
 		}
 
 		gameRoot := filepath.Join(storage.GamesDir, gameID)

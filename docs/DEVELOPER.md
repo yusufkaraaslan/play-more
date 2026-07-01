@@ -168,34 +168,51 @@ Full interactive docs with try-it-out: `https://YOUR_SERVER/docs`
 ### Authentication
 
 All endpoints accept two auth methods:
-- **Session cookie** — set by `POST /api/auth/login`
+- **Session cookie** — set by `POST /api/v1/auth/login`
 - **Bearer token** — `Authorization: Bearer pm_k_...`
+
+### OpenAPI spec
+
+The full machine-readable API contract is at `internal/handlers/openapi.yaml`
+(also served live at `GET /openapi.yaml` and at `https://YOUR_SERVER/openapi.yaml`).
+The interactive Swagger UI is at `https://YOUR_SERVER/docs`.
+
+The spec is hand-written and kept in sync with the route table by a drift
+test (`internal/server/routes_test.go::TestMountAPIRoutes_OpenAPIDrift`)
+that runs on every build — adding a route without updating the YAML
+fails CI.
+
+### API version
+
+All endpoints are mounted under `/api/v1/` (canonical). The unversioned
+`/api/*` path is a permanent alias — both work identically and always
+will. New integrations should use `/api/v1/`.
 
 ### Key endpoints
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| POST | `/api/auth/register` | - | Create account |
-| POST | `/api/auth/login` | - | Login (sets session cookie) |
-| GET | `/api/auth/me` | Yes | Get current user + stats |
-| POST | `/api/auth/forgot-password` | - | Request password reset email |
-| POST | `/api/auth/reset-password` | - | Reset password with token |
-| GET | `/api/auth/verify/:token` | - | Verify email address |
-| POST | `/api/auth/resend-verification` | Session | Resend verification email |
+| POST | `/api/v1/auth/register` | - | Create account |
+| POST | `/api/v1/auth/login` | - | Login (sets session cookie) |
+| GET | `/api/v1/auth/me` | Yes | Get current user + stats |
+| POST | `/api/v1/auth/forgot-password` | - | Request password reset email |
+| POST | `/api/v1/auth/reset-password` | - | Reset password with token |
+| GET | `/api/v1/auth/verify/:token` | - | Verify email address |
+| POST | `/api/v1/auth/resend-verification` | Session | Resend verification email |
 
 ### Games
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| GET | `/api/games` | - | List games (query: genre, search, sort, page, limit) |
-| GET | `/api/games/:id` | - | Get game detail (also accepts slug) |
-| POST | `/api/games` | Yes* | Upload new game (multipart: game_file, title, genre, ...) |
-| PUT | `/api/games/:id` | Yes | Update game (JSON: all fields) |
-| DELETE | `/api/games/:id` | Yes | Delete game |
-| POST | `/api/games/:id/reupload` | Yes | Replace game files (multipart: game_file) |
-| PUT | `/api/games/:id/visibility` | Yes | Publish/unpublish (JSON: {published: bool}) |
-| POST | `/api/games/:id/screenshots` | Yes | Add screenshots (multipart) |
-| DELETE | `/api/games/:id/screenshots/:index` | Yes | Remove screenshot |
+| GET | `/api/v1/games` | - | List games (query: genre, search, sort, page, limit) |
+| GET | `/api/v1/games/:id` | - | Get game detail (also accepts slug) |
+| POST | `/api/v1/games` | Yes* | Upload new game (multipart: game_file, title, genre, ...) |
+| PUT | `/api/v1/games/:id` | Yes | Update game (JSON: all fields) |
+| DELETE | `/api/v1/games/:id` | Yes | Delete game |
+| POST | `/api/v1/games/:id/reupload` | Yes | Replace game files (multipart: game_file) |
+| PUT | `/api/v1/games/:id/visibility` | Yes | Publish/unpublish (JSON: {published: bool}) |
+| POST | `/api/v1/games/:id/screenshots` | Yes | Add screenshots (multipart) |
+| DELETE | `/api/v1/games/:id/screenshots/:index` | Yes | Remove screenshot |
 
 *Requires verified email when SMTP is configured.
 
@@ -203,48 +220,48 @@ All endpoints accept two auth methods:
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| GET | `/api/games/:id/reviews` | - | List reviews |
-| POST | `/api/games/:id/reviews` | Yes* | Submit review |
-| DELETE | `/api/reviews/:id` | Yes | Delete your review |
-| GET | `/api/library` | Yes | Get library |
-| POST | `/api/library/:game_id` | Yes | Add to library |
-| DELETE | `/api/library/:game_id` | Yes | Remove from library |
-| GET | `/api/wishlist` | Yes | Get wishlist |
-| POST | `/api/wishlist/:game_id` | Yes | Add to wishlist |
-| DELETE | `/api/wishlist/:game_id` | Yes | Remove from wishlist |
+| GET | `/api/v1/games/:id/reviews` | - | List reviews |
+| POST | `/api/v1/games/:id/reviews` | Yes* | Submit review |
+| DELETE | `/api/v1/reviews/:id` | Yes | Delete your review |
+| GET | `/api/v1/library` | Yes | Get library |
+| POST | `/api/v1/library/:game_id` | Yes | Add to library |
+| DELETE | `/api/v1/library/:game_id` | Yes | Remove from library |
+| GET | `/api/v1/wishlist` | Yes | Get wishlist |
+| POST | `/api/v1/wishlist/:game_id` | Yes | Add to wishlist |
+| DELETE | `/api/v1/wishlist/:game_id` | Yes | Remove from wishlist |
 
 ### Collections / Lists
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| GET | `/api/collections` | Yes | List your collections |
-| GET | `/api/collections/public` | - | Browse public lists |
-| GET | `/api/collections/:id` | - | Get collection detail + games |
-| POST | `/api/collections` | Yes | Create collection |
-| PUT | `/api/collections/:id` | Yes | Update name/description/visibility |
-| DELETE | `/api/collections/:id` | Yes | Delete collection |
-| POST | `/api/collections/:id/games` | Yes | Add game to collection |
-| DELETE | `/api/collections/:id/games/:game_id` | Yes | Remove from collection |
+| GET | `/api/v1/collections` | Yes | List your collections |
+| GET | `/api/v1/collections/public` | - | Browse public lists |
+| GET | `/api/v1/collections/:id` | - | Get collection detail + games |
+| POST | `/api/v1/collections` | Yes | Create collection |
+| PUT | `/api/v1/collections/:id` | Yes | Update name/description/visibility |
+| DELETE | `/api/v1/collections/:id` | Yes | Delete collection |
+| POST | `/api/v1/collections/:id/games` | Yes | Add game to collection |
+| DELETE | `/api/v1/collections/:id/games/:game_id` | Yes | Remove from collection |
 
 ### API Keys
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| GET | `/api/api-keys` | Session | List your API keys (masked) |
-| POST | `/api/api-keys` | Session | Generate new key (returns raw key once) |
-| DELETE | `/api/api-keys/:id` | Session | Revoke a key |
+| GET | `/api/v1/api-keys` | Session | List your API keys (masked) |
+| POST | `/api/v1/api-keys` | Session | Generate new key (returns raw key once) |
+| DELETE | `/api/v1/api-keys/:id` | Session | Revoke a key |
 
 ### Other
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| GET | `/api/profile/:username` | - | Get user profile |
-| PUT | `/api/profile` | Yes | Update profile |
-| GET | `/api/developer/:username` | - | Get developer page |
-| PUT | `/api/developer` | Yes | Update developer page |
-| GET | `/api/feed` | Yes | Activity feed |
-| POST | `/api/games/:id/devlogs` | Yes* | Create devlog |
-| GET | `/api/notifications` | Yes | Get notifications |
+| GET | `/api/v1/profile/:username` | - | Get user profile |
+| PUT | `/api/v1/profile` | Yes | Update profile |
+| GET | `/api/v1/developer/:username` | - | Get developer page |
+| PUT | `/api/v1/developer` | Yes | Update developer page |
+| GET | `/api/v1/feed` | Yes | Activity feed |
+| POST | `/api/v1/games/:id/devlogs` | Yes* | Create devlog |
+| GET | `/api/v1/notifications` | Yes | Get notifications |
 | GET | `/avatar/:username` | - | Generated avatar image |
 | GET | `/docs` | - | Interactive API docs |
 | GET | `/deploy.sh` | - | Download deploy CLI script |
@@ -269,12 +286,24 @@ All endpoints accept two auth methods:
 - Returns HTTP 429 when exceeded
 
 ### Email verification
-- When SMTP is configured, these actions require a verified email:
-  - Upload games
-  - Post reviews
-  - Write devlogs
-  - Post comments
-- When SMTP is not configured, all actions are allowed without verification
+
+A verified email is required for write actions (uploads, reviews,
+devlogs, comments, API key creation, chunked uploads). This applies
+**whether or not SMTP is configured**:
+
+- **SMTP configured**: the user must click the verification link
+  in the email they receive at registration.
+- **SMTP not configured**: the user can register and log in, but
+  every write action returns `403 Forbidden` with
+  `{"email_verification":"required","smtp_required":true}` until
+  the operator sets up SMTP. This is the safe default for a
+  self-hosted single-user app — it prevents the out-of-the-box
+  install from being an open spam vector.
+
+The startup log shows `⚠ SMTP not configured` whenever the SMTP
+gate is enforced, so operators see the implication immediately.
+Configure SMTP via the `--smtp-*` CLI flags or `PLAYMORE_SMTP_*`
+env vars to allow user content. See `docs/SETUP.md`.
 
 ## Chunked uploads
 
@@ -282,11 +311,13 @@ For files larger than 64 MiB (or behind a reverse proxy with a smaller body cap,
 
 ### Endpoints
 
-- `POST /api/uploads/init` — create an upload session
-- `PUT /api/uploads/:upload_id/chunks?offset=N` — write bytes at a byte offset
-- `GET /api/uploads/:upload_id` — check progress / find missing bytes (for resume)
-- `POST /api/uploads/:upload_id/finalize` — assemble + extract + create or update the game
-- `DELETE /api/uploads/:upload_id` — cancel and clean up
+- `POST /api/v1/uploads/init` — create an upload session
+- `PUT /api/v1/uploads/:upload_id/chunks?offset=N` — write bytes at a byte offset
+- `GET /api/v1/uploads/:upload_id` — check progress / find missing bytes (for resume)
+- `POST /api/v1/uploads/:upload_id/finalize` — assemble + extract + create or update the game
+- `DELETE /api/v1/uploads/:upload_id` — cancel and clean up
+
+(The unversioned `/api/*` paths are a permanent alias and work identically.)
 
 ### Full curl example (new game)
 
@@ -296,12 +327,12 @@ SIZE=$(stat -c%s "$FILE" 2>/dev/null || stat -f%z "$FILE")
 SHA=$(sha256sum "$FILE" | awk '{print $1}')
 
 # 1. Init
-INIT=$(curl -s -X POST "$SERVER/api/uploads/init" \
+INIT=$(curl -s -X POST "$SERVER/api/v1/uploads/init" \
   -H "Authorization: Bearer $KEY" \
   -H "Content-Type: application/json" \
   -d "{\"filename\":\"game.zip\",\"size\":$SIZE,\"kind\":\"new_game\",
        \"metadata\":{\"title\":\"My Game\",\"genre\":\"action\",
-                     \"description\":\"Hi\",\"tags\":[\"foo\"],\"is_webgpu\":false}}")
+                    \"description\":\"Hi\",\"tags\":[\"foo\"],\"is_webgpu\":false}}")
 UPLOAD_ID=$(echo "$INIT" | jq -r .upload_id)
 CHUNK=$(echo "$INIT" | jq -r .chunk_size)
 
@@ -312,12 +343,12 @@ while [ $OFFSET -lt $SIZE ]; do
       curl -s -X PUT --data-binary @- \
         -H "Authorization: Bearer $KEY" \
         -H "Content-Type: application/octet-stream" \
-        "$SERVER/api/uploads/$UPLOAD_ID/chunks?offset=$OFFSET"
+        "$SERVER/api/v1/uploads/$UPLOAD_ID/chunks?offset=$OFFSET"
     OFFSET=$((OFFSET + CHUNK))
 done
 
 # 3. Finalize
-curl -s -X POST "$SERVER/api/uploads/$UPLOAD_ID/finalize" \
+curl -s -X POST "$SERVER/api/v1/uploads/$UPLOAD_ID/finalize" \
   -H "Authorization: Bearer $KEY" \
   -H "Content-Type: application/json" \
   -d "{\"sha256\":\"$SHA\"}"
@@ -329,7 +360,7 @@ curl -s -X POST "$SERVER/api/uploads/$UPLOAD_ID/finalize" \
 If a PUT fails or the client disconnects:
 
 ```bash
-STATUS=$(curl -s -H "Authorization: Bearer $KEY" "$SERVER/api/uploads/$UPLOAD_ID")
+STATUS=$(curl -s -H "Authorization: Bearer $KEY" "$SERVER/api/v1/uploads/$UPLOAD_ID")
 # STATUS includes received_ranges; compute the gaps and re-PUT those bytes only.
 ```
 
@@ -346,4 +377,101 @@ STATUS=$(curl -s -H "Authorization: Bearer $KEY" "$SERVER/api/uploads/$UPLOAD_ID
 - `sha256` field on finalize is optional; if present, server verifies and rejects on mismatch.
 - Upload sessions expire 24 h from creation; expired sessions and partial files are GC'd every 10 minutes.
 - Max session size: 500 MiB (same as the existing single-shot limit).
+
+## Build channels
+
+Every game has up to three named build channels: `stable`,
+`beta`, and `internal`. One build is active per channel; the
+public serve path always points at the active stable build.
+Reuploads and new chunked uploads create a new build row
+and activate it for the `stable` channel; the previous
+active stable build stays on disk as inactive history.
+
+### Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET    | `/api/v1/games/:id/builds` | List builds (optional `?channel=`) |
+| GET    | `/api/v1/games/:id/builds/:build_id` | Get one |
+| PUT    | `/api/v1/games/:id/builds/:build_id/activate` | Promote to active for its channel |
+| POST   | `/api/v1/games/:id/builds/:build_id/rollback` | Roll back the channel's active build to the previous one |
+| DELETE | `/api/v1/games/:id/builds/:build_id` | Delete a non-active build |
+
+### Retention
+
+`MaxBuildsPerGame = 5` most-recent builds per game. Active
+builds are never deleted by the sweep — only inactive
+history is GC'd. The retention runs in the same transaction
+as the upload that pushed the count past the cap.
+
+### Events
+
+Activating or rolling back a build dispatches a
+`build.promoted` / `build.rolled_back` webhook event
+(see [Webhooks](#webhooks)).
+
+## Webhooks
+
+Subscribe to platform events and receive HMAC-SHA256-signed
+JSON POSTs at a URL you control. Up to 20 webhooks per
+account.
+
+### Events
+
+| Event | Fired when |
+|-------|-----------|
+| `game.published` | A game is set to published |
+| `game.unpublished` | A game is set to unpublished |
+| `build.promoted` | A build is activated (POST `/activate` or reupload) |
+| `build.rolled_back` | A channel's active build is rolled back |
+| `review.created` | A review is posted on your game |
+| `devlog.created` | A devlog is posted on your game |
+| `comment.created` | A comment is posted on a devlog of your game |
+
+### Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST   | `/api/v1/webhooks` | Create (returns the secret exactly once) |
+| GET    | `/api/v1/webhooks` | List (secrets redacted) |
+| GET    | `/api/v1/webhooks/:id` | Get one |
+| PUT    | `/api/v1/webhooks/:id` | Update (url, events, active) |
+| DELETE | `/api/v1/webhooks/:id` | Revoke |
+| GET    | `/api/v1/webhooks/:id/deliveries` | Recent delivery attempts (status code, body excerpt) |
+
+The secret cannot be rotated; revoke + recreate to rotate.
+
+### Scope and URL requirements
+
+A webhook only ever receives events for content **you own** —
+events are scoped to the subscribing account, never delivered
+cross-tenant.
+
+The target `url` must be `http(s)://` and must resolve to a
+public address. URLs that resolve to loopback, private
+(RFC 1918), link-local (incl. `169.254.169.254` cloud metadata),
+or multicast ranges are rejected with `400` — an SSRF guard for
+the self-hosted deployment.
+
+### Signature
+
+Each delivery carries an `X-PlayMore-Signature: sha256=<hex>`
+header. The signature is `HMAC-SHA256(secret, body)`. Verify
+in your handler with constant-time comparison:
+
+```
+expected = "sha256=" + hex(hmac_sha256(secret, body))
+hmac.compare_digest(signature_header, expected)  # Python
+```
+
+The Go SDK has helpers: `playmore.VerifySignature(secret, body, sig)`
+and `playmore.VerifySignatureFromRequest(secret, r)`.
+
+### Retries and disabling
+
+3 attempts total, exponential backoff (0s, 5s, 30s). 4xx
+is treated as permanent (URL is bad — fix it). 5xx and
+network errors retry. After 10 consecutive failures the
+webhook is auto-disabled (set `active=true` via PUT to
+re-enable after fixing the receiver).
 - Below 64 MiB, prefer the existing single-shot `POST /api/games` for fewer round-trips.

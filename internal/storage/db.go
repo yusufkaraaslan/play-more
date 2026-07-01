@@ -58,8 +58,29 @@ func migrate() error {
 	if _, err := DB.Exec(schema); err != nil {
 		return err
 	}
-	// Add columns that may be missing from older databases
-	migrations := []string{
+	for _, m := range migrationsAll() {
+		if _, err := DB.Exec(m); err != nil {
+			// Idempotent migrations re-running over an established DB naturally
+			// produce these two errors — that's expected, swallow them silently.
+			if isIdempotentMigrationError(err) {
+				continue
+			}
+			// Anything else (disk full, locked table, syntax error in a new
+			// migration, FK violation) is a real failure. Surface it so a
+			// botched deploy doesn't silently leave the DB in an undefined state.
+			return fmt.Errorf("migration failed: %w (sql=%q)", err, m)
+		}
+	}
+	return nil
+}
+
+// migrationsAll returns the full set of idempotent migrations.
+// Defined as a function (not a package var) so callers can
+// iterate it without exposing a mutable slice. Also exposed via
+// Migrations() for test code that needs to apply them to a
+// temp SQLite.
+func migrationsAll() []string {
+	return []string{
 		`ALTER TABLE developer_pages ADD COLUMN theme_preset TEXT DEFAULT 'steam-dark'`,
 		`ALTER TABLE developer_pages ADD COLUMN font_heading TEXT DEFAULT ''`,
 		`ALTER TABLE developer_pages ADD COLUMN font_body TEXT DEFAULT ''`,
@@ -119,21 +140,64 @@ func migrate() error {
 		`CREATE INDEX IF NOT EXISTS idx_playtime_game ON playtime(game_id)`,
 		`ALTER TABLE games ADD COLUMN featured_rank INTEGER DEFAULT 0`,
 		`CREATE INDEX IF NOT EXISTS idx_games_featured_rank ON games(featured_rank)`,
+		// Webhooks (#2) — outbound event subscriptions. The deliveries
+		// table retains 7 days; an hourly cleanup pass (see internal/
+		// webhook/dispatcher.go) prunes older rows so it never grows
+		// unbounded under heavy traffic.
+		`CREATE TABLE IF NOT EXISTS webhooks (
+			id TEXT PRIMARY KEY,
+			user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			url TEXT NOT NULL,
+			events TEXT NOT NULL DEFAULT '[]',
+			secret TEXT NOT NULL,
+			active INTEGER NOT NULL DEFAULT 1,
+			consecutive_failures INTEGER NOT NULL DEFAULT 0,
+			last_triggered_at DATETIME,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
+		`CREATE INDEX IF NOT EXISTS idx_webhooks_user ON webhooks(user_id)`,
+		`CREATE TABLE IF NOT EXISTS webhook_deliveries (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			webhook_id TEXT NOT NULL REFERENCES webhooks(id) ON DELETE CASCADE,
+			event TEXT NOT NULL,
+			payload TEXT NOT NULL,
+			attempt INTEGER NOT NULL DEFAULT 1,
+			response_code INTEGER,
+			response_body_excerpt TEXT DEFAULT '',
+			delivered_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			success INTEGER NOT NULL DEFAULT 0)`,
+		`CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_webhook ON webhook_deliveries(webhook_id, delivered_at)`,
+		// Game builds (#4) — per-game internal/beta/stable channels.
+		// Each game has up to 5 builds retained on disk; older
+		// builds are GC'd by the dispatcher of cron in main.go.
+		`CREATE TABLE IF NOT EXISTS game_builds (
+			id TEXT PRIMARY KEY,
+			game_id TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+			build_number INTEGER NOT NULL,
+			channel TEXT NOT NULL CHECK(channel IN ('internal','beta','stable')),
+			file_path TEXT NOT NULL,
+			entry_file TEXT NOT NULL,
+			size INTEGER NOT NULL,
+			sha256 TEXT NOT NULL DEFAULT '',
+			release_notes TEXT NOT NULL DEFAULT '',
+			is_active INTEGER NOT NULL DEFAULT 0,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			created_by TEXT NOT NULL REFERENCES users(id),
+			UNIQUE(game_id, build_number))`,
+		`CREATE INDEX IF NOT EXISTS idx_game_builds_game_channel ON game_builds(game_id, channel, is_active)`,
+		`CREATE INDEX IF NOT EXISTS idx_game_builds_created ON game_builds(game_id, created_at)`,
+		// Backfill: every existing game gets one build on the
+		// 'stable' channel pointing at its current file_path. The
+		// build_number starts at 1 and is_active=1. After this
+		// migration, new games get a build row created when they
+		// upload (or, for legacy single-shot uploads, this is a
+		// no-op fallback).
+		`INSERT INTO game_builds (id, game_id, build_number, channel, file_path, entry_file, size, is_active, created_by)
+		 SELECT
+			'gb_' || id, id, 1, 'stable', file_path, entry_file, 0, 1,
+			(SELECT id FROM users WHERE id = games.developer_id LIMIT 1)
+		 FROM games
+		 WHERE file_path != '' AND NOT EXISTS (SELECT 1 FROM game_builds WHERE game_builds.game_id = games.id)`,
 	}
-	for _, m := range migrations {
-		if _, err := DB.Exec(m); err != nil {
-			// Idempotent migrations re-running over an established DB naturally
-			// produce these two errors — that's expected, swallow them silently.
-			if isIdempotentMigrationError(err) {
-				continue
-			}
-			// Anything else (disk full, locked table, syntax error in a new
-			// migration, FK violation) is a real failure. Surface it so a
-			// botched deploy doesn't silently leave the DB in an undefined state.
-			return fmt.Errorf("migration failed: %w (sql=%q)", err, m)
-		}
-	}
-	return nil
 }
 
 // isIdempotentMigrationError is true for the specific sqlite errors that
@@ -147,6 +211,14 @@ func isIdempotentMigrationError(err error) bool {
 	msg := err.Error()
 	return strings.Contains(msg, "duplicate column") ||
 		strings.Contains(msg, "already exists")
+}
+
+// IsIdempotentMigrationError is the exported form of
+// isIdempotentMigrationError, for the test harness that re-runs
+// migrations against a fresh schema and must distinguish benign
+// "already exists" errors from real failures.
+func IsIdempotentMigrationError(err error) bool {
+	return isIdempotentMigrationError(err)
 }
 
 // IsUniqueConstraintError checks whether err is a SQLite UNIQUE constraint
@@ -164,6 +236,23 @@ func IsUniqueConstraintError(err error) bool {
 	msg := err.Error()
 	return strings.Contains(msg, "UNIQUE constraint failed") ||
 		strings.Contains(msg, "UNIQUE constraint")
+}
+
+// Schema returns the full schema SQL used to initialize a
+// PlayMore database. Exposed so tests can apply it to a temp
+// SQLite without going through the full InitDB() lifecycle
+// (which also sets up the package-level DB pointer).
+func Schema() string {
+	return schema
+}
+
+// Migrations returns the ordered list of idempotent migrations
+// (ALTER TABLE / CREATE IF NOT EXISTS) that bring an existing
+// schema up to the current version. Exposed so test DBs and
+// out-of-band tools (e.g. a one-off upgrade script) can run
+// them without going through InitDB's package-level init.
+func Migrations() []string {
+	return migrationsAll()
 }
 
 const schema = `

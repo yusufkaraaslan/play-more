@@ -7,7 +7,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/yusufkaraaslan/play-more/internal/middleware"
+	"github.com/yusufkaraaslan/play-more/internal/models"
 	"github.com/yusufkaraaslan/play-more/internal/storage"
+	"github.com/yusufkaraaslan/play-more/internal/webhook"
 )
 
 // paginationParams reads ?limit and ?offset from the request, clamping limit
@@ -235,5 +237,19 @@ func AdminTogglePublish(c *gin.Context) {
 	gameID := c.Param("id")
 	storage.DB.Exec(`UPDATE games SET published = NOT published WHERE id = ?`, gameID)
 	adminLog(c, "toggle_publish", "game", gameID)
+	// Notify the game owner's webhooks — an admin publish/unpublish
+	// is a publish-state change like the owner's own toggle, so it
+	// must fire the same event (scoped to the owner, not the admin).
+	if game, err := models.GetGameByID(gameID); err == nil {
+		event := models.WebhookEventGameUnpublished
+		if game.Published {
+			event = models.WebhookEventGamePublished
+		}
+		webhook.Dispatch(event, game.DeveloperID, gin.H{
+			"game_id": game.ID,
+			"title":   game.Title,
+			"via":     "admin",
+		})
+	}
 	c.JSON(http.StatusOK, gin.H{"message": "publish status toggled"})
 }

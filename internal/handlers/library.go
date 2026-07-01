@@ -47,7 +47,10 @@ func GetLibrary(c *gin.Context) {
 			&g.CreatedAt, &g.UpdatedAt,
 			&g.DeveloperName, &g.AvgRating, &g.ReviewCount, &g.PlayCount,
 		)
-		_ = tagsJSON; _ = screenshotsJSON; _ = videosJSON; _ = featuresJSON
+		_ = tagsJSON
+		_ = screenshotsJSON
+		_ = videosJSON
+		_ = featuresJSON
 		games = append(games, g)
 	}
 	c.JSON(http.StatusOK, gin.H{"games": games})
@@ -132,7 +135,10 @@ func GetWishlist(c *gin.Context) {
 			&g.CreatedAt, &g.UpdatedAt,
 			&g.DeveloperName, &g.AvgRating, &g.ReviewCount, &g.PlayCount,
 		)
-		_ = tagsJSON; _ = screenshotsJSON; _ = videosJSON; _ = featuresJSON
+		_ = tagsJSON
+		_ = screenshotsJSON
+		_ = videosJSON
+		_ = featuresJSON
 		games = append(games, g)
 	}
 	c.JSON(http.StatusOK, gin.H{"games": games})

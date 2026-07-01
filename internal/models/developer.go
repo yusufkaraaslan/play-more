@@ -30,7 +30,7 @@ type DeveloperPage struct {
 }
 
 type PageSection struct {
-	Type    string `json:"type"`    // "about", "games", "featured", "links", "devlogs", "gallery", "spacer", "custom"
+	Type    string `json:"type"` // "about", "games", "featured", "links", "devlogs", "gallery", "spacer", "custom"
 	Enabled bool   `json:"enabled"`
 	Title   string `json:"title"`   // custom section title override
 	Content string `json:"content"` // for "custom" type: markdown content
@@ -52,8 +52,12 @@ func GetDeveloperPage(userID string) (*DeveloperPage, error) {
 	json.Unmarshal([]byte(linksJSON), &p.Links)
 	json.Unmarshal([]byte(featuredJSON), &p.FeaturedGames)
 	json.Unmarshal([]byte(layoutJSON), &p.PageLayout)
-	if p.Links == nil { p.Links = []DeveloperLink{} }
-	if p.FeaturedGames == nil { p.FeaturedGames = []string{} }
+	if p.Links == nil {
+		p.Links = []DeveloperLink{}
+	}
+	if p.FeaturedGames == nil {
+		p.FeaturedGames = []string{}
+	}
 	if p.PageLayout == nil || len(p.PageLayout) == 0 {
 		// Default layout
 		p.PageLayout = []PageSection{

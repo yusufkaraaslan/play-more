@@ -12,10 +12,10 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
-	"syscall"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -25,6 +25,7 @@ import (
 	"github.com/yusufkaraaslan/play-more/internal/server"
 	"github.com/yusufkaraaslan/play-more/internal/storage"
 	"github.com/yusufkaraaslan/play-more/internal/uploadgc"
+	"github.com/yusufkaraaslan/play-more/internal/webhook"
 	"golang.org/x/crypto/acme/autocert"
 )
 
@@ -242,33 +243,51 @@ func main() {
 	}
 
 	if !isFlagSet("smtp-host") {
-		if v := os.Getenv("PLAYMORE_SMTP_HOST"); v != "" { *smtpHost = v }
+		if v := os.Getenv("PLAYMORE_SMTP_HOST"); v != "" {
+			*smtpHost = v
+		}
 	}
 	if !isFlagSet("smtp-port") {
 		if v := os.Getenv("PLAYMORE_SMTP_PORT"); v != "" {
-			if p, err := strconv.Atoi(v); err == nil { *smtpPort = p }
+			if p, err := strconv.Atoi(v); err == nil {
+				*smtpPort = p
+			}
 		}
 	}
 	if !isFlagSet("smtp-user") {
-		if v := os.Getenv("PLAYMORE_SMTP_USER"); v != "" { *smtpUser = v }
+		if v := os.Getenv("PLAYMORE_SMTP_USER"); v != "" {
+			*smtpUser = v
+		}
 	}
 	if !isFlagSet("smtp-pass") {
-		if v := os.Getenv("PLAYMORE_SMTP_PASS"); v != "" { *smtpPass = v }
+		if v := os.Getenv("PLAYMORE_SMTP_PASS"); v != "" {
+			*smtpPass = v
+		}
 	}
 	if !isFlagSet("smtp-from") {
-		if v := os.Getenv("PLAYMORE_SMTP_FROM"); v != "" { *smtpFrom = v }
+		if v := os.Getenv("PLAYMORE_SMTP_FROM"); v != "" {
+			*smtpFrom = v
+		}
 	}
 	if !isFlagSet("base-url") {
-		if v := os.Getenv("PLAYMORE_BASE_URL"); v != "" { *baseURL = v }
+		if v := os.Getenv("PLAYMORE_BASE_URL"); v != "" {
+			*baseURL = v
+		}
 	}
 	if !isFlagSet("games-domain") {
-		if v := os.Getenv("PLAYMORE_GAMES_DOMAIN"); v != "" { *gamesDomain = v }
+		if v := os.Getenv("PLAYMORE_GAMES_DOMAIN"); v != "" {
+			*gamesDomain = v
+		}
 	}
 	if !isFlagSet("trusted-proxies") {
-		if v := os.Getenv("PLAYMORE_TRUSTED_PROXIES"); v != "" { *trustedProxies = v }
+		if v := os.Getenv("PLAYMORE_TRUSTED_PROXIES"); v != "" {
+			*trustedProxies = v
+		}
 	}
 	if !isFlagSet("behind-tls-proxy") {
-		if v := os.Getenv("PLAYMORE_BEHIND_TLS_PROXY"); v == "true" || v == "1" { *forceSecure = true }
+		if v := os.Getenv("PLAYMORE_BEHIND_TLS_PROXY"); v == "true" || v == "1" {
+			*forceSecure = true
+		}
 	}
 	middleware.ForceSecureCookies = *forceSecure
 
@@ -322,6 +341,7 @@ func main() {
 
 	middleware.StartRateLimitCleanup()
 	middleware.StartAnalyticsWriter()
+	webhook.Start()
 	uploadgc.UploadsGCEnabled = *uploadsGC
 	uploadgc.UploadsGCDryRun = *uploadsGCDryRun
 	uploadgc.Start(context.Background())
@@ -441,6 +461,7 @@ func main() {
 	fmt.Printf("\nReceived %v, shutting down gracefully...\n", sig)
 
 	middleware.StopAnalyticsWriter()
+	webhook.Stop()
 	close(middleware.ShutdownCh)
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

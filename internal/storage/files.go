@@ -14,8 +14,8 @@ var GamesDir string
 
 // Limits for ZIP extraction to prevent decompression bombs.
 const (
-	MaxExtractedSize  = 2 << 30 // 2 GiB total decompressed size
-	MaxExtractedFiles = 10000   // max entries in archive
+	MaxExtractedSize  = 2 << 30   // 2 GiB total decompressed size
+	MaxExtractedFiles = 10000     // max entries in archive
 	MaxFileSize       = 500 << 20 // 500 MiB per file
 )
 
@@ -47,6 +47,16 @@ func InitFileStorage(dataDir string) error {
 
 func GameDir(gameID string) string {
 	return filepath.Join(GamesDir, gameID)
+}
+
+// BuildDir returns the on-disk path of a single build's files
+// for a game. The path is {dataDir}/games/{gameID}/builds/{buildID}.
+// Created on first upload, never touched again by the legacy
+// live-dir code path. Old builds are deleted by the build
+// retention sweep when the game accumulates more than
+// MaxBuildsPerGame inactive builds.
+func BuildDir(gameID, buildID string) string {
+	return filepath.Join(GamesDir, gameID, "builds", buildID)
 }
 
 // SaveGameFile saves a single file to the game directory.
