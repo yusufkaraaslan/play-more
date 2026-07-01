@@ -3,6 +3,9 @@ package models
 import (
 	"database/sql"
 	"errors"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -105,23 +108,49 @@ func CreateBuild(gameID, filePath, entryFile string, size int64, sha256, release
 	// canonical version of their channel even if history grows
 	// past the cap. The cap is therefore a soft limit on
 	// inactive history, not a hard cap on total builds.
-	_, err = tx.Exec(
-		`DELETE FROM game_builds
-		 WHERE id IN (
-		   SELECT id FROM game_builds
-		   WHERE game_id = ? AND id != ? AND is_active = 0
-		   ORDER BY build_number DESC
-		   LIMIT -1 OFFSET ?
-		 )`,
+	//
+	// Collect the victims first so we can remove their on-disk
+	// directories after the tx commits — deleting the row alone
+	// would leak the extracted files forever. Rows are fully read
+	// and closed before any tx.Exec (single SQLite connection).
+	victimRows, err := tx.Query(
+		`SELECT id, file_path FROM game_builds
+		 WHERE game_id = ? AND id != ? AND is_active = 0
+		 ORDER BY build_number DESC
+		 LIMIT -1 OFFSET ?`,
 		gameID, id, MaxBuildsPerGame-1,
 	)
 	if err != nil {
 		return nil, err
 	}
+	var victimIDs, victimPaths []string
+	for victimRows.Next() {
+		var vID, vPath string
+		if err := victimRows.Scan(&vID, &vPath); err != nil {
+			victimRows.Close()
+			return nil, err
+		}
+		victimIDs = append(victimIDs, vID)
+		victimPaths = append(victimPaths, vPath)
+	}
+	victimRows.Close()
+	if err := victimRows.Err(); err != nil {
+		return nil, err
+	}
+	for _, vID := range victimIDs {
+		if _, err := tx.Exec(`DELETE FROM game_builds WHERE id = ?`, vID); err != nil {
+			return nil, err
+		}
+	}
 
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
+	// Remove the extracted files only after the row deletions are
+	// durably committed, and only for dirs under the game's builds/
+	// tree (never the game root, which initial/backfilled builds
+	// point at).
+	removeBuildDirsUnderGame(gameID, victimPaths)
 	return &Build{
 		ID:           id,
 		GameID:       gameID,
@@ -237,15 +266,24 @@ func ActiveBuild(gameID, channel string) (*Build, error) {
 	return scanBuild(row)
 }
 
-// PreviousActiveBuild returns the most recent build for the
-// channel that isn't the current active one. Used by rollback.
+// PreviousActiveBuild returns the build immediately preceding the
+// current active build for the channel — i.e. the newest inactive
+// build with a LOWER build_number than the active one. Rollback
+// must move BACKWARD, so we scope to build_number < active; without
+// that predicate, a newer inactive build (created after an owner
+// manually re-activated an older one) would be promoted and the
+// "rollback" would move the channel forward instead.
 func PreviousActiveBuild(gameID, channel string) (*Build, error) {
 	row := storage.DB.QueryRow(
 		`SELECT id, game_id, build_number, channel, file_path, entry_file, size, sha256, release_notes, is_active, created_at, created_by
 		 FROM game_builds
 		 WHERE game_id = ? AND channel = ? AND is_active = 0
+		   AND build_number < (
+		     SELECT build_number FROM game_builds
+		     WHERE game_id = ? AND channel = ? AND is_active = 1
+		   )
 		 ORDER BY build_number DESC LIMIT 1`,
-		gameID, channel,
+		gameID, channel, gameID, channel,
 	)
 	return scanBuild(row)
 }
@@ -289,16 +327,18 @@ func ListBuilds(gameID, userID, channel string) ([]*Build, error) {
 // DeleteBuild removes a build. Refuses if it's the active
 // build for its channel — caller must promote another first.
 func DeleteBuild(buildID, gameID, userID string) error {
-	// Verify ownership and not-active.
+	// Verify ownership and not-active. Capture file_path so the
+	// on-disk directory can be removed after the row is deleted.
 	var ownerID string
 	var isActive int
 	var channel string
+	var filePath string
 	if err := storage.DB.QueryRow(
-		`SELECT g.developer_id, b.is_active, b.channel
+		`SELECT g.developer_id, b.is_active, b.channel, b.file_path
 		 FROM games g JOIN game_builds b ON b.game_id = g.id
 		 WHERE b.id = ? AND b.game_id = ?`,
 		buildID, gameID,
-	).Scan(&ownerID, &isActive, &channel); err != nil {
+	).Scan(&ownerID, &isActive, &channel, &filePath); err != nil {
 		return err
 	}
 	if ownerID != userID {
@@ -307,16 +347,32 @@ func DeleteBuild(buildID, gameID, userID string) error {
 	if isActive == 1 {
 		return errors.New("cannot delete the active build for a channel")
 	}
-	_, err := storage.DB.Exec(`DELETE FROM game_builds WHERE id = ?`, buildID)
-	return err
+	if _, err := storage.DB.Exec(`DELETE FROM game_builds WHERE id = ?`, buildID); err != nil {
+		return err
+	}
+	removeBuildDirsUnderGame(gameID, []string{filePath})
+	return nil
 }
 
-// RowScanner is satisfied by both *sql.Row and *sql.Rows.
-type RowScanner interface {
-	Scan(dest ...any) error
+// removeBuildDirsUnderGame removes the on-disk directories for the
+// given build file paths, but ONLY those that live under the
+// game's builds/ subdirectory. This protects the game root dir
+// (initial/backfilled builds point their file_path at the game
+// dir itself) and any placeholder path from being deleted.
+func removeBuildDirsUnderGame(gameID string, filePaths []string) {
+	base := filepath.Clean(filepath.Join(storage.GamesDir, gameID, "builds")) + string(filepath.Separator)
+	for _, fp := range filePaths {
+		if fp == "" {
+			continue
+		}
+		clean := filepath.Clean(fp)
+		if strings.HasPrefix(clean, base) {
+			_ = os.RemoveAll(clean)
+		}
+	}
 }
 
-func scanBuild(r RowScanner) (*Build, error) {
+func scanBuild(r scannable) (*Build, error) {
 	b := &Build{}
 	if err := r.Scan(
 		&b.ID, &b.GameID, &b.BuildNumber, &b.Channel,

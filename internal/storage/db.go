@@ -213,6 +213,14 @@ func isIdempotentMigrationError(err error) bool {
 		strings.Contains(msg, "already exists")
 }
 
+// IsIdempotentMigrationError is the exported form of
+// isIdempotentMigrationError, for the test harness that re-runs
+// migrations against a fresh schema and must distinguish benign
+// "already exists" errors from real failures.
+func IsIdempotentMigrationError(err error) bool {
+	return isIdempotentMigrationError(err)
+}
+
 // IsUniqueConstraintError checks whether err is a SQLite UNIQUE constraint
 // violation. modernc.org/sqlite does not expose structured error codes, so we
 // match on the well-known error message substrings that have been stable across

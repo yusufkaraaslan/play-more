@@ -21,8 +21,12 @@ import (
 // object-src 'none'.
 //
 // `unsafe-inline` for script-src is needed because the Swagger UI
-// bundle uses an inline init script. The bundle itself is from
-// unpkg.com (a trusted CDN).
+// bundle uses an inline init script (our own static content — the
+// page takes no user input, so there is no injection vector for
+// it). The CDN bundle itself is pinned by version AND locked with
+// a Subresource Integrity (SRI) hash, so a compromised/hijacked
+// unpkg (or a MITM) cannot substitute tampered JS: the browser
+// refuses to execute a script whose hash doesn't match.
 func openAPIDocHTML() string {
 	return `<!DOCTYPE html>
 <html lang="en">
@@ -30,7 +34,7 @@ func openAPIDocHTML() string {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>PlayMore API Docs</title>
-<link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5.17.14/swagger-ui.css">
+<link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5.17.14/swagger-ui.css" integrity="sha384-wxLW6kwyHktdDGr6Pv1zgm/VGJh99lfUbzSn6HNHBENZlCN7W602k9VkGdxuFvPn" crossorigin="anonymous">
 <style>
 body { margin: 0; padding: 0; }
 .swagger-ui .info { margin: 30px 0; }
@@ -38,7 +42,7 @@ body { margin: 0; padding: 0; }
 </head>
 <body>
 <div id="swagger-ui"></div>
-<script src="https://unpkg.com/swagger-ui-dist@5.17.14/swagger-ui-bundle.js" crossorigin></script>
+<script src="https://unpkg.com/swagger-ui-dist@5.17.14/swagger-ui-bundle.js" integrity="sha384-wmyclcVGX/WhUkdkATwhaK1X1JtiNrr2EoYJ+diV3vj4v6OC5yCeSu+yW13SYJep" crossorigin="anonymous"></script>
 <script>
 window.onload = () => {
   window.ui = SwaggerUIBundle({

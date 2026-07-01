@@ -14,8 +14,8 @@ var GamesDir string
 
 // Limits for ZIP extraction to prevent decompression bombs.
 const (
-	MaxExtractedSize  = 2 << 30 // 2 GiB total decompressed size
-	MaxExtractedFiles = 10000   // max entries in archive
+	MaxExtractedSize  = 2 << 30   // 2 GiB total decompressed size
+	MaxExtractedFiles = 10000     // max entries in archive
 	MaxFileSize       = 500 << 20 // 500 MiB per file
 )
 

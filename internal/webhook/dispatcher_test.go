@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -119,6 +120,56 @@ func TestDispatcher_DeliversAndSigns(t *testing.T) {
 	}
 	if parsed.Payload["title"] != "Test" {
 		t.Errorf("body payload.title: %v", parsed.Payload["title"])
+	}
+}
+
+// TestDispatcher_CrossTenantIsolation is the end-to-end regression
+// test for the cross-tenant leak: an event owned by user A must be
+// delivered ONLY to user A's webhooks, never to user B's — even
+// when both subscribe to the same event name.
+func TestDispatcher_CrossTenantIsolation(t *testing.T) {
+	gotA := make(chan struct{}, 1)
+	var bHits int32
+
+	targetA := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case gotA <- struct{}{}:
+		default:
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer targetA.Close()
+	targetB := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&bHits, 1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer targetB.Close()
+
+	_ = testutil.NewTestServer(t)
+	webhook.Start()
+	t.Cleanup(webhook.Stop)
+
+	userA := testutil.SeedUser(t, nil, testutil.SeedUserOpts{EmailVerified: true})
+	userB := testutil.SeedUser(t, nil, testutil.SeedUserOpts{EmailVerified: true})
+	if _, err := models.CreateWebhook(userA.ID, targetA.URL, []string{models.WebhookEventGamePublished}); err != nil {
+		t.Fatalf("CreateWebhook A: %v", err)
+	}
+	if _, err := models.CreateWebhook(userB.ID, targetB.URL, []string{models.WebhookEventGamePublished}); err != nil {
+		t.Fatalf("CreateWebhook B: %v", err)
+	}
+
+	// Fire an event owned by A.
+	webhook.Dispatch(models.WebhookEventGamePublished, userA.ID, map[string]any{"game_id": "x"})
+
+	select {
+	case <-gotA:
+	case <-time.After(2 * time.Second):
+		t.Fatal("user A's webhook did not receive its own event")
+	}
+	// Give any (erroneous) cross-tenant delivery a chance to land.
+	time.Sleep(200 * time.Millisecond)
+	if n := atomic.LoadInt32(&bHits); n != 0 {
+		t.Errorf("user B's webhook received %d deliveries for user A's event — cross-tenant leak", n)
 	}
 }
 

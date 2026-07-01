@@ -3,6 +3,7 @@ package middleware
 import (
 	"net/http"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -79,12 +80,27 @@ func allowKey(key string, maxRequests int, window time.Duration) bool {
 	return true
 }
 
+// canonicalRateLimitPath collapses the two API mount prefixes
+// (/api/v1 and /api) to a single form so a per-endpoint limit is
+// shared across both. Without this, the same handler is reachable
+// at two distinct FullPaths and an attacker gets double the quota
+// by alternating prefixes. Non-API paths are returned unchanged.
+func canonicalRateLimitPath(fullPath string) string {
+	if fullPath == "/api/v1" || strings.HasPrefix(fullPath, "/api/v1/") {
+		return fullPath[len("/api/v1"):]
+	}
+	if fullPath == "/api" || strings.HasPrefix(fullPath, "/api/") {
+		return fullPath[len("/api"):]
+	}
+	return fullPath
+}
+
 // RateLimit returns middleware that limits requests per IP per window.
 // maxRequests per windowSeconds.
 func RateLimit(maxRequests int, windowSeconds int) gin.HandlerFunc {
 	window := time.Duration(windowSeconds) * time.Second
 	return func(c *gin.Context) {
-		key := RealClientIP(c) + ":" + c.FullPath()
+		key := RealClientIP(c) + ":" + canonicalRateLimitPath(c.FullPath())
 		if !allowKey(key, maxRequests, window) {
 			c.JSON(http.StatusTooManyRequests, gin.H{"error": "too many requests, please try again later"})
 			c.Abort()

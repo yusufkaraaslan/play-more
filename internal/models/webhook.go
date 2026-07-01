@@ -1,11 +1,14 @@
 package models
 
 import (
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"net"
+	"net/url"
 	"time"
 
 	"github.com/google/uuid"
@@ -89,8 +92,8 @@ func CreateWebhook(userID, url string, events []string) (*Webhook, error) {
 			return nil, errWebhookInvalidEvent
 		}
 	}
-	if url == "" {
-		return nil, errWebhookInvalidURL
+	if err := ValidateWebhookURL(url); err != nil {
+		return nil, err
 	}
 
 	// 32 random bytes → 64 hex chars. The secret is the
@@ -140,8 +143,9 @@ func CreateWebhook(userID, url string, events []string) (*Webhook, error) {
 var (
 	errWebhookNoEvents     = stringErr("webhook must subscribe to at least one event")
 	errWebhookInvalidEvent = stringErr("unknown webhook event")
-	errWebhookInvalidURL   = stringErr("webhook URL is required")
+	errWebhookInvalidURL   = stringErr("webhook URL must be a valid http(s) URL")
 	errWebhookLimitReached = stringErr("webhook limit reached")
+	errWebhookURLBlocked   = stringErr("webhook URL resolves to a disallowed (private/loopback/link-local) address")
 )
 
 type stringErr string
@@ -154,6 +158,76 @@ func IsWebhookLimitError(err error) bool { return err == errWebhookLimitReached 
 // IsInvalidWebhookEventError reports whether err is the
 // unknown-event sentinel. Used by the handler to return 400.
 func IsInvalidWebhookEventError(err error) bool { return err == errWebhookInvalidEvent }
+
+// IsWebhookNoEventsError reports whether err is the empty-events
+// sentinel. Used by the handler to return 400 instead of 500.
+func IsWebhookNoEventsError(err error) bool { return err == errWebhookNoEvents }
+
+// IsWebhookURLError reports whether err is one of the URL
+// validation failures (bad scheme/parse or blocked target). Used
+// by the handler to return 400.
+func IsWebhookURLError(err error) bool {
+	return err == errWebhookInvalidURL || err == errWebhookURLBlocked
+}
+
+// AllowPrivateWebhookTargets, when true, disables the SSRF guard
+// that blocks webhook delivery to loopback / private / link-local
+// addresses. It exists ONLY so tests can point a webhook at an
+// httptest server on 127.0.0.1. Never set true in production.
+var AllowPrivateWebhookTargets = false
+
+// ValidateWebhookURL enforces the webhook target policy: the URL
+// must parse, use http or https, and (unless
+// AllowPrivateWebhookTargets is set) must not resolve to a
+// loopback, private, link-local, unique-local, unspecified, or
+// multicast address. This is the SSRF guard for the single-binary
+// self-hosted deploy — without it a user could register
+// http://169.254.169.254/ (cloud metadata) or http://localhost/
+// to reach services inside the trust boundary.
+//
+// Note: this validates at registration time. A hostile target can
+// still rebind DNS between validation and delivery; a fully
+// airtight guard would re-resolve and pin the IP at delivery time.
+// Registration-time validation matches the documented follow-up
+// and stops the common cases.
+func ValidateWebhookURL(raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return errWebhookInvalidURL
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return errWebhookInvalidURL
+	}
+	host := u.Hostname()
+	if host == "" {
+		return errWebhookInvalidURL
+	}
+	if AllowPrivateWebhookTargets {
+		return nil
+	}
+	ips, err := net.LookupIP(host)
+	if err != nil || len(ips) == 0 {
+		// Can't resolve → can't safely deliver. Reject.
+		return errWebhookURLBlocked
+	}
+	for _, ip := range ips {
+		if isDisallowedTargetIP(ip) {
+			return errWebhookURLBlocked
+		}
+	}
+	return nil
+}
+
+// isDisallowedTargetIP reports whether ip is in a range a webhook
+// must never be delivered to.
+func isDisallowedTargetIP(ip net.IP) bool {
+	return ip.IsLoopback() ||
+		ip.IsPrivate() ||
+		ip.IsLinkLocalUnicast() ||
+		ip.IsLinkLocalMulticast() ||
+		ip.IsMulticast() ||
+		ip.IsUnspecified()
+}
 
 // ListWebhooks returns the user's webhooks. The Secret field
 // is cleared — listing never reveals it.
@@ -229,12 +303,16 @@ func GetWebhookWithSecret(webhookID string) (*Webhook, error) {
 	return w, nil
 }
 
-// ActiveWebhooksForEvent returns all active webhooks subscribed
-// to the given event, across all users. Used by the dispatcher.
-func ActiveWebhooksForEvent(event string) ([]*Webhook, error) {
+// ActiveWebhooksForEvent returns the active webhooks owned by
+// userID that are subscribed to the given event. It is scoped to
+// a single owner on purpose: an event fired by one developer must
+// only ever be delivered to that same developer's webhooks —
+// never cross-tenant. The dispatcher passes the event's OwnerID.
+func ActiveWebhooksForEvent(userID, event string) ([]*Webhook, error) {
 	rows, err := storage.DB.Query(
 		`SELECT id, user_id, url, events, secret, active, consecutive_failures, last_triggered_at, created_at
-		 FROM webhooks WHERE active = 1`,
+		 FROM webhooks WHERE active = 1 AND user_id = ?`,
+		userID,
 	)
 	if err != nil {
 		return nil, err
@@ -275,6 +353,9 @@ func UpdateWebhook(webhookID, userID, url string, events []string, active bool) 
 		if !IsValidWebhookEvent(e) {
 			return errWebhookInvalidEvent
 		}
+	}
+	if err := ValidateWebhookURL(url); err != nil {
+		return err
 	}
 	eventsJSON, _ := json.Marshal(events)
 	res, err := storage.DB.Exec(
@@ -389,49 +470,14 @@ func MarkTriggered(webhookID string, success bool) error {
 }
 
 // WebhookSignature returns the HMAC-SHA256 signature header
-// value (e.g. "sha256=…") for the given payload + secret. Used
-// by the dispatcher at delivery time, and re-exposed in
-// internal/webhook/verify.go for the SDK.
+// value (e.g. "sha256=…") for the given payload + secret. The
+// secret is the HMAC key. Used by the dispatcher at delivery time;
+// the SDK verifies with crypto/hmac + hmac.Equal, so this must
+// stay a standard HMAC-SHA256.
 func WebhookSignature(secret string, payload []byte) string {
-	h := sha256.Sum256([]byte(secret))
-	// We sign with the secret as the HMAC key. (Using a derived
-	// hash of the secret as the key would be a fine extra step
-	// but adds no real security here — the secret itself is the
-	// shared secret.)
-	_ = h
-	return "sha256=" + hex.EncodeToString(hmacSHA256([]byte(secret), payload))
-}
-
-// hmacSHA256 is a tiny inlined HMAC-SHA256 to avoid pulling in
-// crypto/hmac just for this. It uses the standard double-hash
-// construction.
-func hmacSHA256(key, data []byte) []byte {
-	const blockSize = 64
-	if len(key) > blockSize {
-		h := sha256.Sum256(key)
-		key = h[:]
-	}
-	if len(key) < blockSize {
-		pad := make([]byte, blockSize)
-		copy(pad, key)
-		key = pad
-	}
-	o := make([]byte, blockSize)
-	for i := range o {
-		o[i] = key[i] ^ 0x5c
-	}
-	i := make([]byte, blockSize)
-	for j := range i {
-		i[j] = key[j] ^ 0x36
-	}
-	inner := sha256.New()
-	inner.Write(i)
-	inner.Write(data)
-	innerSum := inner.Sum(nil)
-	outer := sha256.New()
-	outer.Write(o)
-	outer.Write(innerSum)
-	return outer.Sum(nil)
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write(payload)
+	return "sha256=" + hex.EncodeToString(mac.Sum(nil))
 }
 
 func boolToInt(b bool) int {

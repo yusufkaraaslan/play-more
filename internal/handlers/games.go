@@ -197,6 +197,18 @@ func UploadGame(c *gin.Context) {
 
 	game.UpdateFiles(storage.GameDir(game.ID), entryFile)
 
+	// Record the initial upload as build #1 so the game has build
+	// history from the start — the builds API and rollback both
+	// need a row to point at. The original files live in the game
+	// dir (not a builds/ subdir), so the entry stays game-root
+	// relative and the retention sweep will never delete this dir
+	// (removeBuildDirsUnderGame only touches the builds/ tree).
+	if b, err := models.CreateBuild(game.ID, storage.GameDir(game.ID), entryFile, written, "", "", string(models.BuildChannelStable), user.ID); err == nil {
+		_ = models.SetActiveBuild(b.ID, game.ID, user.ID)
+	} else {
+		log.Printf("initial build row for game %s failed: %v", game.ID, err)
+	}
+
 	// Handle cover image — must decode as a real image (no HTML-as-PNG XSS).
 	coverFile, coverHeader, err := c.Request.FormFile("cover")
 	if err == nil {
@@ -696,10 +708,16 @@ func ReuploadGameFiles(c *gin.Context) {
 		return
 	}
 
+	// The serve handler roots at the game dir, so the stored entry
+	// must be relative to it: builds/<buildID>/<entry-within-build>.
+	// (ExtractZipToDir / the single-file path both return an entry
+	// relative to buildDir.)
+	relEntry := filepath.ToSlash(filepath.Join("builds", buildID, entryFile))
+
 	// Register the build row. The retention GC inside
 	// CreateBuild keeps MaxBuildsPerGame - 1 older INACTIVE
 	// builds; active builds are never deleted.
-	build, err := models.CreateBuild(game.ID, buildDir, entryFile, written, "", "", string(models.BuildChannelStable), user.ID)
+	build, err := models.CreateBuild(game.ID, buildDir, relEntry, written, "", "", string(models.BuildChannelStable), user.ID)
 	if err != nil {
 		_ = os.RemoveAll(buildDir)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to register build"})
@@ -711,6 +729,11 @@ func ReuploadGameFiles(c *gin.Context) {
 	// inside the same tx, so reads of /api/v1/games/:id after
 	// this point see the new files.
 	if err := models.SetActiveBuild(build.ID, game.ID, user.ID); err != nil {
+		// The build row committed in its own tx; if activation
+		// fails, delete it (and its dir) so we don't leave an
+		// orphaned row pointing at files the next activate would
+		// serve as a dead path.
+		_ = models.DeleteBuild(build.ID, game.ID, user.ID)
 		_ = os.RemoveAll(buildDir)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to activate build"})
 		return
@@ -822,6 +845,26 @@ func ServeGameFiles(spaOrigin, gamesDomain string) gin.HandlerFunc {
 		filePath := c.Param("filepath")
 		if filePath == "" || filePath == "/" {
 			filePath = "/" + game.EntryFile
+		}
+
+		// The builds/ tree holds every build (previous versions, and
+		// any non-stable channel). Only the ACTIVE build's own
+		// subdirectory may be served publicly — otherwise anyone
+		// could fetch a non-active build by guessing its id. The
+		// active build's dir is the first two segments of the game's
+		// entry_file when it lives under builds/ (builds/<id>/...).
+		reqRel := strings.TrimPrefix(filepath.ToSlash(filePath), "/")
+		if strings.HasPrefix(reqRel, "builds/") {
+			activePrefix := ""
+			if strings.HasPrefix(game.EntryFile, "builds/") {
+				if parts := strings.SplitN(game.EntryFile, "/", 3); len(parts) >= 2 {
+					activePrefix = "builds/" + parts[1] + "/"
+				}
+			}
+			if activePrefix == "" || !strings.HasPrefix(reqRel, activePrefix) {
+				c.String(http.StatusNotFound, "not found")
+				return
+			}
 		}
 
 		gameRoot := filepath.Join(storage.GamesDir, gameID)

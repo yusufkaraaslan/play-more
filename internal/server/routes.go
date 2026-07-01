@@ -181,9 +181,9 @@ func mountAPIRoutes(g *gin.RouterGroup, cfg apiConfig) {
 	// Build channels — per-game internal/beta/stable builds
 	g.GET("/games/:id/builds", middleware.AuthRequired(), handlers.ListBuildsHandler)
 	g.GET("/games/:id/builds/:build_id", middleware.AuthRequired(), handlers.GetBuildHandler)
-	g.PUT("/games/:id/builds/:build_id/activate", middleware.AuthRequired(), middleware.RateLimit(30, 3600), handlers.ActivateBuildHandler)
-	g.POST("/games/:id/builds/:build_id/rollback", middleware.AuthRequired(), middleware.RateLimit(30, 3600), handlers.RollbackBuildHandler)
-	g.DELETE("/games/:id/builds/:build_id", middleware.AuthRequired(), middleware.RateLimit(30, 3600), handlers.DeleteBuildHandler)
+	g.PUT("/games/:id/builds/:build_id/activate", middleware.AuthRequired(), handlers.RequireVerifiedEmail(), middleware.RateLimit(30, 3600), handlers.ActivateBuildHandler)
+	g.POST("/games/:id/builds/:build_id/rollback", middleware.AuthRequired(), handlers.RequireVerifiedEmail(), middleware.RateLimit(30, 3600), handlers.RollbackBuildHandler)
+	g.DELETE("/games/:id/builds/:build_id", middleware.AuthRequired(), handlers.RequireVerifiedEmail(), middleware.RateLimit(30, 3600), handlers.DeleteBuildHandler)
 }
 
 // NewTestConfig returns the body-cap configuration used by

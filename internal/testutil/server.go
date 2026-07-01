@@ -63,6 +63,11 @@ func NewTestServer(t *testing.T) *TestServer {
 
 	gin.SetMode(gin.TestMode)
 
+	// Webhook tests point at an httptest server on 127.0.0.1, which
+	// the production SSRF guard would (correctly) block. Allow
+	// private targets for the duration of tests only.
+	models.AllowPrivateWebhookTargets = true
+
 	dataDir := t.TempDir()
 	dbPath := filepath.Join(dataDir, "playmore.db")
 
@@ -80,12 +85,12 @@ func NewTestServer(t *testing.T) *TestServer {
 	}
 	for _, m := range storage.Migrations() {
 		if _, err := db.Exec(m); err != nil {
-			// Migrations are designed to be idempotent — see
-			// storage.isIdempotentMigrationError for the small set
-			// of "already exists" errors that are expected on a
-			// fresh DB. Anything else is a real failure.
-			errStr := err.Error()
-			if strings.Contains(errStr, "duplicate column") || strings.Contains(errStr, "already exists") {
+			// Migrations are designed to be idempotent — the small
+			// set of "already exists" errors are expected on a fresh
+			// DB. Anything else is a real failure. Reuse the storage
+			// package's classifier so this harness never diverges
+			// from production's definition.
+			if storage.IsIdempotentMigrationError(err) {
 				continue
 			}
 			t.Fatalf("apply migration: %v\nsql: %s", err, m)

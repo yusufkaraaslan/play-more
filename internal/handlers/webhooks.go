@@ -5,7 +5,6 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -39,10 +38,6 @@ func CreateWebhookHandler(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON body"})
 		return
 	}
-	if !strings.HasPrefix(input.URL, "http://") && !strings.HasPrefix(input.URL, "https://") {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "url must be http(s)://"})
-		return
-	}
 	w, err := models.CreateWebhook(user.ID, input.URL, input.Events)
 	if err != nil {
 		switch {
@@ -50,6 +45,10 @@ func CreateWebhookHandler(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "webhook limit reached (max 20 per user)"})
 		case models.IsInvalidWebhookEventError(err):
 			c.JSON(http.StatusBadRequest, gin.H{"error": "one or more event names are unknown"})
+		case models.IsWebhookNoEventsError(err):
+			c.JSON(http.StatusBadRequest, gin.H{"error": "at least one event is required"})
+		case models.IsWebhookURLError(err):
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		default:
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create webhook"})
 		}
@@ -105,10 +104,6 @@ func UpdateWebhookHandler(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON body"})
 		return
 	}
-	if !strings.HasPrefix(input.URL, "http://") && !strings.HasPrefix(input.URL, "https://") {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "url must be http(s)://"})
-		return
-	}
 	if input.Active == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "active is required"})
 		return
@@ -120,6 +115,10 @@ func UpdateWebhookHandler(c *gin.Context) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "webhook not found"})
 		case models.IsInvalidWebhookEventError(err):
 			c.JSON(http.StatusBadRequest, gin.H{"error": "one or more event names are unknown"})
+		case models.IsWebhookNoEventsError(err):
+			c.JSON(http.StatusBadRequest, gin.H{"error": "at least one event is required"})
+		case models.IsWebhookURLError(err):
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		default:
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update webhook"})
 		}

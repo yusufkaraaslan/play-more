@@ -441,6 +441,18 @@ account.
 
 The secret cannot be rotated; revoke + recreate to rotate.
 
+### Scope and URL requirements
+
+A webhook only ever receives events for content **you own** —
+events are scoped to the subscribing account, never delivered
+cross-tenant.
+
+The target `url` must be `http(s)://` and must resolve to a
+public address. URLs that resolve to loopback, private
+(RFC 1918), link-local (incl. `169.254.169.254` cloud metadata),
+or multicast ranges are rejected with `400` — an SSRF guard for
+the self-hosted deployment.
+
 ### Signature
 
 Each delivery carries an `X-PlayMore-Signature: sha256=<hex>`

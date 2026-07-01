@@ -59,24 +59,31 @@ func Start() {
 		// Already running.
 		return
 	}
-	queue = make(chan Event, queueDepth)
+	q := make(chan Event, queueDepth)
+	queue = q
 	ctx, c := context.WithCancel(context.Background())
 	cancel = c
 	workers.Add(1)
-	go runWorker(ctx)
+	// The worker reads from its own channel handle, not the package
+	// var, so Stop() can clear `queue` without racing the worker.
+	go runWorker(ctx, q)
 }
 
 // Stop signals the worker to drain and exit. Safe to call when
 // the worker is not running (it's a no-op in that case).
 func Stop() {
 	mu.Lock()
-	defer mu.Unlock()
 	if cancel == nil {
+		mu.Unlock()
 		return
 	}
 	cancel()
 	cancel = nil
 	queue = nil
+	mu.Unlock()
+	// Wait outside the lock: a drain can take tens of seconds (retry
+	// backoffs), and holding mu that long would block Dispatch's
+	// brief lock on the publishing path.
 	workers.Wait()
 }
 
@@ -85,25 +92,31 @@ func Stop() {
 // This is a deliberate trade-off — the publishing path should
 // never block on outbound webhook delivery.
 func Dispatch(name, ownerID string, payload map[string]any) {
-	if queue == nil {
+	// Read the channel handle under the lock so we never race Stop()
+	// setting queue = nil. The send itself is non-blocking (select
+	// default), so we hold the lock only for the read.
+	mu.Lock()
+	q := queue
+	mu.Unlock()
+	if q == nil {
 		// Dispatcher not started (e.g. in tests). Silently drop.
 		return
 	}
 	e := Event{Name: name, OwnerID: ownerID, Payload: payload}
 	select {
-	case queue <- e:
+	case q <- e:
 	default:
 		log.Printf("webhook dispatcher: queue full, dropping event %s for %s", name, ownerID)
 	}
 }
 
-func runWorker(ctx context.Context) {
+func runWorker(ctx context.Context, q chan Event) {
 	defer workers.Done()
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case ev := <-queue:
+		case ev := <-q:
 			deliverEvent(ctx, ev)
 		}
 	}
@@ -114,7 +127,10 @@ func runWorker(ctx context.Context) {
 // others. We use a small wait group so Stop() can wait for
 // in-flight deliveries to finish.
 func deliverEvent(ctx context.Context, ev Event) {
-	hooks, err := models.ActiveWebhooksForEvent(ev.Name)
+	// Scope the fan-out to the event owner's own webhooks. An event
+	// fired by one developer must never be delivered to another
+	// developer's subscription.
+	hooks, err := models.ActiveWebhooksForEvent(ev.OwnerID, ev.Name)
 	if err != nil {
 		log.Printf("webhook: lookup for %s failed: %v", ev.Name, err)
 		return
@@ -153,8 +169,13 @@ var retrySchedule = []time.Duration{
 	30 * time.Second, // attempt 3
 }
 
+// deliveryClient is shared across all deliveries so keep-alive
+// connections are reused instead of re-doing a TCP+TLS handshake
+// for every send to the same endpoint.
+var deliveryClient = &http.Client{Timeout: 10 * time.Second}
+
 func deliverOne(ctx context.Context, h *models.Webhook, eventName string, body []byte) {
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := deliveryClient
 	sig := models.WebhookSignature(h.Secret, body)
 	for attempt, wait := range retrySchedule {
 		if wait > 0 {
@@ -178,6 +199,13 @@ func deliverOne(ctx context.Context, h *models.Webhook, eventName string, body [
 
 		resp, err := client.Do(req)
 		if err != nil {
+			// If we're shutting down (ctx cancelled), this isn't the
+			// target's fault — don't record it as a failure or it
+			// would push a healthy webhook toward the auto-disable
+			// threshold across restarts.
+			if ctx.Err() != nil {
+				return
+			}
 			// Network error — retry until we run out of attempts.
 			_ = models.RecordDelivery(h.ID, eventName, string(body), attempt+1, 0, err.Error(), false)
 			continue
