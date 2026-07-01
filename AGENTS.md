@@ -42,9 +42,9 @@ Gin defaults to release mode unless `GIN_MODE` is set.
 ## Architecture
 
 - **Backend**: Go 1.26+ with Gin. SQLite via `modernc.org/sqlite` (pure Go, no CGO).
-- **Frontend**: Single `frontend/index.html` (~3500 lines) with inline CSS/JS. No build step, no framework.
+- **Frontend**: Single `frontend/index.html` (~4500 lines) with inline CSS/JS. No build step, no framework. `frontend/js/`, `frontend/css/`, and `frontend/assets/icons/` exist but are mostly empty — keep the SPA single-file unless there's a strong reason to split.
 - **Assets**: Embedded via `//go:embed all:frontend`. No external files needed at runtime.
-- **Routing**: Hash-based SPA (`#store`, `#game/<id>`, `#developer/<name>`). All non-API/non-play routes fall back to `index.html`.
+- **Routing**: Hash-based SPA (`#store`, `#game/<id>`, `#developer/<name>`). All non-API/non-play routes fall back to `index.html`. API routes are mounted on both `/api/v1/` (canonical) and `/api/` (permanent alias for backward compat) — see `internal/server/routes.go` and the route-equivalence test in `internal/server/routes_test.go`.
 - **Game files**: Served at `/play/:id/*filepath` for iframe embedding. Stored at `{dataDir}/games/{gameID}/`.
 - **Uploads**: Images at `{dataDir}/uploads/`, served at `/uploads/`.
 
@@ -74,15 +74,21 @@ SQLite with WAL mode. Schema and migrations live in `internal/storage/db.go`. Mi
 
 ## Testing
 
-No automated test suite. Manual testing:
+Lightweight Go table tests live in `internal/models/` (`featured_test.go`, `upload_session_test.go`).
+Run them with `go test ./...` — all other packages have no test files. There is no
+frontend test setup and no CI linter; the closest built-in check is `go vet ./...`.
+
+Manual / E2E:
 1. Build and run server
 2. Seed demo data: `curl -X POST http://localhost:8080/api/seed`
 3. Open `http://localhost:8080` and test flows
+4. Chunked-upload E2E (builds a fresh binary, provisions a verified user via SQL, exercises the upload/GC race fix): `scripts/verify-chunked-upload.sh` — needs `go, sqlite3, python3+bcrypt, curl, dd, zip, sha256sum`.
 
 ## Important Files
 
 - `main.go` — entry point, CLI flags, `.env` loader, TLS setup
 - `internal/server/server.go` — Gin router, all routes, SPA fallback
+- `internal/server/routes.go` — `mountAPIRoutes` shared by `/api/v1/` and `/api/`
 - `internal/storage/db.go` — SQLite init, schema, migrations
 - `internal/storage/files.go` — game file storage, ZIP extraction
 - `frontend/index.html` — entire SPA frontend

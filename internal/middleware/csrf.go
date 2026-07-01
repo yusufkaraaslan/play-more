@@ -116,13 +116,19 @@ func isChunkUploadPUT(method, path string) bool {
 	if method != http.MethodPut {
 		return false
 	}
-	const prefix = "/api/uploads/"
-	const suffix = "/chunks"
-	if !strings.HasPrefix(path, prefix) || !strings.HasSuffix(path, suffix) {
+	// The chunked-upload PUT path is /api/uploads/:upload_id/chunks
+	// (and the v1 alias /api/v1/uploads/:upload_id/chunks). Both
+	// are mounted on the same handler — see routes.go.
+	var mid string
+	switch {
+	case strings.HasPrefix(path, "/api/uploads/") && strings.HasSuffix(path, "/chunks"):
+		mid = path[len("/api/uploads/") : len(path)-len("/chunks")]
+	case strings.HasPrefix(path, "/api/v1/uploads/") && strings.HasSuffix(path, "/chunks"):
+		mid = path[len("/api/v1/uploads/") : len(path)-len("/chunks")]
+	default:
 		return false
 	}
 	// Exclude /api/uploads/.../chunks/extra — only a single segment for upload_id.
-	mid := path[len(prefix) : len(path)-len(suffix)]
 	if mid == "" || strings.Contains(mid, "/") {
 		return false
 	}
