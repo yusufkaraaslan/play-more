@@ -66,10 +66,10 @@ func RecordPlaytime(userID, gameID string, seconds float64) error {
 }
 
 type UserStats struct {
-	GamesOwned   int     `json:"games_owned"`
-	HoursPlayed  float64 `json:"hours_played"`
-	ReviewCount  int     `json:"review_count"`
-	GamesUploaded int    `json:"games_uploaded"`
+	GamesOwned    int     `json:"games_owned"`
+	HoursPlayed   float64 `json:"hours_played"`
+	ReviewCount   int     `json:"review_count"`
+	GamesUploaded int     `json:"games_uploaded"`
 }
 
 func GetUserStats(userID string) (*UserStats, error) {

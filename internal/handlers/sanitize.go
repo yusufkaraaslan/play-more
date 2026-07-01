@@ -73,12 +73,12 @@ func SanitizeWebURL(input string) string {
 
 // SanitizeCSS sanitises user-supplied custom CSS for developer pages.
 // It strips patterns that enable data exfiltration or XSS:
-//   • @import / @font-face  (external resource loading)
-//   • url(https://…)         (external URLs in backgrounds, cursors, etc.)
-//   • expression(…)          (IE legacy XSS)
-//   • behavior: / -moz-binding: (legacy XSS)
-//   • javascript:            (scheme-based XSS)
-//   • < >                    (</style> injection)
+//   - @import / @font-face  (external resource loading)
+//   - url(https://…)         (external URLs in backgrounds, cursors, etc.)
+//   - expression(…)          (IE legacy XSS)
+//   - behavior: / -moz-binding: (legacy XSS)
+//   - javascript:            (scheme-based XSS)
+//   - < >                    (</style> injection)
 //
 // This is a *server-side* layer — the frontend also runs its own sanitiser,
 // but an attacker could bypass the frontend by calling the API directly.

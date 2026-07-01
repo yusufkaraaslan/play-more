@@ -156,4 +156,3 @@ func RegenerateAvatar(username string) {
 	avatarDir := filepath.Join(storage.GamesDir, "..", "avatars")
 	os.Remove(filepath.Join(avatarDir, username+".png"))
 }
-

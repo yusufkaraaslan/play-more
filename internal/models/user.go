@@ -73,7 +73,9 @@ func CreateUser(username, email, password string) (*User, error) {
 
 func scanUser(user *User, linksJSON string) {
 	json.Unmarshal([]byte(linksJSON), &user.Links)
-	if user.Links == nil { user.Links = []Link{} }
+	if user.Links == nil {
+		user.Links = []Link{}
+	}
 }
 
 func GetUserByEmail(email string) (*User, error) {
@@ -83,7 +85,9 @@ func GetUserByEmail(email string) (*User, error) {
 		`SELECT id, username, email, password, avatar_url, bio, is_developer, banner_url, theme_color, links, autoplay_media, email_verified, created_at FROM users WHERE email = ?`,
 		email,
 	).Scan(&user.ID, &user.Username, &user.Email, &user.Password, &user.AvatarURL, &user.Bio, &user.IsDeveloper, &user.BannerURL, &user.ThemeColor, &linksJSON, &user.AutoplayMedia, &user.EmailVerified, &user.CreatedAt)
-	if err != nil { return nil, fmt.Errorf("get user by email: %w", err) }
+	if err != nil {
+		return nil, fmt.Errorf("get user by email: %w", err)
+	}
 	scanUser(user, linksJSON)
 	return user, nil
 }
@@ -95,7 +99,9 @@ func GetUserByID(id string) (*User, error) {
 		`SELECT id, username, email, password, avatar_url, bio, is_developer, banner_url, theme_color, links, autoplay_media, email_verified, created_at FROM users WHERE id = ?`,
 		id,
 	).Scan(&user.ID, &user.Username, &user.Email, &user.Password, &user.AvatarURL, &user.Bio, &user.IsDeveloper, &user.BannerURL, &user.ThemeColor, &linksJSON, &user.AutoplayMedia, &user.EmailVerified, &user.CreatedAt)
-	if err != nil { return nil, fmt.Errorf("get user by id: %w", err) }
+	if err != nil {
+		return nil, fmt.Errorf("get user by id: %w", err)
+	}
 	scanUser(user, linksJSON)
 	return user, nil
 }
@@ -107,7 +113,9 @@ func GetUserByUsername(username string) (*User, error) {
 		`SELECT id, username, email, password, avatar_url, bio, is_developer, banner_url, theme_color, links, autoplay_media, email_verified, created_at FROM users WHERE username = ?`,
 		username,
 	).Scan(&user.ID, &user.Username, &user.Email, &user.Password, &user.AvatarURL, &user.Bio, &user.IsDeveloper, &user.BannerURL, &user.ThemeColor, &linksJSON, &user.AutoplayMedia, &user.EmailVerified, &user.CreatedAt)
-	if err != nil { return nil, fmt.Errorf("get user by username: %w", err) }
+	if err != nil {
+		return nil, fmt.Errorf("get user by username: %w", err)
+	}
 	scanUser(user, linksJSON)
 	return user, nil
 }

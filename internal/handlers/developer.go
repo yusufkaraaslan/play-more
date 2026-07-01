@@ -39,17 +39,17 @@ func GetDeveloperPage(c *gin.Context) {
 }
 
 type devPageInput struct {
-	DisplayName   string                  `json:"display_name"`
-	BannerURL     string                  `json:"banner_url"`
-	ThemeColor    string                  `json:"theme_color"`
-	ThemePreset   string                  `json:"theme_preset"`
-	About         string                  `json:"about"`
-	FontHeading   string                  `json:"font_heading"`
-	FontBody      string                  `json:"font_body"`
-	Links         []models.DeveloperLink  `json:"links"`
-	FeaturedGames []string                `json:"featured_games"`
-	PageLayout    []models.PageSection    `json:"page_layout"`
-	CustomCSS     string                  `json:"custom_css"`
+	DisplayName   string                 `json:"display_name"`
+	BannerURL     string                 `json:"banner_url"`
+	ThemeColor    string                 `json:"theme_color"`
+	ThemePreset   string                 `json:"theme_preset"`
+	About         string                 `json:"about"`
+	FontHeading   string                 `json:"font_heading"`
+	FontBody      string                 `json:"font_body"`
+	Links         []models.DeveloperLink `json:"links"`
+	FeaturedGames []string               `json:"featured_games"`
+	PageLayout    []models.PageSection   `json:"page_layout"`
+	CustomCSS     string                 `json:"custom_css"`
 }
 
 func UpdateDeveloperPage(c *gin.Context) {
