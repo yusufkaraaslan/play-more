@@ -19,13 +19,14 @@ type RouteSpec struct {
 	Path   string `yaml:"path"`
 }
 
-// openAPI is the minimal projection of an OpenAPI 3.0 document used
-// by the drift check. We deliberately do not decode the full spec
-// (request bodies, responses, schemas) — those are documentation
-// niceties; the drift check cares only that every registered route
-// has at least a method+path entry in the YAML.
+// openAPI is the projection of an OpenAPI 3.0 document used by the
+// drift + schema checks. Paths keeps the method+path table for
+// drift; Components lets the schema check resolve $refs.
 type openAPI struct {
-	Paths map[string]map[string]any `yaml:"paths"`
+	Paths      map[string]map[string]any `yaml:"paths"`
+	Components struct {
+		Schemas map[string]any `yaml:"schemas"`
+	} `yaml:"components"`
 }
 
 // LoadOpenAPISpec reads the OpenAPI YAML from disk (relative to
@@ -229,4 +230,166 @@ func normalizeGinPathToOpenAPI(p string) string {
 
 func isAlphaNumeric(c byte) bool {
 	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+}
+
+// SchemaIssue is one spot where the OpenAPI document is not
+// described well enough to generate a client from: a missing
+// success-response schema, a request body without a schema, or a
+// $ref that doesn't resolve.
+type SchemaIssue struct {
+	Method string
+	Path   string
+	Detail string
+}
+
+func (s SchemaIssue) String() string {
+	return fmt.Sprintf("%s %s: %s", s.Method, s.Path, s.Detail)
+}
+
+// CheckSchemaCompleteness upgrades the drift check from "the
+// method+path exists in the YAML" to "the operation is actually
+// described". Applied to EVERY operation: responses must exist; any
+// declared content block must carry a schema; any declared
+// requestBody must carry a content schema; and every $ref must
+// resolve to a defined component.
+//
+// requireResponseSchema selects the operations that must ALSO carry
+// a full success-response schema (every 2xx/non-204 response gets a
+// content schema). The developer/SDK surface (webhooks, builds,
+// api-keys, the game + upload endpoints the SDK targets) passes this
+// predicate; the rest of the app is held to ref-integrity only, so
+// legacy endpoints documented with prose responses don't block the
+// gate while the codegen-facing surface is fully typed.
+//
+// Returns the list of issues (empty when complete), sorted for
+// deterministic test output.
+func CheckSchemaCompleteness(spec *openAPI, requireResponseSchema func(path string) bool) []SchemaIssue {
+	defined := map[string]bool{}
+	for name := range spec.Components.Schemas {
+		defined["#/components/schemas/"+name] = true
+	}
+
+	var issues []SchemaIssue
+	for _, path := range sortedKeys(spec.Paths) {
+		methods := spec.Paths[path]
+		requireResp := requireResponseSchema != nil && requireResponseSchema(path)
+		for _, method := range sortedKeys(methods) {
+			if !httpMethods[strings.ToLower(method)] {
+				continue
+			}
+			m := strings.ToUpper(method)
+			op, ok := methods[method].(map[string]any)
+			if !ok {
+				issues = append(issues, SchemaIssue{m, path, "operation is not a mapping"})
+				continue
+			}
+
+			// Responses must exist and be non-empty.
+			responses, _ := op["responses"].(map[string]any)
+			if len(responses) == 0 {
+				issues = append(issues, SchemaIssue{m, path, "no responses documented"})
+			}
+			for _, code := range sortedKeys(responses) {
+				resp, ok := responses[code].(map[string]any)
+				if !ok {
+					continue
+				}
+				content, hasContent := resp["content"].(map[string]any)
+				if requireResp && is2xxWithBody(code) && (!hasContent || len(content) == 0) {
+					issues = append(issues, SchemaIssue{m, path, "response " + code + " has no content schema"})
+					continue
+				}
+				if hasContent {
+					issues = append(issues, checkMediaSchemas(m, path, "response "+code, content, defined)...)
+				}
+			}
+
+			// A declared requestBody must carry a content schema.
+			if rbAny, ok := op["requestBody"]; ok {
+				rb, ok := rbAny.(map[string]any)
+				if !ok {
+					issues = append(issues, SchemaIssue{m, path, "requestBody is not a mapping"})
+					continue
+				}
+				content, ok := rb["content"].(map[string]any)
+				if !ok || len(content) == 0 {
+					issues = append(issues, SchemaIssue{m, path, "requestBody has no content schema"})
+					continue
+				}
+				issues = append(issues, checkMediaSchemas(m, path, "requestBody", content, defined)...)
+			}
+		}
+	}
+	sort.Slice(issues, func(i, j int) bool {
+		if issues[i].Path != issues[j].Path {
+			return issues[i].Path < issues[j].Path
+		}
+		if issues[i].Method != issues[j].Method {
+			return issues[i].Method < issues[j].Method
+		}
+		return issues[i].Detail < issues[j].Detail
+	})
+	return issues
+}
+
+// checkMediaSchemas verifies every media type under a content
+// object declares a `schema`, and that all $refs within resolve.
+func checkMediaSchemas(method, path, where string, content map[string]any, defined map[string]bool) []SchemaIssue {
+	var issues []SchemaIssue
+	for _, mt := range sortedKeys(content) {
+		media, ok := content[mt].(map[string]any)
+		if !ok {
+			continue
+		}
+		schema, ok := media["schema"]
+		if !ok {
+			issues = append(issues, SchemaIssue{method, path, where + " (" + mt + ") has no schema"})
+			continue
+		}
+		for _, ref := range collectRefs(schema) {
+			if !defined[ref] {
+				issues = append(issues, SchemaIssue{method, path, where + " references undefined schema " + ref})
+			}
+		}
+	}
+	return issues
+}
+
+// collectRefs walks an arbitrary decoded YAML/JSON node and returns
+// every `$ref` string value found (at any depth).
+func collectRefs(node any) []string {
+	var out []string
+	switch v := node.(type) {
+	case map[string]any:
+		for k, val := range v {
+			if k == "$ref" {
+				if s, ok := val.(string); ok {
+					out = append(out, s)
+				}
+				continue
+			}
+			out = append(out, collectRefs(val)...)
+		}
+	case []any:
+		for _, item := range v {
+			out = append(out, collectRefs(item)...)
+		}
+	}
+	return out
+}
+
+// is2xxWithBody reports whether an OpenAPI response status code
+// denotes a success that should carry a body (and therefore a
+// schema). 204/205 are bodyless successes.
+func is2xxWithBody(code string) bool {
+	return len(code) == 3 && code[0] == '2' && code != "204" && code != "205"
+}
+
+func sortedKeys[V any](m map[string]V) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }

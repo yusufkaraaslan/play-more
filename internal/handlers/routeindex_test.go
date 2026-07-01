@@ -191,6 +191,59 @@ func mountDriftFixture(r *gin.Engine) {
 	r.DELETE("/api/v1/games/:id/builds/:build_id", func(c *gin.Context) {})
 }
 
+// developerSurfacePath reports whether an OpenAPI path is part of
+// the developer/SDK surface that must carry full request+response
+// schemas — the operations a client generator (the Go SDK, and the
+// planned Python/JS SDKs) actually targets. The rest of the app is
+// held to ref-integrity only, so legacy endpoints documented with
+// prose responses don't block the gate while the codegen-facing
+// surface stays fully typed.
+func developerSurfacePath(path string) bool {
+	if path == "/games" || path == "/games/{id}" {
+		return true
+	}
+	for _, p := range []string{
+		"/webhooks", "/api-keys", "/uploads",
+		"/games/{id}/builds", "/games/{id}/reupload", "/games/{id}/devlogs",
+	} {
+		if path == p || strings.HasPrefix(path, p+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+// TestOpenAPISchemaIntegrity enforces, across the WHOLE spec, that
+// every operation documents responses, every declared content block
+// carries a schema, every requestBody carries a content schema, and
+// every $ref resolves to a defined component. This upgrades the
+// method+path drift check to catch dangling refs and half-written
+// operations.
+func TestOpenAPISchemaIntegrity(t *testing.T) {
+	spec, err := LoadOpenAPISpec()
+	if err != nil {
+		t.Fatalf("load spec: %v", err)
+	}
+	for _, is := range CheckSchemaCompleteness(spec, nil) {
+		t.Errorf("openapi integrity: %s", is)
+	}
+}
+
+// TestOpenAPIDeveloperSurfaceFullyTyped enforces that every
+// developer/SDK-facing operation additionally declares a full
+// success-response schema, so the spec is codegen-ready for the
+// SDKs. If you add a webhook/build/api-key/upload/core-game
+// endpoint, document its 2xx response body (or this fails).
+func TestOpenAPIDeveloperSurfaceFullyTyped(t *testing.T) {
+	spec, err := LoadOpenAPISpec()
+	if err != nil {
+		t.Fatalf("load spec: %v", err)
+	}
+	for _, is := range CheckSchemaCompleteness(spec, developerSurfacePath) {
+		t.Errorf("developer-surface schema gap: %s", is)
+	}
+}
+
 func formatDriftReport(d DriftReport) string {
 	var b strings.Builder
 	if len(d.MissingFromYAML) > 0 {

@@ -229,6 +229,17 @@ func isDisallowedTargetIP(ip net.IP) bool {
 		ip.IsUnspecified()
 }
 
+// IsDisallowedWebhookTargetIP is the exported form of the SSRF IP
+// policy, used by the dispatcher's dial-time guard so registration
+// and delivery apply the exact same rule (defends DNS rebinding).
+// It honours AllowPrivateWebhookTargets so tests may reach 127.0.0.1.
+func IsDisallowedWebhookTargetIP(ip net.IP) bool {
+	if AllowPrivateWebhookTargets {
+		return false
+	}
+	return isDisallowedTargetIP(ip)
+}
+
 // ListWebhooks returns the user's webhooks. The Secret field
 // is cleared — listing never reveals it.
 func ListWebhooks(userID string) ([]*Webhook, error) {

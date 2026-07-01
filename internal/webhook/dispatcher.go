@@ -18,8 +18,10 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/yusufkaraaslan/play-more/internal/models"
@@ -40,6 +42,13 @@ type Event struct {
 // worse for a self-hosted app where a misconfigured webhook URL
 // shouldn't take down the publishing path.
 const queueDepth = 1024
+
+// workerCount is the number of concurrent dispatcher workers. More
+// than one so a single slow event (a target that 5xxs through its
+// 0s/5s/30s retry schedule, ~35s) doesn't head-of-line-block every
+// other user's events behind it. Fan-out within one event is still
+// parallel; this parallelizes across events.
+const workerCount = 4
 
 var (
 	queue   chan Event
@@ -63,10 +72,12 @@ func Start() {
 	queue = q
 	ctx, c := context.WithCancel(context.Background())
 	cancel = c
-	workers.Add(1)
-	// The worker reads from its own channel handle, not the package
-	// var, so Stop() can clear `queue` without racing the worker.
-	go runWorker(ctx, q)
+	// Workers read from their own channel handle, not the package
+	// var, so Stop() can clear `queue` without racing them.
+	for i := 0; i < workerCount; i++ {
+		workers.Add(1)
+		go runWorker(ctx, q)
+	}
 }
 
 // Stop signals the worker to drain and exit. Safe to call when
@@ -171,12 +182,58 @@ var retrySchedule = []time.Duration{
 
 // deliveryClient is shared across all deliveries so keep-alive
 // connections are reused instead of re-doing a TCP+TLS handshake
-// for every send to the same endpoint.
-var deliveryClient = &http.Client{Timeout: 10 * time.Second}
+// for every send to the same endpoint. Its dialer re-validates the
+// resolved IP at connect time via ssrfDialControl, which closes the
+// DNS-rebinding gap that registration-time validation alone leaves
+// open (a host that resolved to a public IP at create time could
+// later rebind to 127.0.0.1 / metadata).
+var deliveryClient = &http.Client{
+	Timeout: 10 * time.Second,
+	Transport: &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   10 * time.Second,
+			KeepAlive: 30 * time.Second,
+			Control:   ssrfDialControl,
+		}).DialContext,
+		MaxIdleConns:          100,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	},
+}
+
+// ssrfDialControl runs after DNS resolution, immediately before the
+// socket connects, with the concrete IP:port being dialed. Because
+// it inspects the address actually being connected to (not the
+// hostname resolved earlier at registration), it defends against
+// DNS rebinding. Honours models.AllowPrivateWebhookTargets so tests
+// can reach 127.0.0.1.
+func ssrfDialControl(network, address string, _ syscall.RawConn) error {
+	host, _, err := net.SplitHostPort(address)
+	if err != nil {
+		return err
+	}
+	ip := net.ParseIP(host)
+	if ip == nil || models.IsDisallowedWebhookTargetIP(ip) {
+		return fmt.Errorf("webhook target address %s is not permitted", address)
+	}
+	return nil
+}
 
 func deliverOne(ctx context.Context, h *models.Webhook, eventName string, body []byte) {
 	client := deliveryClient
 	sig := models.WebhookSignature(h.Secret, body)
+	// The payload is identical across a delivery's retry attempts and
+	// is never read back by the deliveries API — persist it only on
+	// the first attempt so a flaky target doesn't triple the stored
+	// bytes.
+	payloadFor := func(attempt int) string {
+		if attempt == 0 {
+			return string(body)
+		}
+		return ""
+	}
 	for attempt, wait := range retrySchedule {
 		if wait > 0 {
 			select {
@@ -207,7 +264,7 @@ func deliverOne(ctx context.Context, h *models.Webhook, eventName string, body [
 				return
 			}
 			// Network error — retry until we run out of attempts.
-			_ = models.RecordDelivery(h.ID, eventName, string(body), attempt+1, 0, err.Error(), false)
+			_ = models.RecordDelivery(h.ID, eventName, payloadFor(attempt), attempt+1, 0, err.Error(), false)
 			continue
 		}
 		// Drain the body (cap to 512 bytes) so the connection can be reused.
@@ -215,7 +272,7 @@ func deliverOne(ctx context.Context, h *models.Webhook, eventName string, body [
 		resp.Body.Close()
 		excerpt := string(bodyBytes)
 		success := resp.StatusCode >= 200 && resp.StatusCode < 300
-		_ = models.RecordDelivery(h.ID, eventName, string(body), attempt+1, resp.StatusCode, excerpt, success)
+		_ = models.RecordDelivery(h.ID, eventName, payloadFor(attempt), attempt+1, resp.StatusCode, excerpt, success)
 		if success {
 			_ = models.MarkTriggered(h.ID, true)
 			return

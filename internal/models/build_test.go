@@ -3,6 +3,7 @@ package models_test
 import (
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/google/uuid"
@@ -158,5 +159,62 @@ func TestPreviousActiveBuild_PicksPreceding(t *testing.T) {
 	}
 	if prev.BuildNumber != 1 {
 		t.Errorf("rollback target must be build #1 (the one before active #2), got #%d", prev.BuildNumber)
+	}
+}
+
+// TestSetActiveBuild_ConcurrentIsSafe locks in the demote-then-
+// promote atomicity guarantee: many concurrent activations of
+// different builds must leave exactly ONE active build for the
+// channel, with games.entry_file consistent with it — never zero,
+// never two.
+func TestSetActiveBuild_ConcurrentIsSafe(t *testing.T) {
+	_ = testutil.NewTestServer(t)
+	owner := testutil.SeedUser(t, nil, testutil.SeedUserOpts{EmailVerified: true})
+	gameID := testutil.SeedGame(t, nil, owner.ID, "RaceActivate") // build #1 active stable
+
+	const n = 8
+	ids := make([]string, n)
+	for i := 0; i < n; i++ {
+		ids[i] = testutil.SeedBuild(t, nil, gameID, owner.ID, "stable")
+	}
+
+	var wg sync.WaitGroup
+	errs := make(chan error, n)
+	for _, id := range ids {
+		wg.Add(1)
+		go func(bid string) {
+			defer wg.Done()
+			if err := models.SetActiveBuild(bid, gameID, owner.ID); err != nil {
+				errs <- err
+			}
+		}(id)
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Errorf("concurrent SetActiveBuild error: %v", err)
+	}
+
+	var active int
+	if err := storage.DB.QueryRow(
+		`SELECT COUNT(*) FROM game_builds WHERE game_id = ? AND channel = 'stable' AND is_active = 1`,
+		gameID,
+	).Scan(&active); err != nil {
+		t.Fatalf("count active: %v", err)
+	}
+	if active != 1 {
+		t.Fatalf("exactly one stable build must be active after concurrent activation, got %d", active)
+	}
+
+	ab, err := models.ActiveBuild(gameID, string(models.BuildChannelStable))
+	if err != nil {
+		t.Fatalf("ActiveBuild: %v", err)
+	}
+	game, err := models.GetGameByID(gameID)
+	if err != nil {
+		t.Fatalf("GetGameByID: %v", err)
+	}
+	if game.EntryFile != ab.EntryFile {
+		t.Errorf("games.entry_file (%q) out of sync with active build (%q)", game.EntryFile, ab.EntryFile)
 	}
 }

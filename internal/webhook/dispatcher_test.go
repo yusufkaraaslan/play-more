@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/yusufkaraaslan/play-more/internal/models"
+	"github.com/yusufkaraaslan/play-more/internal/storage"
 	"github.com/yusufkaraaslan/play-more/internal/testutil"
 	"github.com/yusufkaraaslan/play-more/internal/webhook"
 )
@@ -170,6 +171,47 @@ func TestDispatcher_CrossTenantIsolation(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 	if n := atomic.LoadInt32(&bHits); n != 0 {
 		t.Errorf("user B's webhook received %d deliveries for user A's event — cross-tenant leak", n)
+	}
+}
+
+// TestDispatcher_DialGuardBlocksRebind is the regression test for
+// DNS rebinding: even if a webhook row points at a loopback/private
+// address (e.g. a host that resolved public at registration and
+// later rebinds), the delivery-time dial guard must refuse to
+// connect — the target must receive nothing.
+func TestDispatcher_DialGuardBlocksRebind(t *testing.T) {
+	var hits int32
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hits, 1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer target.Close()
+
+	_ = testutil.NewTestServer(t)
+	// Enforce the guard for delivery (testutil turns it off).
+	prev := models.AllowPrivateWebhookTargets
+	models.AllowPrivateWebhookTargets = false
+	t.Cleanup(func() { models.AllowPrivateWebhookTargets = prev })
+
+	// Insert the webhook row directly, bypassing CreateWebhook's
+	// registration-time validation (which would already reject a
+	// loopback URL). This isolates the delivery-time defense.
+	user := testutil.SeedUser(t, nil, testutil.SeedUserOpts{EmailVerified: true})
+	if _, err := storage.DB.Exec(
+		`INSERT INTO webhooks (id, user_id, url, events, secret, active) VALUES (?, ?, ?, ?, ?, 1)`,
+		"wh_rebind", user.ID, target.URL, `["game.published"]`, "secret123",
+	); err != nil {
+		t.Fatalf("insert webhook: %v", err)
+	}
+
+	webhook.Start()
+	t.Cleanup(webhook.Stop)
+	webhook.Dispatch(models.WebhookEventGamePublished, user.ID, map[string]any{"x": 1})
+
+	// Give the (blocked) delivery time to attempt and fail at dial.
+	time.Sleep(300 * time.Millisecond)
+	if n := atomic.LoadInt32(&hits); n != 0 {
+		t.Errorf("dial guard must block loopback delivery, but target got %d hits", n)
 	}
 }
 

@@ -331,7 +331,11 @@ paths:
         - session: []
         - apiKey: []
       responses:
-        "200": { description: Game deleted }
+        "200":
+          description: Game deleted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessageResponse" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -362,7 +366,11 @@ paths:
                   type: string
                   format: binary
       responses:
-        "200": { description: Files replaced }
+        "200":
+          description: Files replaced — a new active stable build was created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReuploadResponse" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
@@ -1250,6 +1258,9 @@ paths:
       responses:
         "200":
           description: Chunk written
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChunkAccepted" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "404": { $ref: "#/components/responses/NotFound" }
   /uploads/{upload_id}:
@@ -1282,7 +1293,7 @@ paths:
           required: true
           schema: { type: string }
       responses:
-        "200": { description: Session cancelled }
+        "204": { description: Session cancelled (no content) }
   /uploads/{upload_id}/finalize:
     post:
       tags: [Uploads]
@@ -1334,6 +1345,9 @@ paths:
       responses:
         "200":
           description: API keys (secrets redacted)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiKeyList" }
     post:
       tags: [API Keys]
       summary: Generate a new API key (session only — secrets can't create secrets)
@@ -1371,7 +1385,11 @@ paths:
           required: true
           schema: { type: string }
       responses:
-        "200": { description: Key revoked }
+        "200":
+          description: Key revoked
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessageResponse" }
         "404": { $ref: "#/components/responses/NotFound" }
 
   # ===== Build channels =====
@@ -1436,7 +1454,11 @@ paths:
         - session: []
         - apiKey: []
       responses:
-        "200": { description: Deleted }
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OKResponse" }
         "400": { description: "Build is the active build for its channel" }
         "404": { $ref: "#/components/responses/NotFound" }
   /games/{id}/builds/{build_id}/activate:
@@ -1456,7 +1478,11 @@ paths:
           required: true
           schema: { type: string }
       responses:
-        "200": { description: Build activated }
+        "200":
+          description: Build activated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OKResponse" }
         "404": { $ref: "#/components/responses/NotFound" }
   /games/{id}/builds/{build_id}/rollback:
     post:
@@ -1475,7 +1501,11 @@ paths:
           required: true
           schema: { type: string, description: "The current active build to roll back from" }
       responses:
-        "200": { description: Rolled back }
+        "200":
+          description: Rolled back
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OKResponse" }
         "400": { description: "Build is not the active build, or no previous build exists" }
         "404": { $ref: "#/components/responses/NotFound" }
 
@@ -1568,7 +1598,11 @@ paths:
                   items: { type: string }
                 active: { type: boolean }
       responses:
-        "200": { description: Updated }
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OKResponse" }
         "404": { $ref: "#/components/responses/NotFound" }
     delete:
       tags: [Webhooks]
@@ -1576,7 +1610,11 @@ paths:
       security:
         - session: []
       responses:
-        "200": { description: Deleted }
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OKResponse" }
         "404": { $ref: "#/components/responses/NotFound" }
   /webhooks/{id}/deliveries:
     get:
@@ -1773,6 +1811,32 @@ components:
       required: [error]
       properties:
         error: { type: string, description: "Human-readable error message" }
+    OKResponse:
+      type: object
+      required: [ok]
+      properties:
+        ok: { type: boolean, description: "True when the operation succeeded" }
+    MessageResponse:
+      type: object
+      required: [message]
+      properties:
+        message: { type: string, description: "Human-readable status message" }
+    ApiKeyList:
+      type: object
+      properties:
+        keys:
+          type: array
+          items: { $ref: "#/components/schemas/apiKey" }
+    ReuploadResponse:
+      type: object
+      properties:
+        message: { type: string }
+        build_id: { type: string }
+        build_number: { type: integer }
+    ChunkAccepted:
+      type: object
+      properties:
+        received_bytes: { type: integer, format: int64, description: "Total bytes received for the session so far" }
     User:
       type: object
       properties:
