@@ -1,0 +1,1992 @@
+openapi: 3.0.3
+info:
+  title: PlayMore API
+  version: "1.0"
+  description: |
+    Self-hosted HTML5 game publishing platform.
+
+    All endpoints are mounted under `/api/v1/` (canonical). The unversioned
+    `/api/` path is a permanent alias and behaves identically. New
+    integrations should use `/api/v1/`.
+
+    Authentication: session cookie (set by `POST /api/v1/auth/login`) or
+    Bearer API key (`Authorization: Bearer pm_k_...`).
+  contact:
+    name: PlayMore
+    url: https://playmore.world
+  license:
+    name: MIT
+    url: https://github.com/yusufkaraaslan/play-more/blob/main/LICENSE
+
+servers:
+  - url: /api/v1
+    description: Canonical v1 API
+  - url: /api
+    description: Permanent unversioned alias (identical to v1)
+
+tags:
+  - name: Auth
+    description: Account creation, login, email verification
+  - name: Games
+    description: Game catalog, uploads, metadata
+  - name: Reviews
+    description: User reviews on games
+  - name: Library
+    description: A user's owned games
+  - name: Wishlist
+    description: Games a user wants to play
+  - name: Profile
+    description: Public user profile and self-edit
+  - name: Developer
+    description: Developer storefront pages
+  - name: Social
+    description: Follow graph
+  - name: Collections
+    description: User-curated game collections
+  - name: Devlogs
+    description: Developer posts on a game
+  - name: Comments
+    description: Comments on devlogs
+  - name: Feed
+    description: Aggregated activity timeline
+  - name: Achievements
+    description: Platform achievement system
+  - name: Analytics
+    description: View tracking and per-game analytics
+  - name: Notifications
+    description: In-app notification feed
+  - name: Uploads
+    description: File uploads (single-shot and chunked)
+  - name: API Keys
+    description: Programmatic access tokens
+  - name: Webhooks
+    description: Outbound event subscriptions (HMAC-SHA256 signed)
+  - name: Builds
+    description: Per-game build channels (internal/beta/stable) with promote/rollback
+  - name: Admin
+    description: Site administration (admin only)
+
+security: []
+
+paths:
+  # ===== Auth =====
+  /auth/captcha:
+    get:
+      tags: [Auth]
+      summary: Issue a CAPTCHA challenge
+      description: Returns a server-issued proof-of-work challenge used during registration.
+      responses:
+        "200":
+          description: Challenge issued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  challenge: { type: string }
+                  difficulty: { type: integer }
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Create a new account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "200":
+          description: Registration accepted (SMTP configured — verification email sent)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  email_pending: { type: boolean }
+        "201":
+          description: Registration succeeded and user auto-logged in (SMTP not configured — demo mode)
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Log in with email and password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Login succeeded — sets `session` cookie
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user: { $ref: "#/components/schemas/User" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Clear the session cookie
+      responses:
+        "200": { description: Logged out }
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Get the current authenticated user
+      security:
+        - session: []
+        - apiKey: []
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user: { $ref: "#/components/schemas/User" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /auth/verify:
+    post:
+      tags: [Auth]
+      summary: Verify an email address with a token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string }
+      responses:
+        "200": { description: Email verified }
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /auth/forgot-password:
+    post:
+      tags: [Auth]
+      summary: Request a password-reset email
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        "200": { description: If the address exists, an email is on its way }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /auth/reset-password:
+    post:
+      tags: [Auth]
+      summary: Reset password with a token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, new_password]
+              properties:
+                token: { type: string }
+                new_password: { type: string, minLength: 10 }
+      responses:
+        "200": { description: Password reset }
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /auth/resend-verification:
+    post:
+      tags: [Auth]
+      summary: Resend the verification email (session required)
+      security:
+        - session: []
+      responses:
+        "200": { description: Verification email sent (or already verified) }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  # ===== Games =====
+  /games:
+    get:
+      tags: [Games]
+      summary: List published games
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, default: 1, minimum: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 12, maximum: 60 }
+        - in: query
+          name: genre
+          schema: { type: string }
+        - in: query
+          name: search
+          schema: { type: string }
+        - in: query
+          name: sort
+          schema:
+            type: string
+            enum: [newest, oldest, popular, rating]
+            default: newest
+      responses:
+        "200":
+          description: Paged game list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  games:
+                    type: array
+                    items: { $ref: "#/components/schemas/Game" }
+                  total: { type: integer }
+                  page: { type: integer }
+                  limit: { type: integer }
+    post:
+      tags: [Games]
+      summary: Upload a new game
+      description: |
+        Multipart form. `game_file` is a `.zip`, `.html`, or `.htm`.
+        For files > 64 MiB or behind a reverse-proxy body cap, use the
+        chunked upload pipeline under `/uploads/`.
+      security:
+        - session: []
+        - apiKey: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/GameUploadRequest"
+      responses:
+        "201":
+          description: Game created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  game: { $ref: "#/components/schemas/Game" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/EmailVerificationRequired" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /games/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+    get:
+      tags: [Games]
+      summary: Get a single game (by id or slug)
+      responses:
+        "200":
+          description: Game detail
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  game: { $ref: "#/components/schemas/Game" }
+                  file_size: { type: integer, format: int64 }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [Games]
+      summary: Update game metadata
+      security:
+        - session: []
+        - apiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/GameUpdateRequest" }
+      responses:
+        "200":
+          description: Game updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  game: { $ref: "#/components/schemas/Game" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+    delete:
+      tags: [Games]
+      summary: Delete a game (owner only)
+      security:
+        - session: []
+        - apiKey: []
+      responses:
+        "200": { description: Game deleted }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /games/{id}/reupload:
+    post:
+      tags: [Games]
+      summary: Replace the game files (owner only)
+      description: |
+        Multipart form with `game_file`. Atomic swap with rollback
+        safety — a failed extraction never destroys the live files.
+      security:
+        - session: []
+        - apiKey: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [game_file]
+              properties:
+                game_file:
+                  type: string
+                  format: binary
+      responses:
+        "200": { description: Files replaced }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /games/{id}/visibility:
+    put:
+      tags: [Games]
+      summary: Publish or unpublish a game
+      security:
+        - session: []
+        - apiKey: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [published]
+              properties:
+                published: { type: boolean }
+      responses:
+        "200": { description: Visibility updated }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /games/{id}/cover:
+    post:
+      tags: [Games]
+      summary: Upload a cover image
+      security:
+        - session: []
+        - apiKey: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [cover]
+              properties:
+                cover:
+                  type: string
+                  format: binary
+      responses:
+        "200": { description: Cover updated }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /games/{id}/screenshots:
+    post:
+      tags: [Games]
+      summary: Add screenshots
+      security:
+        - session: []
+        - apiKey: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                screenshots:
+                  type: array
+                  items: { type: string, format: binary }
+      responses:
+        "200": { description: Screenshots added }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /games/{id}/screenshots/{index}:
+    delete:
+      tags: [Games]
+      summary: Remove a screenshot by index
+      security:
+        - session: []
+        - apiKey: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+        - in: path
+          name: index
+          required: true
+          schema: { type: integer, minimum: 0 }
+      responses:
+        "200": { description: Screenshot removed }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /games/{id}/reviews:
+    get:
+      tags: [Reviews]
+      summary: List reviews for a game
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Reviews
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  reviews:
+                    type: array
+                    items: { $ref: "#/components/schemas/Review" }
+    post:
+      tags: [Reviews]
+      summary: Submit a review
+      security:
+        - session: []
+        - apiKey: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [rating, text]
+              properties:
+                rating: { type: integer, minimum: 1, maximum: 5 }
+                text: { type: string, maxLength: 2000 }
+      responses:
+        "201":
+          description: Review created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  review: { $ref: "#/components/schemas/Review" }
+        "403": { $ref: "#/components/responses/EmailVerificationRequired" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /games/{id}/devlogs:
+    get:
+      tags: [Devlogs]
+      summary: List devlogs for a game
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Devlogs (newest first)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  devlogs:
+                    type: array
+                    items: { $ref: "#/components/schemas/Devlog" }
+    post:
+      tags: [Devlogs]
+      summary: Post a devlog
+      security:
+        - session: []
+        - apiKey: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, content]
+              properties:
+                title: { type: string, maxLength: 200 }
+                content: { type: string, maxLength: 50000 }
+      responses:
+        "201":
+          description: Devlog created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  devlog: { $ref: "#/components/schemas/Devlog" }
+        "403": { $ref: "#/components/responses/EmailVerificationRequired" }
+  /games/{id}/view:
+    post:
+      tags: [Analytics]
+      summary: Track a game view
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: View recorded }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /games/{id}/analytics:
+    get:
+      tags: [Analytics]
+      summary: Get analytics for a game (owner only)
+      security:
+        - session: []
+        - apiKey: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Analytics summary
+  /featured:
+    get:
+      tags: [Games]
+      summary: Get the store's featured game hero
+      responses:
+        "200":
+          description: Featured games (pinned + trending + newest, deduped)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  games:
+                    type: array
+                    items: { $ref: "#/components/schemas/Game" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  # ===== Reviews =====
+  /reviews/{id}:
+    delete:
+      tags: [Reviews]
+      summary: Delete a review (author only)
+      security:
+        - session: []
+        - apiKey: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Review deleted }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ===== Library =====
+  /library:
+    get:
+      tags: [Library]
+      summary: Get the current user's library
+      security:
+        - session: []
+        - apiKey: []
+      responses:
+        "200":
+          description: Library
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  games:
+                    type: array
+                    items: { $ref: "#/components/schemas/Game" }
+  /library/{game_id}:
+    parameters:
+      - in: path
+        name: game_id
+        required: true
+        schema: { type: string }
+    post:
+      tags: [Library]
+      summary: Add a game to the library
+      security:
+        - session: []
+        - apiKey: []
+      responses:
+        "200": { description: Added }
+        "429": { $ref: "#/components/responses/RateLimited" }
+    delete:
+      tags: [Library]
+      summary: Remove a game from the library
+      security:
+        - session: []
+        - apiKey: []
+      responses:
+        "200": { description: Removed }
+
+  # ===== Wishlist =====
+  /wishlist:
+    get:
+      tags: [Wishlist]
+      summary: Get the current user's wishlist
+      security:
+        - session: []
+        - apiKey: []
+      responses:
+        "200":
+          description: Wishlist
+  /wishlist/{game_id}:
+    parameters:
+      - in: path
+        name: game_id
+        required: true
+        schema: { type: string }
+    post:
+      tags: [Wishlist]
+      summary: Add a game to the wishlist
+      security:
+        - session: []
+        - apiKey: []
+      responses:
+        "200": { description: Added }
+    delete:
+      tags: [Wishlist]
+      summary: Remove a game from the wishlist
+      security:
+        - session: []
+        - apiKey: []
+      responses:
+        "200": { description: Removed }
+
+  # ===== Profile =====
+  /profile/{username}:
+    get:
+      tags: [Profile]
+      summary: Get a public profile by username
+      parameters:
+        - in: path
+          name: username
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Profile
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user: { $ref: "#/components/schemas/User" }
+  /profile:
+    put:
+      tags: [Profile]
+      summary: Update the current user's profile
+      security:
+        - session: []
+        - apiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProfileUpdateRequest" }
+      responses:
+        "200":
+          description: Profile updated
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /activity:
+    get:
+      tags: [Profile]
+      summary: Get the current user's activity
+      security:
+        - session: []
+        - apiKey: []
+      responses:
+        "200":
+          description: Activity entries (newest first)
+  /playtime:
+    post:
+      tags: [Profile]
+      summary: Record a playtime heartbeat
+      security:
+        - session: []
+        - apiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [game_id, seconds]
+              properties:
+                game_id: { type: string }
+                seconds: { type: integer, minimum: 0 }
+      responses:
+        "200": { description: Playtime recorded }
+        "403": { $ref: "#/components/responses/EmailVerificationRequired" }
+
+  # ===== Settings =====
+  /settings/account:
+    delete:
+      tags: [Auth]
+      summary: Delete the current user's account
+      security:
+        - session: []
+      responses:
+        "200": { description: Account deleted }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /settings/password:
+    put:
+      tags: [Auth]
+      summary: Change the current user's password
+      security:
+        - session: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [current_password, new_password]
+              properties:
+                current_password: { type: string }
+                new_password: { type: string, minLength: 10 }
+      responses:
+        "200": { description: Password changed }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  # ===== Developer pages =====
+  /developer/{username}:
+    get:
+      tags: [Developer]
+      summary: Get a developer's public page
+      parameters:
+        - in: path
+          name: username
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Developer page
+  /developer:
+    put:
+      tags: [Developer]
+      summary: Update the current user's developer page
+      security:
+        - session: []
+        - apiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DeveloperPageUpdate" }
+      responses:
+        "200": { description: Developer page updated }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /developer/{username}/games:
+    get:
+      tags: [Developer]
+      summary: List a developer's published games
+      parameters:
+        - in: path
+          name: username
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Developer's games
+
+  # ===== Achievements =====
+  /achievements/{username}:
+    get:
+      tags: [Achievements]
+      summary: Get a user's unlocked achievements
+      parameters:
+        - in: path
+          name: username
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Achievements
+  /achievements/check:
+    post:
+      tags: [Achievements]
+      summary: Check/unlock achievements for the current user
+      security:
+        - session: []
+        - apiKey: []
+      responses:
+        "200":
+          description: Newly unlocked achievements (if any)
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  # ===== Analytics =====
+  /analytics/client:
+    post:
+      tags: [Analytics]
+      summary: Submit client-side diagnostics (screen, GPU, etc.)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                screen_res: { type: string }
+                has_webgpu: { type: integer }
+                device_type: { type: string }
+                os: { type: string }
+      responses:
+        "200": { description: Recorded }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  # ===== Notifications =====
+  /notifications:
+    get:
+      tags: [Notifications]
+      summary: Get the current user's notifications (newest first)
+      security:
+        - session: []
+        - apiKey: []
+      responses:
+        "200":
+          description: Notifications
+  /notifications/read:
+    post:
+      tags: [Notifications]
+      summary: Mark notifications as read
+      security:
+        - session: []
+        - apiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ids:
+                  type: array
+                  items: { type: integer }
+      responses:
+        "200": { description: Marked }
+
+  # ===== Feed =====
+  /feed:
+    get:
+      tags: [Feed]
+      summary: Get the current user's aggregated activity feed
+      security:
+        - session: []
+        - apiKey: []
+      responses:
+        "200":
+          description: Feed entries (newest first)
+
+  # ===== Devlogs =====
+  /devlogs/{id}:
+    delete:
+      tags: [Devlogs]
+      summary: Delete a devlog (author only)
+      security:
+        - session: []
+        - apiKey: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Devlog deleted }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ===== Comments on devlogs =====
+  /devlogs/{id}/comments:
+    get:
+      tags: [Comments]
+      summary: List comments on a devlog
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Comments
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  comments:
+                    type: array
+                    items: { $ref: "#/components/schemas/Comment" }
+    post:
+      tags: [Comments]
+      summary: Post a comment on a devlog
+      security:
+        - session: []
+        - apiKey: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text: { type: string, maxLength: 5000 }
+                parent_id: { type: string }
+      responses:
+        "201":
+          description: Comment created
+        "403": { $ref: "#/components/responses/EmailVerificationRequired" }
+  /comments/{id}:
+    delete:
+      tags: [Comments]
+      summary: Delete a comment (author only)
+      security:
+        - session: []
+        - apiKey: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Comment deleted }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  # ===== Follows =====
+  /follow/{username}:
+    parameters:
+      - in: path
+        name: username
+        required: true
+        schema: { type: string }
+    post:
+      tags: [Social]
+      summary: Follow a developer
+      security:
+        - session: []
+        - apiKey: []
+      responses:
+        "200": { description: Now following }
+        "429": { $ref: "#/components/responses/RateLimited" }
+    delete:
+      tags: [Social]
+      summary: Unfollow a developer
+      security:
+        - session: []
+        - apiKey: []
+      responses:
+        "200": { description: Unfollowed }
+  /following:
+    get:
+      tags: [Social]
+      summary: List developers the current user follows
+      security:
+        - session: []
+        - apiKey: []
+      responses:
+        "200":
+          description: Followed developers
+  /followers/{username}:
+    get:
+      tags: [Social]
+      summary: Get a developer's follower count
+      parameters:
+        - in: path
+          name: username
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Follower count
+
+  # ===== Collections =====
+  /collections:
+    get:
+      tags: [Collections]
+      summary: List the current user's collections
+      security:
+        - session: []
+        - apiKey: []
+      responses:
+        "200":
+          description: Collections
+    post:
+      tags: [Collections]
+      summary: Create a collection
+      security:
+        - session: []
+        - apiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, maxLength: 100 }
+                description: { type: string, maxLength: 1000 }
+                is_public: { type: boolean, default: false }
+      responses:
+        "201":
+          description: Collection created
+  /collections/public:
+    get:
+      tags: [Collections]
+      summary: Browse public collections
+      responses:
+        "200":
+          description: Public collections
+  /collections/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+    get:
+      tags: [Collections]
+      summary: Get a collection (with games)
+      responses:
+        "200":
+          description: Collection detail
+    put:
+      tags: [Collections]
+      summary: Update a collection (owner only)
+      security:
+        - session: []
+        - apiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                description: { type: string }
+                is_public: { type: boolean }
+      responses:
+        "200": { description: Collection updated }
+    delete:
+      tags: [Collections]
+      summary: Delete a collection (owner only)
+      security:
+        - session: []
+        - apiKey: []
+      responses:
+        "200": { description: Collection deleted }
+  /collections/{id}/games:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+    post:
+      tags: [Collections]
+      summary: Add a game to a collection
+      security:
+        - session: []
+        - apiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [game_id]
+              properties:
+                game_id: { type: string }
+      responses:
+        "200": { description: Added }
+  /collections/{id}/games/{game_id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: game_id
+        required: true
+        schema: { type: string }
+    delete:
+      tags: [Collections]
+      summary: Remove a game from a collection
+      security:
+        - session: []
+        - apiKey: []
+      responses:
+        "200": { description: Removed }
+
+  # ===== Uploads =====
+  /upload/image:
+    post:
+      tags: [Uploads]
+      summary: Upload an image (10 MiB cap)
+      security:
+        - session: []
+        - apiKey: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [image]
+              properties:
+                image:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: Image uploaded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url: { type: string, format: uri }
+  /uploads/init:
+    post:
+      tags: [Uploads]
+      summary: Initialize a chunked upload session
+      security:
+        - session: []
+        - apiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UploadInitRequest" }
+      responses:
+        "200":
+          description: Session created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UploadInitResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/EmailVerificationRequired" }
+  /uploads/{upload_id}/chunks:
+    put:
+      tags: [Uploads]
+      summary: Write a chunk at a byte offset
+      security:
+        - session: []
+        - apiKey: []
+      parameters:
+        - in: path
+          name: upload_id
+          required: true
+          schema: { type: string }
+        - in: query
+          name: offset
+          required: true
+          schema: { type: integer, format: int64, minimum: 0 }
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "200":
+          description: Chunk written
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /uploads/{upload_id}:
+    get:
+      tags: [Uploads]
+      summary: Check upload progress (for resume)
+      security:
+        - session: []
+        - apiKey: []
+      parameters:
+        - in: path
+          name: upload_id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Upload status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UploadStatus" }
+    delete:
+      tags: [Uploads]
+      summary: Cancel an upload session
+      security:
+        - session: []
+        - apiKey: []
+      parameters:
+        - in: path
+          name: upload_id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Session cancelled }
+  /uploads/{upload_id}/finalize:
+    post:
+      tags: [Uploads]
+      summary: Finalize a chunked upload (assemble, extract, create/update game)
+      security:
+        - session: []
+        - apiKey: []
+      parameters:
+        - in: path
+          name: upload_id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                sha256: { type: string, description: "Optional SHA-256 of the uploaded bytes; verified server-side if present" }
+      responses:
+        "200":
+          description: Game created/updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  game_id: { type: string }
+
+  # ===== Seed =====
+  /seed:
+    post:
+      tags: [Admin]
+      summary: Seed demo data (admin only)
+      security:
+        - session: []
+      responses:
+        "200": { description: Seeded }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  # ===== API Keys =====
+  /api-keys:
+    get:
+      tags: [API Keys]
+      summary: List the current user's API keys (masked)
+      security:
+        - session: []
+      responses:
+        "200":
+          description: API keys (secrets redacted)
+    post:
+      tags: [API Keys]
+      summary: Generate a new API key (session only — secrets can't create secrets)
+      security:
+        - session: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, maxLength: 50 }
+      responses:
+        "201":
+          description: API key created — raw key returned ONCE in `key`
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string }
+                  key: { type: string, description: "Raw API key (pm_k_…). Shown exactly once." }
+        "403": { $ref: "#/components/responses/EmailVerificationRequired" }
+  /api-keys/{id}:
+    delete:
+      tags: [API Keys]
+      summary: Revoke an API key (session only)
+      security:
+        - session: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Key revoked }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ===== Build channels =====
+  /games/{id}/builds:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+      - in: query
+        name: channel
+        schema:
+          type: string
+          enum: [internal, beta, stable]
+    get:
+      tags: [Builds]
+      summary: List a game's builds (newest first)
+      security:
+        - session: []
+        - apiKey: []
+      responses:
+        "200":
+          description: Builds
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  builds:
+                    type: array
+                    items: { $ref: "#/components/schemas/Build" }
+  /games/{id}/builds/{build_id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: build_id
+        required: true
+        schema: { type: string }
+    get:
+      tags: [Builds]
+      summary: Get a single build
+      security:
+        - session: []
+        - apiKey: []
+      responses:
+        "200":
+          description: Build
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  build: { $ref: "#/components/schemas/Build" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [Builds]
+      summary: Delete a build (refuses if it's the active build for its channel)
+      security:
+        - session: []
+        - apiKey: []
+      responses:
+        "200": { description: Deleted }
+        "400": { description: "Build is the active build for its channel" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /games/{id}/builds/{build_id}/activate:
+    put:
+      tags: [Builds]
+      summary: Promote a build to active for its channel (demotes the previous active)
+      security:
+        - session: []
+        - apiKey: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+        - in: path
+          name: build_id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Build activated }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /games/{id}/builds/{build_id}/rollback:
+    post:
+      tags: [Builds]
+      summary: Roll back the channel's active build to the previous build
+      security:
+        - session: []
+        - apiKey: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+        - in: path
+          name: build_id
+          required: true
+          schema: { type: string, description: "The current active build to roll back from" }
+      responses:
+        "200": { description: Rolled back }
+        "400": { description: "Build is not the active build, or no previous build exists" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ===== Webhooks =====
+  /webhooks:
+    get:
+      tags: [Webhooks]
+      summary: List the current user's webhooks
+      security:
+        - session: []
+      responses:
+        "200":
+          description: Webhooks (secrets redacted)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  webhooks:
+                    type: array
+                    items: { $ref: "#/components/schemas/Webhook" }
+    post:
+      tags: [Webhooks]
+      summary: Create a new webhook
+      security:
+        - session: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url, events]
+              properties:
+                url: { type: string, format: uri }
+                events:
+                  type: array
+                  items:
+                    type: string
+                    enum:
+                      - game.published
+                      - game.unpublished
+                      - build.promoted
+                      - build.rolled_back
+                      - review.created
+                      - devlog.created
+                      - comment.created
+      responses:
+        "201":
+          description: Webhook created — `secret` is shown exactly once
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Webhook" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /webhooks/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+    get:
+      tags: [Webhooks]
+      summary: Get a single webhook
+      security:
+        - session: []
+      responses:
+        "200":
+          description: Webhook
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Webhook" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [Webhooks]
+      summary: Update a webhook (cannot rotate the secret; revoke + recreate)
+      security:
+        - session: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url, events, active]
+              properties:
+                url: { type: string, format: uri }
+                events:
+                  type: array
+                  items: { type: string }
+                active: { type: boolean }
+      responses:
+        "200": { description: Updated }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [Webhooks]
+      summary: Delete a webhook
+      security:
+        - session: []
+      responses:
+        "200": { description: Deleted }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /webhooks/{id}/deliveries:
+    get:
+      tags: [Webhooks]
+      summary: Get the most recent N delivery attempts for a webhook
+      security:
+        - session: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 50, maximum: 200 }
+      responses:
+        "200":
+          description: Recent deliveries (newest first)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deliveries:
+                    type: array
+                    items: { $ref: "#/components/schemas/WebhookDelivery" }
+
+  # ===== Admin =====
+  /admin/stats:
+    get:
+      tags: [Admin]
+      summary: Site-wide statistics
+      security:
+        - session: []
+      responses:
+        "200":
+          description: Stats
+  /admin/users:
+    get:
+      tags: [Admin]
+      summary: List all users
+      security:
+        - session: []
+      responses:
+        "200":
+          description: Users
+  /admin/users/{id}:
+    delete:
+      tags: [Admin]
+      summary: Delete a user
+      security:
+        - session: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: User deleted }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /admin/games:
+    get:
+      tags: [Admin]
+      summary: List all games
+      security:
+        - session: []
+      responses:
+        "200":
+          description: Games
+  /admin/games/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+    delete:
+      tags: [Admin]
+      summary: Delete a game
+      security:
+        - session: []
+      responses:
+        "200": { description: Game deleted }
+  /admin/games/{id}/publish:
+    put:
+      tags: [Admin]
+      summary: Toggle the published flag on a game
+      security:
+        - session: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Publish flag toggled }
+  /admin/featured:
+    get:
+      tags: [Admin]
+      summary: Get the current featured-game pin list
+      security:
+        - session: []
+      responses:
+        "200":
+          description: Pinned featured games
+    put:
+      tags: [Admin]
+      summary: Set the featured-game pin list (order matters)
+      security:
+        - session: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [game_ids]
+              properties:
+                game_ids:
+                  type: array
+                  items: { type: string }
+      responses:
+        "200": { description: Pinned list updated }
+  /admin/analytics:
+    get:
+      tags: [Admin]
+      summary: Site-wide analytics
+      security:
+        - session: []
+      responses:
+        "200":
+          description: Analytics summary
+
+components:
+  securitySchemes:
+    session:
+      type: apiKey
+      in: cookie
+      name: session
+      description: Session cookie set by `POST /auth/login`.
+    apiKey:
+      type: http
+      scheme: bearer
+      bearerFormat: Custom
+      description: |
+        Bearer token of the form `pm_k_<64 hex chars>`. Generate one
+        from **Settings → API Keys** in the web UI, or via
+        `POST /api-keys`. Keys are hashed (SHA-256) at rest; the raw
+        value is shown exactly once at creation.
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Unauthorized:
+      description: Not authenticated
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Forbidden:
+      description: Authenticated but not allowed (e.g. not the owner)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Conflict:
+      description: Conflict (e.g. username already taken)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    RateLimited:
+      description: Too many requests
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    EmailVerificationRequired:
+      description: A verified email is required for this action
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: "#/components/schemas/Error"
+              - type: object
+                properties:
+                  email_verification: { type: string, enum: [required] }
+                  smtp_required: { type: boolean, description: "True when SMTP isn't configured and the operator must set it up" }
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string, description: "Human-readable error message" }
+    User:
+      type: object
+      properties:
+        id: { type: string }
+        username: { type: string }
+        email: { type: string, format: email }
+        bio: { type: string }
+        avatar_url: { type: string, format: uri }
+        banner_url: { type: string, format: uri }
+        is_developer: { type: boolean }
+        theme_color: { type: string }
+        email_verified: { type: boolean }
+        created_at: { type: string, format: date-time }
+    Game:
+      type: object
+      properties:
+        id: { type: string }
+        title: { type: string }
+        slug: { type: string }
+        genre: { type: string }
+        description: { type: string }
+        tags:
+          type: array
+          items: { type: string }
+        cover_path: { type: string }
+        developer_id: { type: string }
+        is_webgpu: { type: boolean }
+        published: { type: boolean }
+        featured_rank: { type: integer, description: "Higher rank = appears earlier in the featured hero. 0 = unpinned." }
+        screenshots:
+          type: array
+          items: { type: string }
+        videos:
+          type: array
+          items: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    Review:
+      type: object
+      properties:
+        id: { type: string }
+        game_id: { type: string }
+        user_id: { type: string }
+        rating: { type: integer, minimum: 1, maximum: 5 }
+        text: { type: string }
+        created_at: { type: string, format: date-time }
+    Devlog:
+      type: object
+      properties:
+        id: { type: string }
+        game_id: { type: string }
+        user_id: { type: string }
+        title: { type: string }
+        content: { type: string }
+        created_at: { type: string, format: date-time }
+    Comment:
+      type: object
+      properties:
+        id: { type: string }
+        devlog_id: { type: string }
+        user_id: { type: string }
+        parent_id: { type: string }
+        text: { type: string }
+        created_at: { type: string, format: date-time }
+    RegisterRequest:
+      type: object
+      required: [username, email, password, captcha_challenge, captcha_nonce]
+      properties:
+        username: { type: string, minLength: 3, maxLength: 30 }
+        email: { type: string, format: email }
+        password: { type: string, minLength: 10 }
+        captcha_challenge: { type: string }
+        captcha_nonce: { type: string }
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string }
+    GameUploadRequest:
+      type: object
+      required: [game_file, title, genre]
+      properties:
+        game_file:
+          type: string
+          format: binary
+          description: .zip, .html, or .htm
+        title: { type: string, maxLength: 200 }
+        genre:
+          type: string
+          enum: [action, adventure, rpg, strategy, puzzle, racing, horror, experimental]
+        description: { type: string, maxLength: 5000 }
+        tags:
+          type: array
+          items: { type: string, maxLength: 30 }
+        is_webgpu: { type: boolean, default: false }
+    GameUpdateRequest:
+      type: object
+      properties:
+        title: { type: string, maxLength: 200 }
+        description: { type: string, maxLength: 5000 }
+        genre: { type: string }
+        tags:
+          type: array
+          items: { type: string }
+        is_webgpu: { type: boolean }
+    ProfileUpdateRequest:
+      type: object
+      properties:
+        bio: { type: string, maxLength: 1000 }
+        avatar_url: { type: string, format: uri }
+        banner_url: { type: string, format: uri }
+        theme_color: { type: string, description: "CSS color string" }
+        links:
+          type: array
+          items: { type: string }
+        is_developer: { type: boolean }
+    DeveloperPageUpdate:
+      type: object
+      properties:
+        display_name: { type: string, maxLength: 100 }
+        banner_url: { type: string, format: uri }
+        theme_color: { type: string }
+        theme_preset: { type: string }
+        about: { type: string, maxLength: 5000 }
+        custom_css: { type: string, maxLength: 20000 }
+        featured_games:
+          type: array
+          items: { type: string }
+    UploadInitRequest:
+      type: object
+      required: [filename, size, kind]
+      properties:
+        filename: { type: string, description: "Must end in .zip, .html, or .htm" }
+        size: { type: integer, format: int64, minimum: 1, maximum: 524288000, description: "Max 500 MiB" }
+        kind:
+          type: string
+          enum: [new_game, reupload]
+        game_id: { type: string, description: "Required when kind=reupload" }
+        metadata:
+          $ref: "#/components/schemas/GameUploadMetadata"
+    GameUploadMetadata:
+      type: object
+      properties:
+        title: { type: string }
+        genre: { type: string }
+        description: { type: string }
+        tags:
+          type: array
+          items: { type: string }
+        is_webgpu: { type: boolean }
+    UploadInitResponse:
+      type: object
+      properties:
+        upload_id: { type: string }
+        chunk_size:
+          type: integer
+          format: int64
+          description: "Server-recommended chunk size in bytes (8 MiB)"
+        expires_at: { type: string, format: date-time }
+    UploadStatus:
+      type: object
+      properties:
+        upload_id: { type: string }
+        size: { type: integer, format: int64 }
+        received_ranges:
+          type: array
+          items:
+            type: array
+            items: { type: integer }
+            minItems: 2
+            maxItems: 2
+          description: "Array of [start, end] byte ranges that have been received. Use to compute gaps for resume."
+        status: { type: string, enum: [open, finalizing, complete, failed, cancelled] }
+        chunk_size: { type: integer, format: int64 }
+    Webhook:
+      type: object
+      properties:
+        id: { type: string }
+        user_id: { type: string }
+        url: { type: string, format: uri }
+        events:
+          type: array
+          items: { type: string }
+        secret:
+          type: string
+          description: "Plaintext HMAC-SHA256 signing secret. Returned ONLY on create — store it then."
+        active: { type: boolean }
+        consecutive_failures: { type: integer }
+        last_triggered_at: { type: string, format: date-time }
+        created_at: { type: string, format: date-time }
+    WebhookDelivery:
+      type: object
+      properties:
+        id: { type: integer }
+        event: { type: string }
+        attempt: { type: integer }
+        response_code: { type: integer, nullable: true }
+        response_body_excerpt: { type: string }
+        delivered_at: { type: string, format: date-time }
+        success: { type: boolean }
+    Build:
+      type: object
+      properties:
+        id: { type: string }
+        game_id: { type: string }
+        build_number: { type: integer, description: "Monotonic per game. New uploads always get build_number = MAX+1." }
+        channel:
+          type: string
+          enum: [internal, beta, stable]
+        entry_file: { type: string, description: "Path within the build dir of the iframe entry point (usually index.html)." }
+        size: { type: integer, format: int64 }
+        sha256: { type: string }
+        release_notes: { type: string }
+        is_active: { type: boolean, description: "True when this build is the active one for its channel." }
+        created_at: { type: string, format: date-time }
+        created_by: { type: string }
