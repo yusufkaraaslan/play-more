@@ -111,6 +111,16 @@ func SeedData(c *gin.Context) {
 			SysReqMin:   "Any modern browser",
 			SysReqRec:   "Chrome, Firefox, or Safari",
 		},
+		{
+			Title: "Co-op Canvas", Genre: "experimental", Price: 0, Discount: 0,
+			Tags: []string{"Multiplayer", "Casual", "Creative"}, IsWebGPU: false, Multiplayer: true,
+			Color1: [3]uint8{80, 200, 160}, Color2: [3]uint8{15, 25, 30},
+			Desc:        "A shared drawing board — create a lobby, share the code, and doodle together in real time.",
+			CustomAbout: "A tiny working demo of PlayMore's multiplayer lobbies. Every player gets a live colored cursor; click to drop dots on a shared canvas that syncs to everyone in the lobby. Built with the embeddable playmore-mp.js client (~120 lines of game code) — the reference example for adding online multiplayer to your own games. See /docs for the protocol.",
+			Features:    []string{"Real-time shared canvas (up to 8 players)", "Live colored cursors for every player", "Create/join lobbies with a shareable code", "Reference implementation of playmore-mp.js"},
+			SysReqMin:   "Any modern browser",
+			SysReqRec:   "Chrome, Firefox, or Safari",
+		},
 	}
 
 	reviews := map[string][]struct {
@@ -180,6 +190,9 @@ func SeedData(c *gin.Context) {
 		if sg.Title == "XOX Challenge" {
 			xoxHTML := generateXOXGame()
 			storage.SaveGameFile(game.ID, "index.html", []byte(xoxHTML))
+			game.UpdateFiles(storage.GameDir(game.ID), "index.html")
+		} else if sg.Title == "Co-op Canvas" {
+			storage.SaveGameFile(game.ID, "index.html", []byte(generateCoopCanvasGame()))
 			game.UpdateFiles(storage.GameDir(game.ID), "index.html")
 		} else {
 			// Create placeholder game file
@@ -365,4 +378,148 @@ func min255(n int) int {
 		return 255
 	}
 	return n
+}
+
+// generateCoopCanvasGame returns the "Co-op Canvas" demo — a real
+// working multiplayer game that uses the embeddable playmore-mp.js
+// client. It is the reference example for the lobby protocol: every
+// player is a live colored cursor, clicking drops a synced dot. Kept
+// dependency-free and free of template literals so it lives cleanly in
+// a Go raw string.
+func generateCoopCanvasGame() string {
+	return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Co-op Canvas</title>
+<style>
+  html,body{margin:0;height:100%;background:#0f191e;color:#e6f2ef;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;overflow:hidden;}
+  #wrap{position:fixed;inset:0;display:flex;flex-direction:column;}
+  #bar{padding:10px 14px;display:flex;gap:16px;align-items:center;font-size:14px;background:rgba(0,0,0,.25);}
+  #bar b{color:#50c8a0;}
+  #status{margin-left:auto;color:#9fb4ae;}
+  #board{flex:1;position:relative;cursor:crosshair;touch-action:none;}
+  canvas{position:absolute;inset:0;width:100%;height:100%;}
+  #hint{position:absolute;left:50%;top:14px;transform:translateX(-50%);color:#7f948e;font-size:13px;pointer-events:none;}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="bar">
+    <span>Lobby <b id="code">–</b></span>
+    <span id="me">connecting…</span>
+    <span id="status"></span>
+  </div>
+  <div id="board">
+    <canvas id="dots"></canvas>
+    <canvas id="cursors"></canvas>
+    <div id="hint">Move to show your cursor · click to drop a dot · everyone sees it</div>
+  </div>
+</div>
+<script src="/playmore-mp.js"></script>
+<script>
+(function(){
+  'use strict';
+  var board=document.getElementById('board');
+  var dots=document.getElementById('dots'), cursors=document.getElementById('cursors');
+  var dctx=dots.getContext('2d'), cctx=cursors.getContext('2d');
+  var peers={};           // id -> {x,y,color,name}
+  var myColor='#50c8a0', myId=null;
+  var lastSent=0;
+
+  function resize(){
+    var r=board.getBoundingClientRect();
+    [dots,cursors].forEach(function(cv){ cv.width=r.width; cv.height=r.height; });
+  }
+  window.addEventListener('resize', function(){ resize(); redrawCursors(); });
+
+  // Stable color per player id (hash -> hue). No coordination needed.
+  function colorFor(id){
+    var h=0; for(var i=0;i<id.length;i++){ h=(h*31+id.charCodeAt(i))>>>0; }
+    return 'hsl('+(h%360)+',70%,60%)';
+  }
+  function drawDot(nx,ny,color){
+    dctx.fillStyle=color;
+    dctx.beginPath();
+    dctx.arc(nx*dots.width, ny*dots.height, 6, 0, Math.PI*2);
+    dctx.fill();
+  }
+  function redrawCursors(){
+    cctx.clearRect(0,0,cursors.width,cursors.height);
+    for(var id in peers){
+      var p=peers[id];
+      if(p.x==null) continue;
+      var x=p.x*cursors.width, y=p.y*cursors.height;
+      cctx.fillStyle=p.color;
+      cctx.beginPath(); cctx.arc(x,y,5,0,Math.PI*2); cctx.fill();
+      cctx.font='12px system-ui'; cctx.fillText(p.name||'', x+9, y+4);
+    }
+  }
+  function setStatus(){
+    var n=1+Object.keys(peers).length;
+    document.getElementById('status').textContent=n+' player'+(n===1?'':'s')+' here';
+  }
+
+  function norm(ev){
+    var r=board.getBoundingClientRect();
+    return { x:Math.min(1,Math.max(0,(ev.clientX-r.left)/r.width)),
+             y:Math.min(1,Math.max(0,(ev.clientY-r.top)/r.height)) };
+  }
+  board.addEventListener('pointermove', function(ev){
+    var now=Date.now();
+    if(now-lastSent<66) return;        // ~15/s, well under the 30/s relay cap
+    lastSent=now;
+    var p=norm(ev);
+    PlayMore.send({ t:'cur', x:p.x, y:p.y });
+  });
+  board.addEventListener('pointerdown', function(ev){
+    var p=norm(ev);
+    drawDot(p.x, p.y, myColor);                 // draw locally now
+    PlayMore.send({ t:'dot', x:p.x, y:p.y });   // and tell everyone
+  });
+
+  // ── PlayMore lobby wiring ───────────────────────────────────────────
+  PlayMore.onReady(function(ctx){
+    resize();
+    myId = ctx.you ? ctx.you.id : null;
+    myColor = myId ? colorFor(myId) : '#50c8a0';
+    document.getElementById('code').textContent = ctx.code || '–';
+    var meEl=document.getElementById('me');
+    meEl.textContent = 'you are';
+    var swatch=document.createElement('span');
+    swatch.style.cssText='display:inline-block;width:12px;height:12px;border-radius:50%;margin-left:6px;vertical-align:middle;background:'+myColor;
+    meEl.appendChild(swatch);
+    syncPeers(ctx.players);
+  });
+  PlayMore.onPlayers(function(players){ syncPeers(players); });
+  PlayMore.onMessage(function(from, d){
+    if(!d || from===myId) return;
+    if(!peers[from]) peers[from]={ x:null,y:null,color:colorFor(from),name:'' };
+    if(d.t==='cur'){ peers[from].x=d.x; peers[from].y=d.y; redrawCursors(); }
+    else if(d.t==='dot'){ drawDot(d.x, d.y, peers[from].color); }
+  });
+  PlayMore.onClosed(function(){
+    document.getElementById('status').textContent='lobby closed';
+    peers={}; redrawCursors();
+  });
+
+  function syncPeers(players){
+    var live={};
+    (players||[]).forEach(function(p){
+      if(p.id===myId) return;
+      live[p.id]=true;
+      if(!peers[p.id]) peers[p.id]={ x:null,y:null,color:colorFor(p.id),name:p.username||'' };
+      else peers[p.id].name=p.username||peers[p.id].name;
+    });
+    for(var id in peers){ if(!live[id]) delete peers[id]; }  // drop players who left
+    setStatus(); redrawCursors();
+  }
+
+  // If opened outside a lobby (direct /play link), still render.
+  resize();
+})();
+</script>
+</body>
+</html>`
 }

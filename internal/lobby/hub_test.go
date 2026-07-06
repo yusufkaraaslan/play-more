@@ -301,6 +301,54 @@ func TestReapIdle(t *testing.T) {
 	}
 }
 
+func TestCloseGameLobbies(t *testing.T) {
+	h := NewHub()
+	// Two lobbies on game1, one on game2.
+	a := register(t, h, "a")
+	b := register(t, h, "b")
+	c := register(t, h, "c")
+	h.Create(a, "game1")
+	h.Create(b, "game1")
+	h.Create(c, "game2")
+	drain(a)
+	drain(b)
+	drain(c)
+
+	// A joiner in one of the game1 lobbies must also be evicted.
+	code := ""
+	h.mu.Lock()
+	for cd, l := range h.lobbies {
+		if l.GameID == "game1" && l.Host == a {
+			code = cd
+		}
+	}
+	h.mu.Unlock()
+	guest := register(t, h, "guest")
+	h.Join(guest, code)
+	drain(guest)
+
+	n := h.CloseGameLobbies("game1", "multiplayer_disabled")
+	if n != 2 {
+		t.Fatalf("closed %d lobbies, want 2", n)
+	}
+	if cm := last(drain(a), "closed"); cm == nil || cm.Reason != "multiplayer_disabled" {
+		t.Fatalf("host a not notified: %+v", cm)
+	}
+	if cm := last(drain(guest), "closed"); cm == nil || cm.Reason != "multiplayer_disabled" {
+		t.Fatalf("guest not notified: %+v", cm)
+	}
+	if h.OnlineCount("game1") != 0 {
+		t.Fatalf("game1 count = %d, want 0", h.OnlineCount("game1"))
+	}
+	// game2 lobby is untouched.
+	if h.OnlineCount("game2") != 1 {
+		t.Fatalf("game2 count = %d, want 1 (should be untouched)", h.OnlineCount("game2"))
+	}
+	if a.lobby != nil || guest.lobby != nil {
+		t.Fatal("members still attached to a closed lobby")
+	}
+}
+
 func TestUnregisterReleasesConnSlot(t *testing.T) {
 	h := NewHub()
 	sessions := make([]*Session, 0, MaxConnsPerUser)

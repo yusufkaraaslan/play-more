@@ -180,6 +180,12 @@ func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxi
 	// Deploy script download
 	r.GET("/deploy.sh", middleware.RateLimit(10, 60), handlers.ServeDeployScript)
 
+	// Multiplayer client shim — games <script src> this to speak the
+	// lobby postMessage protocol. Served on both the main and
+	// --games-domain origins (same engine), so a game loads it with a
+	// relative /playmore-mp.js regardless of which origin it runs on.
+	r.GET("/playmore-mp.js", handlers.ServeMPScript)
+
 	// Multiplayer lobby WebSocket (#29). Root-mounted (not under /api —
 	// it is not a REST endpoint and the OpenAPI drift test ignores it).
 	// CSRF-equivalent protection is the Origin check inside the

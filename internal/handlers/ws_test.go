@@ -87,6 +87,108 @@ func seedMultiplayerGame(t *testing.T, ownerID string) string {
 	return id
 }
 
+// newWSServerDefaultHub is like newWSServer but mounts /ws on the
+// process-wide lobby.Default — the hub the game handlers (UpdateGame /
+// DeleteGame → CloseGameLobbies) actually drive. Used to test that
+// mutating a game tears its live lobbies down end-to-end.
+func newWSServerDefaultHub(t *testing.T) (*testutil.TestServer, string) {
+	t.Helper()
+	testutil.ResetRateLimits()
+	ts := testutil.NewTestServer(t)
+	ts.Engine.GET("/ws", middleware.RateLimit(60, 60), middleware.AuthOptional(), middleware.AuthRequired(), handlers.GameLobbyWS(lobby.Default))
+	srv := httptest.NewServer(ts.Engine)
+	t.Cleanup(srv.Close)
+	return ts, "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws"
+}
+
+func TestWS_ClearingMultiplayerFlagClosesLobby(t *testing.T) {
+	ts, url := newWSServerDefaultHub(t)
+	owner := testutil.SeedUser(t, nil, testutil.SeedUserOpts{Username: "mpowner", Email: "mpowner@x.dev", EmailVerified: true})
+	gameID := seedMultiplayerGame(t, owner.ID)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	conn := dialWS(t, ctx, url, owner)
+	if err := wsjson.Write(ctx, conn, lobby.ClientMsg{Type: "create", GameID: gameID}); err != nil {
+		t.Fatal(err)
+	}
+	expectFrame(t, ctx, conn, "lobby")
+	if n := lobby.Default.OnlineCount(gameID); n != 1 {
+		t.Fatalf("online count = %d, want 1", n)
+	}
+
+	// Owner turns the multiplayer flag off via the real handler.
+	w, body := ts.DoAuthed(t, "PUT", "/api/v1/games/"+gameID, map[string]any{
+		"title": "MP Game", "genre": "action", "multiplayer": false,
+	}, owner)
+	if w.Code != http.StatusOK {
+		t.Fatalf("update: %d %s", w.Code, body)
+	}
+
+	closed := expectFrame(t, ctx, conn, "closed")
+	if closed.Reason != "multiplayer_disabled" {
+		t.Fatalf("closed reason = %q, want multiplayer_disabled", closed.Reason)
+	}
+	if n := lobby.Default.OnlineCount(gameID); n != 0 {
+		t.Fatalf("online count after disable = %d, want 0", n)
+	}
+}
+
+func TestWS_DeletingGameClosesLobby(t *testing.T) {
+	ts, url := newWSServerDefaultHub(t)
+	owner := testutil.SeedUser(t, nil, testutil.SeedUserOpts{Username: "delowner", Email: "delowner@x.dev", EmailVerified: true})
+	gameID := seedMultiplayerGame(t, owner.ID)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	conn := dialWS(t, ctx, url, owner)
+	if err := wsjson.Write(ctx, conn, lobby.ClientMsg{Type: "create", GameID: gameID}); err != nil {
+		t.Fatal(err)
+	}
+	expectFrame(t, ctx, conn, "lobby")
+
+	w, body := ts.DoAuthed(t, "DELETE", "/api/v1/games/"+gameID, nil, owner)
+	if w.Code != http.StatusOK {
+		t.Fatalf("delete: %d %s", w.Code, body)
+	}
+	closed := expectFrame(t, ctx, conn, "closed")
+	if closed.Reason != "game_deleted" {
+		t.Fatalf("closed reason = %q, want game_deleted", closed.Reason)
+	}
+}
+
+func TestWS_JoinRateLimit(t *testing.T) {
+	_, _, url := newWSServer(t)
+	user := testutil.SeedUser(t, nil, testutil.SeedUserOpts{Username: "flooder", Email: "flooder@x.dev", EmailVerified: true})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	conn := dialWS(t, ctx, url, user)
+
+	// Fire 25 joins at a nonexistent code (25 < 30/s frame cap, so the
+	// connection stays open; the 20/min join cap must trip). Expect the
+	// tail to switch from "lobby not found" to "too many join attempts".
+	var sawLimit bool
+	for i := 0; i < 25; i++ {
+		if err := wsjson.Write(ctx, conn, lobby.ClientMsg{Type: "join", Code: "ZZZZZZ"}); err != nil {
+			t.Fatalf("write %d: %v", i, err)
+		}
+	}
+	for i := 0; i < 25; i++ {
+		var m lobby.ServerMsg
+		if err := wsjson.Read(ctx, conn, &m); err != nil {
+			break
+		}
+		if m.Type == "error" && strings.Contains(m.Error, "too many join attempts") {
+			sawLimit = true
+			break
+		}
+	}
+	if !sawLimit {
+		t.Fatal("join rate limit never triggered after 25 attempts")
+	}
+}
+
 func TestWS_RequiresAuth(t *testing.T) {
 	_, _, url := newWSServer(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

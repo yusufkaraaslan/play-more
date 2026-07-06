@@ -23,8 +23,13 @@ const (
 	// Enough for casual real-time games over the relay; a client that
 	// exceeds it is closed (a well-behaved game batches its state).
 	wsMaxMsgsPerSec = 30
-	wsWriteTimeout  = 10 * time.Second
-	wsPingEvery     = 30 * time.Second
+	// wsMaxJoinsPerMin caps join attempts per connection. A legitimate
+	// client joins a handful of times; this bounds lobby-code guessing
+	// far below the 30 msg/s overall cap (1800/min → 20/min) without
+	// disconnecting the client, so a fat-fingered code isn't fatal.
+	wsMaxJoinsPerMin = 20
+	wsWriteTimeout   = 10 * time.Second
+	wsPingEvery      = 30 * time.Second
 )
 
 // GameLobbyWS upgrades GET /ws to a WebSocket and runs the multiplayer
@@ -115,9 +120,12 @@ func GameLobbyWS(hub *lobby.Hub) gin.HandlerFunc {
 		}()
 
 		// Reader: the handler goroutine. Exits on disconnect, malformed
-		// JSON, oversized frame, or rate-limit breach.
-		var winStart time.Time
-		var winCount int
+		// JSON, oversized frame, or rate-limit breach. Two sliding
+		// windows: an overall per-second frame budget (breach → close)
+		// and a tighter per-minute join budget (breach → reject the one
+		// join, keep the connection) to blunt lobby-code brute-forcing.
+		var winStart, joinWinStart time.Time
+		var winCount, joinCount int
 		for {
 			var msg lobby.ClientMsg
 			if err := wsjson.Read(ctx, conn, &msg); err != nil {
@@ -129,6 +137,15 @@ func GameLobbyWS(hub *lobby.Hub) gin.HandlerFunc {
 			if winCount++; winCount > wsMaxMsgsPerSec {
 				sess.Send(lobby.ServerMsg{Type: "error", Error: "message rate limit exceeded"})
 				break
+			}
+			if msg.Type == "join" {
+				if now := time.Now(); now.Sub(joinWinStart) >= time.Minute {
+					joinWinStart, joinCount = now, 0
+				}
+				if joinCount++; joinCount > wsMaxJoinsPerMin {
+					sess.Send(lobby.ServerMsg{Type: "error", Error: "too many join attempts, slow down"})
+					continue
+				}
 			}
 			dispatchLobbyMsg(hub, sess, user, msg)
 		}

@@ -338,6 +338,12 @@ func UpdateGame(c *gin.Context) {
 		return
 	}
 
+	// A game that just lost its multiplayer flag can't host lobbies —
+	// tear down any that are live so they can't outlive eligibility.
+	if !input.Multiplayer {
+		lobby.Default.CloseGameLobbies(game.ID, "multiplayer_disabled")
+	}
+
 	// Update extended fields — validate video URLs against allowlist
 	if input.Videos != nil {
 		filtered := []string{}
@@ -603,6 +609,8 @@ func DeleteGame(c *gin.Context) {
 
 	storage.DeleteGameFiles(game.ID)
 	game.Delete()
+	// Kill any live lobbies for the now-deleted game.
+	lobby.Default.CloseGameLobbies(game.ID, "game_deleted")
 
 	c.JSON(http.StatusOK, gin.H{"message": "game deleted"})
 }

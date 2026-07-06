@@ -489,6 +489,37 @@ the game (API: the `multiplayer` boolean on game create/update).
 The game page then shows a Multiplayer box with a live
 online-player count.
 
+### Quick start: the playmore-mp.js client
+
+The platform serves a tiny (~120-line, dependency-free) client shim
+that wraps the whole protocol below in a callback API. Include it and
+you never hand-write postMessage plumbing:
+
+```html
+<script src="/playmore-mp.js"></script>
+<script>
+  PlayMore.onReady(function (ctx) {
+    // ctx = { code, gameId, you:{id,username}, host, players:[...] }
+  });
+  PlayMore.onMessage(function (from, data) { /* a peer sent data */ });
+  PlayMore.onPlayers(function (players) { /* membership changed */ });
+  PlayMore.onClosed(function () { /* lobby ended */ });
+
+  PlayMore.send({ move: 'e4' });          // broadcast to the lobby
+  PlayMore.send(state, aPlayerId);        // send to one player
+
+  PlayMore.players();  PlayMore.me();  PlayMore.isHost();  PlayMore.code();
+</script>
+```
+
+The shim posts outbound frames only to the platform's real origin
+(learned from the first inbound frame), so game traffic can't be
+intercepted by a re-embedding page. The seeded **Co-op Canvas** demo
+game (`POST /api/seed`) is a complete working example.
+
+The raw protocol is documented below for non-browser clients or games
+that prefer to speak it directly.
+
 ### How your game talks to the platform
 
 Your game runs in a sandboxed iframe and speaks

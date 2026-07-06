@@ -270,6 +270,29 @@ func (h *Hub) OnlineCount(gameID string) int {
 	return h.gameCount[gameID]
 }
 
+// CloseGameLobbies tears down every live lobby for a game and tells its
+// members why. Called when a developer clears a game's multiplayer flag
+// or deletes it, so a lobby can't outlive the eligibility that created
+// it (the event-driven answer to that TOCTOU — cheaper and more timely
+// than re-checking the DB on every relayed frame). Returns the number
+// of lobbies closed.
+func (h *Hub) CloseGameLobbies(gameID, reason string) int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	// Collect first: closeLobbyLocked deletes from h.lobbies, and we
+	// don't want to mutate the map mid-range even though Go permits it.
+	var doomed []*Lobby
+	for _, l := range h.lobbies {
+		if l.GameID == gameID {
+			doomed = append(doomed, l)
+		}
+	}
+	for _, l := range doomed {
+		h.closeLobbyLocked(l, reason)
+	}
+	return len(doomed)
+}
+
 // leaveLocked detaches s from its lobby. Host leaving closes the whole
 // lobby (v1: no host migration — the lobby dies with its creator).
 // Callers hold h.mu.
