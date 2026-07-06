@@ -14,6 +14,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/yusufkaraaslan/play-more/internal/lobby"
 	"github.com/yusufkaraaslan/play-more/internal/middleware"
 	"github.com/yusufkaraaslan/play-more/internal/models"
 	"github.com/yusufkaraaslan/play-more/internal/storage"
@@ -79,7 +80,12 @@ func GetGame(c *gin.Context) {
 		}
 	}
 	fileSize := storage.GameDirSize(game.ID)
-	c.JSON(http.StatusOK, gin.H{"game": game, "file_size": fileSize})
+	resp := gin.H{"game": game, "file_size": fileSize}
+	if game.Multiplayer {
+		// Live players (in a lobby or mid-game) for the multiplayer badge.
+		resp["online_players"] = lobby.Default.OnlineCount(game.ID)
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 func UploadGame(c *gin.Context) {
@@ -98,6 +104,7 @@ func UploadGame(c *gin.Context) {
 	}
 	tagsStr := c.PostForm("tags")
 	isWebGPU := c.PostForm("is_webgpu") == "true"
+	multiplayer := c.PostForm("multiplayer") == "true"
 
 	if title == "" || genre == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "title and genre are required"})
@@ -115,7 +122,7 @@ func UploadGame(c *gin.Context) {
 	}
 
 	// Create game record
-	game, err := models.CreateGame(title, genre, description, user.ID, price, tags, isWebGPU)
+	game, err := models.CreateGame(title, genre, description, user.ID, price, tags, isWebGPU, multiplayer)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create game"})
 		return
@@ -303,6 +310,7 @@ func UpdateGame(c *gin.Context) {
 		Discount    *int     `json:"discount"`
 		Tags        []string `json:"tags"`
 		IsWebGPU    bool     `json:"is_webgpu"`
+		Multiplayer bool     `json:"multiplayer"`
 		Videos      []string `json:"videos"`
 		VideoURL    *string  `json:"video_url"`
 		ThemeColor  *string  `json:"theme_color"`
@@ -325,7 +333,7 @@ func UpdateGame(c *gin.Context) {
 		input.Price = 0
 	}
 
-	if err := game.Update(input.Title, input.Genre, input.Description, input.Price, input.Tags, input.IsWebGPU); err != nil {
+	if err := game.Update(input.Title, input.Genre, input.Description, input.Price, input.Tags, input.IsWebGPU, input.Multiplayer); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update"})
 		return
 	}

@@ -57,6 +57,7 @@ type gameMetadata struct {
 	Description string   `json:"description,omitempty"`
 	Tags        []string `json:"tags,omitempty"`
 	IsWebGPU    bool     `json:"is_webgpu,omitempty"`
+	Multiplayer bool     `json:"multiplayer,omitempty"`
 }
 
 // InitUpload handles POST /api/uploads/init.
@@ -448,7 +449,7 @@ func FinalizeUpload(c *gin.Context) {
 	} else {
 		// new_game — create the row using the existing CreateGame signature.
 		price := 0.0
-		g, err := models.CreateGame(meta.Title, meta.Genre, meta.Description, user.ID, price, meta.Tags, meta.IsWebGPU)
+		g, err := models.CreateGame(meta.Title, meta.Genre, meta.Description, user.ID, price, meta.Tags, meta.IsWebGPU, meta.Multiplayer)
 		if err != nil || g == nil {
 			failFinalize(http.StatusInternalServerError, "create game failed")
 			return

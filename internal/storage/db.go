@@ -197,6 +197,9 @@ func migrationsAll() []string {
 			(SELECT id FROM users WHERE id = games.developer_id LIMIT 1)
 		 FROM games
 		 WHERE file_path != '' AND NOT EXISTS (SELECT 1 FROM game_builds WHERE game_builds.game_id = games.id)`,
+		// Multiplayer lobby (#29) — developer opt-in flag. Gates the
+		// lobby UI on the game page and lobby creation over /ws.
+		`ALTER TABLE games ADD COLUMN multiplayer BOOLEAN DEFAULT 0`,
 	}
 }
 
@@ -302,6 +305,7 @@ CREATE TABLE IF NOT EXISTS games (
     features    TEXT DEFAULT '[]',
     sys_req_min TEXT DEFAULT '',
     sys_req_rec TEXT DEFAULT '',
+    multiplayer BOOLEAN DEFAULT 0,
     created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
 );

@@ -1,0 +1,313 @@
+package lobby
+
+import (
+	"encoding/json"
+	"testing"
+	"time"
+)
+
+// drain empties a session's outbound queue and returns the frames.
+func drain(s *Session) []ServerMsg {
+	var out []ServerMsg
+	for {
+		select {
+		case m := <-s.send:
+			out = append(out, m)
+		default:
+			return out
+		}
+	}
+}
+
+// last returns the most recent frame of the given type, or nil.
+func last(frames []ServerMsg, typ string) *ServerMsg {
+	for i := len(frames) - 1; i >= 0; i-- {
+		if frames[i].Type == typ {
+			return &frames[i]
+		}
+	}
+	return nil
+}
+
+func register(t *testing.T, h *Hub, user string) *Session {
+	t.Helper()
+	s, err := h.Register(user, user, "")
+	if err != nil {
+		t.Fatalf("register %s: %v", user, err)
+	}
+	return s
+}
+
+func TestCreateJoinReadyStartFlow(t *testing.T) {
+	h := NewHub()
+	host := register(t, h, "alice")
+	guest := register(t, h, "bob")
+
+	if err := h.Create(host, "game1"); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	state := last(drain(host), "lobby")
+	if state == nil || state.Lobby == nil {
+		t.Fatal("host got no lobby snapshot after create")
+	}
+	code := state.Lobby.Code
+	if len(code) != codeLen {
+		t.Fatalf("bad code %q", code)
+	}
+	if state.Lobby.HostID != "alice" || len(state.Lobby.Players) != 1 {
+		t.Fatalf("bad initial state: %+v", state.Lobby)
+	}
+
+	// Join is case-insensitive.
+	if err := h.Join(guest, "  "); err != ErrLobbyNotFound {
+		t.Fatalf("expected not-found for garbage code, got %v", err)
+	}
+	if err := h.Join(guest, code); err != nil {
+		t.Fatalf("join: %v", err)
+	}
+	hostView := last(drain(host), "lobby")
+	if hostView == nil || len(hostView.Lobby.Players) != 2 {
+		t.Fatalf("host did not see joiner: %+v", hostView)
+	}
+
+	// Start before guest is ready must fail.
+	if err := h.Start(host); err != ErrNotReady {
+		t.Fatalf("expected ErrNotReady, got %v", err)
+	}
+	// Guest cannot start at all.
+	if err := h.Start(guest); err != ErrNotHost {
+		t.Fatalf("expected ErrNotHost, got %v", err)
+	}
+
+	if err := h.Ready(guest, true); err != nil {
+		t.Fatalf("ready: %v", err)
+	}
+	if err := h.Start(host); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	launch := last(drain(guest), "launch")
+	if launch == nil || !launch.Lobby.Started {
+		t.Fatalf("guest got no launch frame")
+	}
+	if last(drain(host), "launch") == nil {
+		t.Fatal("host got no launch frame")
+	}
+
+	// Started lobbies reject new joiners.
+	late := register(t, h, "carol")
+	if err := h.Join(late, code); err != ErrLobbyStarted {
+		t.Fatalf("expected ErrLobbyStarted, got %v", err)
+	}
+}
+
+func TestHostLeaveClosesLobby(t *testing.T) {
+	h := NewHub()
+	host := register(t, h, "alice")
+	guest := register(t, h, "bob")
+
+	if err := h.Create(host, "game1"); err != nil {
+		t.Fatal(err)
+	}
+	code := last(drain(host), "lobby").Lobby.Code
+	if err := h.Join(guest, code); err != nil {
+		t.Fatal(err)
+	}
+	drain(guest)
+
+	h.Unregister(host) // host disconnects
+
+	closed := last(drain(guest), "closed")
+	if closed == nil || closed.Reason != "host_left" {
+		t.Fatalf("guest did not get closed(host_left): %+v", closed)
+	}
+	if guest.lobby != nil {
+		t.Fatal("guest still attached to dead lobby")
+	}
+	if h.OnlineCount("game1") != 0 {
+		t.Fatalf("online count = %d, want 0", h.OnlineCount("game1"))
+	}
+	if err := h.Join(guest, code); err != ErrLobbyNotFound {
+		t.Fatalf("dead lobby still joinable: %v", err)
+	}
+}
+
+func TestMemberLeaveBroadcasts(t *testing.T) {
+	h := NewHub()
+	host := register(t, h, "alice")
+	guest := register(t, h, "bob")
+
+	h.Create(host, "game1")
+	code := last(drain(host), "lobby").Lobby.Code
+	h.Join(guest, code)
+	drain(host)
+
+	h.Leave(guest)
+	state := last(drain(host), "lobby")
+	if state == nil || len(state.Lobby.Players) != 1 {
+		t.Fatalf("host did not see member leave: %+v", state)
+	}
+	if h.OnlineCount("game1") != 1 {
+		t.Fatalf("online count = %d, want 1", h.OnlineCount("game1"))
+	}
+}
+
+func TestLobbyFull(t *testing.T) {
+	h := NewHub()
+	host := register(t, h, "host")
+	h.Create(host, "game1")
+	code := last(drain(host), "lobby").Lobby.Code
+	for i := 1; i < MaxPlayers; i++ {
+		s := register(t, h, string(rune('a'+i)))
+		if err := h.Join(s, code); err != nil {
+			t.Fatalf("join %d: %v", i, err)
+		}
+	}
+	extra := register(t, h, "extra")
+	if err := h.Join(extra, code); err != ErrLobbyFull {
+		t.Fatalf("expected ErrLobbyFull, got %v", err)
+	}
+}
+
+func TestRelayBroadcastAndTargeted(t *testing.T) {
+	h := NewHub()
+	a := register(t, h, "a")
+	b := register(t, h, "b")
+	c := register(t, h, "c")
+
+	h.Create(a, "game1")
+	code := last(drain(a), "lobby").Lobby.Code
+	h.Join(b, code)
+	h.Join(c, code)
+	drain(a)
+	drain(b)
+	drain(c)
+
+	payload := json.RawMessage(`{"x":1}`)
+
+	// Broadcast: everyone but the sender.
+	if err := h.Relay(a, "", payload); err != nil {
+		t.Fatal(err)
+	}
+	if last(drain(a), "msg") != nil {
+		t.Fatal("sender received its own broadcast")
+	}
+	bm := last(drain(b), "msg")
+	if bm == nil || bm.From != "a" || string(bm.Data) != `{"x":1}` {
+		t.Fatalf("b got bad relay: %+v", bm)
+	}
+	if last(drain(c), "msg") == nil {
+		t.Fatal("c missed broadcast")
+	}
+
+	// Targeted: only the named player.
+	if err := h.Relay(b, "c", payload); err != nil {
+		t.Fatal(err)
+	}
+	if last(drain(a), "msg") != nil {
+		t.Fatal("a received a message targeted at c")
+	}
+	if last(drain(c), "msg") == nil {
+		t.Fatal("c missed targeted message")
+	}
+
+	// Relay outside a lobby fails.
+	solo := register(t, h, "solo")
+	if err := h.Relay(solo, "", payload); err != ErrNotInLobby {
+		t.Fatalf("expected ErrNotInLobby, got %v", err)
+	}
+}
+
+func TestAutoLeaveOnCreateAndJoin(t *testing.T) {
+	h := NewHub()
+	a := register(t, h, "a")
+	b := register(t, h, "b")
+
+	h.Create(a, "game1")
+	firstCode := last(drain(a), "lobby").Lobby.Code
+
+	// Creating a second lobby closes the first (a hosted it).
+	if err := h.Create(a, "game2"); err != nil {
+		t.Fatal(err)
+	}
+	if _, alive := h.lobbies[firstCode]; alive {
+		t.Fatal("first lobby survived host re-create")
+	}
+	if h.OnlineCount("game1") != 0 || h.OnlineCount("game2") != 1 {
+		t.Fatalf("counts wrong: game1=%d game2=%d", h.OnlineCount("game1"), h.OnlineCount("game2"))
+	}
+
+	// b joins a's lobby, then creates its own — must leave a's lobby.
+	secondCode := last(drain(a), "lobby").Lobby.Code
+	h.Join(b, secondCode)
+	if err := h.Create(b, "game3"); err != nil {
+		t.Fatal(err)
+	}
+	drain(a)
+	if h.OnlineCount("game2") != 1 {
+		t.Fatalf("b still counted in game2: %d", h.OnlineCount("game2"))
+	}
+}
+
+func TestConnCapPerUser(t *testing.T) {
+	h := NewHub()
+	for i := 0; i < MaxConnsPerUser; i++ {
+		register(t, h, "alice")
+	}
+	if _, err := h.Register("alice", "alice", ""); err != ErrTooManyConns {
+		t.Fatalf("expected ErrTooManyConns, got %v", err)
+	}
+	// Other users unaffected.
+	register(t, h, "bob")
+}
+
+func TestSlowConsumerDisconnected(t *testing.T) {
+	h := NewHub()
+	a := register(t, h, "a")
+	b := register(t, h, "b")
+	h.Create(a, "game1")
+	code := last(drain(a), "lobby").Lobby.Code
+	h.Join(b, code)
+	// b never drains: overflow its buffer.
+	payload := json.RawMessage(`1`)
+	for i := 0; i < SendBuffer+2; i++ {
+		h.Relay(a, "", payload)
+	}
+	select {
+	case <-b.Done():
+		// force-closed as expected
+	case <-time.After(time.Second):
+		t.Fatal("slow consumer was not force-closed")
+	}
+}
+
+func TestReapIdle(t *testing.T) {
+	h := NewHub()
+	a := register(t, h, "a")
+	h.Create(a, "game1")
+	code := last(drain(a), "lobby").Lobby.Code
+
+	h.mu.Lock()
+	h.lobbies[code].LastActive = time.Now().Add(-IdleTTL - time.Minute)
+	h.mu.Unlock()
+
+	h.reapIdle()
+
+	closed := last(drain(a), "closed")
+	if closed == nil || closed.Reason != "expired" {
+		t.Fatalf("no expired notification: %+v", closed)
+	}
+	if h.OnlineCount("game1") != 0 {
+		t.Fatal("online count not released on reap")
+	}
+}
+
+func TestUnregisterReleasesConnSlot(t *testing.T) {
+	h := NewHub()
+	sessions := make([]*Session, 0, MaxConnsPerUser)
+	for i := 0; i < MaxConnsPerUser; i++ {
+		sessions = append(sessions, register(t, h, "alice"))
+	}
+	h.Unregister(sessions[0])
+	// Slot freed — a new connection fits again.
+	register(t, h, "alice")
+}

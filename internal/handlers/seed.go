@@ -25,6 +25,7 @@ type seedGame struct {
 	Price       float64
 	Discount    int
 	IsWebGPU    bool
+	Multiplayer bool
 	Color1      [3]uint8
 	Color2      [3]uint8
 	VideoURL    string
@@ -71,7 +72,7 @@ func SeedData(c *gin.Context) {
 	games := []seedGame{
 		{
 			Title: "Neon Overdrive", Genre: "racing", Price: 19.99, Discount: 20,
-			Tags: []string{"Racing", "Multiplayer", "Cyberpunk"}, IsWebGPU: false,
+			Tags: []string{"Racing", "Multiplayer", "Cyberpunk"}, IsWebGPU: false, Multiplayer: true,
 			Color1: [3]uint8{180, 50, 200}, Color2: [3]uint8{20, 10, 40},
 			Desc:        "Race through neon-lit cyberpunk cities at breakneck speeds.",
 			CustomAbout: "Experience the thrill of high-speed racing through a stunning cyberpunk cityscape. Customize your vehicle with over 50 unique parts, compete against AI opponents or friends online, and become the ultimate street racer.",
@@ -139,7 +140,7 @@ func SeedData(c *gin.Context) {
 
 	created := 0
 	for _, sg := range games {
-		game, err := models.CreateGame(sg.Title, sg.Genre, sg.Desc, user.ID, sg.Price, sg.Tags, sg.IsWebGPU)
+		game, err := models.CreateGame(sg.Title, sg.Genre, sg.Desc, user.ID, sg.Price, sg.Tags, sg.IsWebGPU, sg.Multiplayer)
 		if err != nil {
 			continue
 		}

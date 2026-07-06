@@ -20,6 +20,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	emailpkg "github.com/yusufkaraaslan/play-more/internal/email"
+	"github.com/yusufkaraaslan/play-more/internal/lobby"
 	"github.com/yusufkaraaslan/play-more/internal/middleware"
 	"github.com/yusufkaraaslan/play-more/internal/models"
 	"github.com/yusufkaraaslan/play-more/internal/server"
@@ -341,6 +342,7 @@ func main() {
 
 	middleware.StartRateLimitCleanup()
 	middleware.StartAnalyticsWriter()
+	lobby.Default.StartCleanup(middleware.ShutdownCh)
 	webhook.Start()
 	uploadgc.UploadsGCEnabled = *uploadsGC
 	uploadgc.UploadsGCDryRun = *uploadsGCDryRun

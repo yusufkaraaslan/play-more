@@ -35,6 +35,7 @@ type Game struct {
 	Features    []string `json:"features"`
 	SysReqMin   string   `json:"sys_req_min"`
 	SysReqRec   string   `json:"sys_req_rec"`
+	Multiplayer bool     `json:"multiplayer"`
 	CreatedAt   string   `json:"created_at"`
 	UpdatedAt   string   `json:"updated_at"`
 	// Joined fields
@@ -53,7 +54,7 @@ func makeSlug(title string) string {
 	return s
 }
 
-func CreateGame(title, genre, description, developerID string, price float64, tags []string, isWebGPU bool) (*Game, error) {
+func CreateGame(title, genre, description, developerID string, price float64, tags []string, isWebGPU, multiplayer bool) (*Game, error) {
 	id := uuid.New().String()
 	baseSlug := makeSlug(title)
 	tagsJSON, err := json.Marshal(tags)
@@ -71,9 +72,9 @@ func CreateGame(title, genre, description, developerID string, price float64, ta
 			slug = fmt.Sprintf("%s-%d", baseSlug, attempt)
 		}
 		_, err = storage.DB.Exec(
-			`INSERT INTO games (id, title, slug, genre, price, description, developer_id, tags, is_webgpu, entry_file, screenshots)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			id, title, slug, genre, price, description, developerID, string(tagsJSON), isWebGPU, "index.html", screenshotsJSON,
+			`INSERT INTO games (id, title, slug, genre, price, description, developer_id, tags, is_webgpu, multiplayer, entry_file, screenshots)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			id, title, slug, genre, price, description, developerID, string(tagsJSON), isWebGPU, multiplayer, "index.html", screenshotsJSON,
 		)
 		if err == nil {
 			break
@@ -89,7 +90,7 @@ func CreateGame(title, genre, description, developerID string, price float64, ta
 	game := &Game{
 		ID: id, Title: title, Slug: slug, Genre: genre, Price: price,
 		Description: description, DeveloperID: developerID, Tags: tags,
-		IsWebGPU: isWebGPU, EntryFile: "index.html", Published: true,
+		IsWebGPU: isWebGPU, Multiplayer: multiplayer, EntryFile: "index.html", Published: true,
 	}
 	return game, nil
 }
@@ -98,7 +99,7 @@ func GetGameByID(id string) (*Game, error) {
 	return scanGame(storage.DB.QueryRow(
 		`SELECT g.id, g.title, g.slug, g.genre, g.price, g.discount, g.description,
 		        g.cover_path, g.developer_id, g.tags, g.is_webgpu, g.file_path, g.entry_file,
-		        g.screenshots, g.video_url, g.videos, g.published, g.theme_color, g.header_image, g.custom_about, g.features, g.sys_req_min, g.sys_req_rec, g.created_at, g.updated_at,
+		        g.screenshots, g.video_url, g.videos, g.published, g.theme_color, g.header_image, g.custom_about, g.features, g.sys_req_min, g.sys_req_rec, g.multiplayer, g.created_at, g.updated_at,
 		        u.username,
 		        COALESCE(ride.avg_rating, 0),
 		        COALESCE(ride.review_count, 0),
@@ -115,7 +116,7 @@ func GetGameBySlug(slug string) (*Game, error) {
 	return scanGame(storage.DB.QueryRow(
 		`SELECT g.id, g.title, g.slug, g.genre, g.price, g.discount, g.description,
 		        g.cover_path, g.developer_id, g.tags, g.is_webgpu, g.file_path, g.entry_file,
-		        g.screenshots, g.video_url, g.videos, g.published, g.theme_color, g.header_image, g.custom_about, g.features, g.sys_req_min, g.sys_req_rec, g.created_at, g.updated_at,
+		        g.screenshots, g.video_url, g.videos, g.published, g.theme_color, g.header_image, g.custom_about, g.features, g.sys_req_min, g.sys_req_rec, g.multiplayer, g.created_at, g.updated_at,
 		        u.username,
 		        COALESCE(ride.avg_rating, 0),
 		        COALESCE(ride.review_count, 0),
@@ -206,7 +207,7 @@ func ListGames(p GameListParams) ([]Game, int, error) {
 	rows, err := storage.DB.Query(
 		`SELECT g.id, g.title, g.slug, g.genre, g.price, g.discount, g.description,
 		        g.cover_path, g.developer_id, g.tags, g.is_webgpu, g.file_path, g.entry_file,
-		        g.screenshots, g.video_url, g.videos, g.published, g.theme_color, g.header_image, g.custom_about, g.features, g.sys_req_min, g.sys_req_rec, g.created_at, g.updated_at,
+		        g.screenshots, g.video_url, g.videos, g.published, g.theme_color, g.header_image, g.custom_about, g.features, g.sys_req_min, g.sys_req_rec, g.multiplayer, g.created_at, g.updated_at,
 		        u.username,
 		        COALESCE(ride.avg_rating, 0),
 		        COALESCE(ride.review_count, 0),
@@ -233,14 +234,14 @@ func ListGames(p GameListParams) ([]Game, int, error) {
 	return games, total, nil
 }
 
-func (g *Game) Update(title, genre, description string, price float64, tags []string, isWebGPU bool) error {
+func (g *Game) Update(title, genre, description string, price float64, tags []string, isWebGPU, multiplayer bool) error {
 	tagsJSON, err := json.Marshal(tags)
 	if err != nil {
 		return fmt.Errorf("json marshal tags: %w", err)
 	}
 	_, err = storage.DB.Exec(
-		`UPDATE games SET title = ?, genre = ?, description = ?, price = ?, tags = ?, is_webgpu = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
-		title, genre, description, price, string(tagsJSON), isWebGPU, g.ID,
+		`UPDATE games SET title = ?, genre = ?, description = ?, price = ?, tags = ?, is_webgpu = ?, multiplayer = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+		title, genre, description, price, string(tagsJSON), isWebGPU, multiplayer, g.ID,
 	)
 	return err
 }
@@ -268,7 +269,7 @@ func GetGamesByIDs(ids []string) ([]Game, error) {
 	query := fmt.Sprintf(
 		`SELECT g.id, g.title, g.slug, g.genre, g.price, g.discount, g.description,
 		        g.cover_path, g.developer_id, g.tags, g.is_webgpu, g.file_path, g.entry_file,
-		        g.screenshots, g.video_url, g.videos, g.published, g.theme_color, g.header_image, g.custom_about, g.features, g.sys_req_min, g.sys_req_rec, g.created_at, g.updated_at,
+		        g.screenshots, g.video_url, g.videos, g.published, g.theme_color, g.header_image, g.custom_about, g.features, g.sys_req_min, g.sys_req_rec, g.multiplayer, g.created_at, g.updated_at,
 		        u.username,
 		        COALESCE(ride.avg_rating, 0),
 		        COALESCE(ride.review_count, 0),
@@ -347,7 +348,7 @@ func scanGame(row *sql.Row) (*Game, error) {
 		&g.CoverPath, &g.DeveloperID, &tagsJSON, &g.IsWebGPU, &g.FilePath, &g.EntryFile,
 		&screenshotsJSON, &g.VideoURL, &videosJSON, &g.Published,
 		&g.ThemeColor, &g.HeaderImage, &g.CustomAbout, &featuresJSON, &g.SysReqMin, &g.SysReqRec,
-		&g.CreatedAt, &g.UpdatedAt,
+		&g.Multiplayer, &g.CreatedAt, &g.UpdatedAt,
 		&g.DeveloperName, &g.AvgRating, &g.ReviewCount, &g.PlayCount,
 	)
 	if err != nil {
@@ -365,7 +366,7 @@ func scanGameRow(rows *sql.Rows) (*Game, error) {
 		&g.CoverPath, &g.DeveloperID, &tagsJSON, &g.IsWebGPU, &g.FilePath, &g.EntryFile,
 		&screenshotsJSON, &g.VideoURL, &videosJSON, &g.Published,
 		&g.ThemeColor, &g.HeaderImage, &g.CustomAbout, &featuresJSON, &g.SysReqMin, &g.SysReqRec,
-		&g.CreatedAt, &g.UpdatedAt,
+		&g.Multiplayer, &g.CreatedAt, &g.UpdatedAt,
 		&g.DeveloperName, &g.AvgRating, &g.ReviewCount, &g.PlayCount,
 	)
 	if err != nil {

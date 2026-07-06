@@ -475,3 +475,99 @@ network errors retry. After 10 consecutive failures the
 webhook is auto-disabled (set `active=true` via PUT to
 re-enable after fixing the receiver).
 - Below 64 MiB, prefer the existing single-shot `POST /api/games` for fewer round-trips.
+
+## Multiplayer lobbies
+
+Games can opt into PlayMore's built-in lobby system: players create
+a lobby on the game's page, share a 6-character code (or a
+`#lobby/<code>` link), ready up, and launch together. After launch
+the platform **relays game messages between the players** — your
+game gets working online multiplayer without running any server.
+
+Opt in by checking **"Online multiplayer"** when uploading/editing
+the game (API: the `multiplayer` boolean on game create/update).
+The game page then shows a Multiplayer box with a live
+online-player count.
+
+### How your game talks to the platform
+
+Your game runs in a sandboxed iframe and speaks
+`window.postMessage` with the PlayMore page (the parent window).
+It never touches the WebSocket — the platform owns it.
+
+**1. Announce readiness** (once your game has loaded):
+
+```js
+window.parent.postMessage({ playmore: 'ready' }, '*');
+```
+
+**2. Receive lobby context and messages:**
+
+```js
+window.addEventListener('message', (ev) => {
+  const d = ev.data;
+  if (!d || !d.playmore) return;
+  switch (d.playmore) {
+    case 'init':     // reply to your 'ready'
+      // d.code     — lobby code
+      // d.you      — { id, username } (this player)
+      // d.host     — true if this player is the host
+      // d.players  — [{ id, username, avatar_url, ready, host }]
+      break;
+    case 'msg':      // a relayed message from another player
+      // d.from — sender player id, d.data — the payload
+      break;
+    case 'players':  // membership changed mid-game
+      // d.players — current player list (someone left = missing)
+      break;
+    case 'closed':   // lobby is gone (host left / connection lost)
+      break;
+  }
+});
+```
+
+**3. Send messages to other players:**
+
+```js
+// Broadcast to everyone else in the lobby
+window.parent.postMessage({ playmore: 'send', data: { x: 12, y: 4 } }, '*');
+
+// Send to one player only
+window.parent.postMessage({ playmore: 'send', to: playerId, data: {...} }, '*');
+```
+
+`data` is an arbitrary JSON value, relayed verbatim and opaque to
+the server. Design your own message schema on top of it.
+
+### Limits
+
+| Limit | Value |
+|-------|-------|
+| Players per lobby | 8 |
+| Message size (whole frame) | 8 KiB |
+| Messages per second per player | 30 |
+| Idle lobby lifetime | 2 hours |
+
+Slow consumers (a player whose tab stopped draining messages) are
+disconnected rather than buffered. The relay is fine for
+turn-based and casual real-time games; for high-tickrate action
+games, batch your state into snapshots.
+
+### The wire protocol (advanced)
+
+The SPA speaks JSON frames over `GET /ws` (WebSocket, session or
+API-key auth, same-origin `Origin` check). You only need this if
+you're building a non-browser client:
+
+- Client → server: `{"type":"create","game_id":…}`,
+  `{"type":"join","code":…}`, `{"type":"leave"}`,
+  `{"type":"ready","ready":true}`, `{"type":"start"}` (host only,
+  all others ready), `{"type":"msg","to":…,"data":…}`.
+- Server → client: `{"type":"lobby","lobby":{code,game_id,host_id,started,players}}`
+  (full snapshot on every change), `{"type":"launch","lobby":…}`,
+  `{"type":"msg","from":…,"data":…}`, `{"type":"closed","reason":…}`,
+  `{"type":"error","error":…}`.
+
+A lobby dies when its host disconnects (no host migration).
+Joining or creating while already in a lobby auto-leaves the old
+one.

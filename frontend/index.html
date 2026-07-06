@@ -665,10 +665,14 @@
                         <label class="form-label">Video URL (YouTube embed)</label>
                         <input type="text" class="form-input" id="upload-video" placeholder="https://www.youtube.com/embed/...">
                     </div>
-                    <div class="form-group" style="display:flex;align-items:flex-end;padding-bottom:15px;">
+                    <div class="form-group" style="display:flex;flex-direction:column;justify-content:flex-end;gap:8px;padding-bottom:15px;">
                         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--text-secondary);">
                             <input type="checkbox" id="upload-webgpu" style="accent-color:var(--accent);width:16px;height:16px;">
                             This game uses WebGPU
+                        </label>
+                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--text-secondary);">
+                            <input type="checkbox" id="upload-multiplayer" style="accent-color:var(--accent);width:16px;height:16px;">
+                            Online multiplayer (implements the lobby protocol — see /docs)
                         </label>
                     </div>
                 </div>
@@ -1137,6 +1141,9 @@
 			currentTab = tab;
 			if (lightboxOpen) closeLightbox();
 			if (tab !== 'gamedetail') currentGameData = null;
+			// Leaving the lobby's game page abandons the lobby (unless the
+			// game player overlay is up — that stays on the gamedetail tab).
+			if (tab !== 'gamedetail' && mpLobby && !mpLaunched) mpLeave(true);
             detachMediaKeyNav();
             document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
             document.querySelectorAll('.nav-tab').forEach(t => { t.classList.remove('active'); t.removeAttribute('aria-current'); });
@@ -1170,6 +1177,8 @@
                 showDeveloper(hash.slice(10));
             } else if (hash.startsWith('list/')) {
                 showList(hash.slice(5));
+            } else if (hash.startsWith('lobby/')) {
+                mpJoinFromLink(hash.slice(6));
             } else if (hash.startsWith('verify/')) {
                 verifyEmail(hash.slice(7));
             } else if (hash.startsWith('reset/')) {
@@ -1765,6 +1774,7 @@
             document.getElementById('upload-tags').value = '';
             document.getElementById('upload-genre').value = 'action';
             document.getElementById('upload-webgpu').checked = false;
+            document.getElementById('upload-multiplayer').checked = false;
             document.getElementById('upload-video').value = '';
             document.getElementById('upload-cover').value = '';
             document.getElementById('upload-screenshots').value = '';
@@ -1814,6 +1824,7 @@
                         description: document.getElementById('upload-description').value,
                         tags: tagsStr.split(',').map(s => s.trim()).filter(Boolean),
                         is_webgpu: document.getElementById('upload-webgpu').checked,
+                        multiplayer: document.getElementById('upload-multiplayer').checked,
                     };
                     showStatus('Uploading (chunked)...', 'success');
                     showUploadProgress(0);
@@ -1863,6 +1874,7 @@
                     formData.append('description', document.getElementById('upload-description').value);
                     formData.append('tags', document.getElementById('upload-tags').value);
                     formData.append('is_webgpu', document.getElementById('upload-webgpu').checked ? 'true' : 'false');
+                    formData.append('multiplayer', document.getElementById('upload-multiplayer').checked ? 'true' : 'false');
                     const videoUrl = document.getElementById('upload-video').value.trim();
                     if (videoUrl) formData.append('video_url', videoUrl);
                     const coverFile = document.getElementById('upload-cover').files[0];
@@ -2106,6 +2118,10 @@
             try {
                 const data = await api('/games/' + gameId);
                 const game = data.game; currentGameData = game; const fileSize = data.file_size || 0;
+                // Viewing a different game's page abandons the current lobby
+                // (mid-game the player overlay is up and this never fires).
+                if (mpLobby && mpLobby.game_id !== game.id && !mpLaunched) mpLeave(true);
+                mpOnlineCount = data.online_players || 0;
                 const reviews = await api('/games/' + gameId + '/reviews');
                 const coverSrc = playAsset(game.cover_path) || '';
                 const allReviews = reviews.reviews || [];
@@ -2275,6 +2291,11 @@
                 }
                 html += '</div>';
 
+                // Multiplayer lobby box (games that opted in via the multiplayer flag)
+                if (game.multiplayer) {
+                    html += '<div class="info-box" id="mp-box">' + mpBoxHTML() + '</div>';
+                }
+
                 // Compact review summary
                 if (allReviews.length > 0) {
                     const revLabelSb = posPct >= 90 ? 'Overwhelmingly Positive' : posPct >= 70 ? 'Very Positive' : posPct >= 50 ? 'Mixed' : 'Negative';
@@ -2300,6 +2321,7 @@
                 html += '<div class="info-row"><span class="info-label">Genre</span><span class="info-value">' + escapeHtml(genreCap) + '</span></div>';
                 html += '<div class="info-row"><span class="info-label">Released</span><span class="info-value">' + escapeHtml(game.created_at || 'Unknown') + '</span></div>';
                 if (game.is_webgpu) html += '<div class="info-row"><span class="info-label">Graphics</span><span class="info-value" style="color:var(--success);">WebGPU Enabled</span></div>';
+                if (game.multiplayer) html += '<div class="info-row"><span class="info-label">Multiplayer</span><span class="info-value" style="color:var(--success);">Online Lobby</span></div>';
                 if (fileSize > 0) html += '<div class="info-row"><span class="info-label">Size</span><span class="info-value">' + formatBytes(fileSize) + '</span></div>';
                 html += '</div>';
                 if (currentUser) {
@@ -3010,7 +3032,238 @@
             if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
             document.getElementById('game-player').classList.remove('active');
             setTimeout(() => { document.getElementById('player-frame').src = ''; }, 400);
+            // Closing the player mid-multiplayer-session leaves the lobby
+            // (v1 lobbies are one-shot — no rematch flow).
+            if (mpLobby) mpLeave(true);
         }
+
+        /* ============ Multiplayer Lobby (#29) ============ */
+        // WebSocket client for /ws + postMessage bridge into the game iframe.
+        // The SPA owns the socket; games speak a tiny postMessage protocol
+        // (documented in docs/DEVELOPER.md) and never touch the socket.
+        let mpSocket = null;        // WebSocket (null when disconnected)
+        let mpLobby = null;         // latest lobby State from the server
+        let mpLaunched = false;     // game running with the bridge active
+        let mpOnlineCount = 0;      // online-player count from the game payload
+        let mpPendingCreate = null; // game id to create once the socket opens
+        let mpPendingJoin = null;   // lobby code to join once the socket opens
+
+        function mpConnect() {
+            if (mpSocket && (mpSocket.readyState === WebSocket.CONNECTING || mpSocket.readyState === WebSocket.OPEN)) return;
+            const proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
+            mpSocket = new WebSocket(proto + location.host + '/ws');
+            mpSocket.onopen = () => {
+                if (mpPendingCreate) { mpSend({ type: 'create', game_id: mpPendingCreate }); mpPendingCreate = null; }
+                else if (mpPendingJoin) { mpSend({ type: 'join', code: mpPendingJoin }); mpPendingJoin = null; }
+            };
+            mpSocket.onmessage = (ev) => {
+                let m; try { m = JSON.parse(ev.data); } catch { return; }
+                mpHandle(m);
+            };
+            mpSocket.onclose = () => {
+                mpSocket = null;
+                if (mpLobby) {
+                    mpLobby = null;
+                    if (mpLaunched) { mpNotifyGame({ playmore: 'closed' }); mpLaunched = false; }
+                    renderMpBox();
+                    toast('Lobby connection lost.', 'error');
+                }
+            };
+        }
+
+        function mpSend(obj) {
+            if (mpSocket && mpSocket.readyState === WebSocket.OPEN) mpSocket.send(JSON.stringify(obj));
+        }
+
+        async function mpHandle(m) {
+            switch (m.type) {
+                case 'lobby':
+                    mpLobby = m.lobby;
+                    // Link-join flow: once the server tells us which game the
+                    // lobby belongs to, land on that game's page.
+                    if (!mpLaunched && (!currentGameData || currentGameData.id !== mpLobby.game_id)) {
+                        await showGameDetail(mpLobby.game_id);
+                    }
+                    renderMpBox();
+                    if (mpLaunched) mpNotifyGame({ playmore: 'players', players: mpLobby.players });
+                    break;
+                case 'launch':
+                    mpLobby = m.lobby;
+                    if (!currentGameData || currentGameData.id !== mpLobby.game_id) {
+                        await showGameDetail(mpLobby.game_id);
+                    }
+                    renderMpBox();
+                    mpLaunched = true;
+                    launchGame(mpLobby.game_id, (currentGameData && currentGameData.entry_file) || 'index.html');
+                    break;
+                case 'msg':
+                    if (mpLaunched) mpNotifyGame({ playmore: 'msg', from: m.from, data: m.data });
+                    break;
+                case 'closed':
+                    mpLobby = null;
+                    if (mpLaunched) { mpNotifyGame({ playmore: 'closed' }); mpLaunched = false; }
+                    renderMpBox();
+                    toast(m.reason === 'host_left' ? 'The host closed the lobby.' : 'Lobby closed.', 'error');
+                    break;
+                case 'error':
+                    toast(m.error || 'Lobby error', 'error');
+                    break;
+            }
+        }
+
+        function mpCreate(gameId) {
+            if (!currentUser) { showAuth('login'); return; }
+            mpPendingJoin = null;
+            if (mpSocket && mpSocket.readyState === WebSocket.OPEN) {
+                mpSend({ type: 'create', game_id: gameId });
+            } else {
+                mpPendingCreate = gameId;
+                mpConnect();
+            }
+        }
+
+        function mpJoinCode(code) {
+            if (!currentUser) { showAuth('login'); return; }
+            code = String(code || '').trim().toUpperCase();
+            if (code.length < 4) { toast('Enter a lobby code.', 'error'); return; }
+            mpPendingCreate = null;
+            if (mpSocket && mpSocket.readyState === WebSocket.OPEN) {
+                mpSend({ type: 'join', code: code });
+            } else {
+                mpPendingJoin = code;
+                mpConnect();
+            }
+        }
+
+        function mpJoinFromInput() {
+            const inp = document.getElementById('mp-join-code');
+            mpJoinCode(inp ? inp.value : '');
+        }
+
+        function mpJoinFromLink(code) {
+            if (!currentUser) {
+                toast('Log in first, then open the lobby link again.', 'error');
+                showAuth('login');
+                return;
+            }
+            mpJoinCode(code);
+        }
+
+        function mpToggleReady() {
+            if (!mpLobby || !currentUser) return;
+            const me = mpLobby.players.find(p => p.id === currentUser.id);
+            mpSend({ type: 'ready', ready: !(me && me.ready) });
+        }
+
+        function mpStart() { mpSend({ type: 'start' }); }
+
+        function mpLeave(silent) {
+            mpPendingCreate = null; mpPendingJoin = null;
+            const hadLobby = !!mpLobby;
+            mpLobby = null; mpLaunched = false;
+            if (mpSocket) {
+                const s = mpSocket;
+                mpSocket = null;         // detach first so onclose doesn't toast
+                s.onclose = null;
+                try { s.send(JSON.stringify({ type: 'leave' })); } catch {}
+                try { s.close(); } catch {}
+            }
+            renderMpBox();
+            if (hadLobby && !silent) toast('Left the lobby.', 'success');
+        }
+
+        function mpCopyLink() {
+            if (!mpLobby) return;
+            navigator.clipboard.writeText(location.origin + '/#lobby/' + mpLobby.code);
+            toast('Lobby link copied!', 'success');
+        }
+
+        function renderMpBox() {
+            const el = document.getElementById('mp-box');
+            if (el) el.innerHTML = mpBoxHTML();
+        }
+
+        function mpBoxHTML() {
+            const game = currentGameData;
+            if (!game || !game.multiplayer) return '';
+            let h = '<h3 style="font-size:12px;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;color:var(--text-secondary);">Multiplayer</h3>';
+            if (!currentUser) {
+                return h + '<button class="btn-secondary" style="width:100%;" ' + act('showAuth', 'login') + '>Log in to play online</button>';
+            }
+            if (!mpLobby || mpLobby.game_id !== game.id) {
+                if (mpOnlineCount > 0) h += '<p style="font-size:12px;color:var(--success);margin-bottom:10px;">● ' + mpOnlineCount + ' player' + (mpOnlineCount === 1 ? '' : 's') + ' online now</p>';
+                h += '<button class="btn-primary" style="width:100%;margin-bottom:8px;" ' + act('mpCreate', game.id) + '>Create Lobby</button>';
+                h += '<div style="display:flex;gap:6px;">';
+                h += '<input type="text" class="form-input" id="mp-join-code" placeholder="Lobby code" maxlength="6" autocomplete="off" style="flex:1;text-transform:uppercase;">';
+                h += '<button class="btn-secondary" style="padding:8px 14px;" ' + act('mpJoinFromInput') + '>Join</button>';
+                h += '</div>';
+                return h;
+            }
+            const isHost = mpLobby.host_id === currentUser.id;
+            const me = mpLobby.players.find(p => p.id === currentUser.id) || {};
+            h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">';
+            h += '<span style="font-family:monospace;font-size:18px;letter-spacing:3px;">' + escapeHtml(mpLobby.code) + '</span>';
+            h += '<button class="btn-secondary" style="padding:4px 10px;font-size:11px;" ' + act('mpCopyLink') + '>Copy Link</button></div>';
+            mpLobby.players.forEach(p => {
+                h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:13px;">';
+                h += '<img src="' + esc(avatarUrl(p)) + '" style="width:22px;height:22px;border-radius:3px;" alt="">';
+                h += '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(p.username) + '</span>';
+                h += p.host
+                    ? '<span style="font-size:10px;color:var(--accent);font-weight:bold;">HOST</span>'
+                    : '<span style="font-size:11px;color:' + (p.ready ? 'var(--success)' : 'var(--text-secondary)') + ';">' + (p.ready ? '✔ Ready' : 'waiting…') + '</span>';
+                h += '</div>';
+            });
+            if (mpLobby.started) {
+                h += '<p style="font-size:12px;color:var(--success);margin:10px 0 0;">Game in progress</p>';
+            } else if (isHost) {
+                const allReady = mpLobby.players.every(p => p.host || p.ready);
+                h += '<button class="btn-primary" style="width:100%;margin-top:10px;"' + (allReady ? '' : ' disabled') + ' ' + act('mpStart') + '>▶ Start Game</button>';
+                if (!allReady) h += '<p style="font-size:11px;color:var(--text-secondary);margin-top:5px;">Waiting for everyone to ready up…</p>';
+            } else {
+                h += '<button class="' + (me.ready ? 'btn-secondary' : 'btn-primary') + '" style="width:100%;margin-top:10px;" ' + act('mpToggleReady') + '>' + (me.ready ? 'Not Ready' : 'Ready Up') + '</button>';
+            }
+            h += '<button class="btn-secondary" style="width:100%;margin-top:8px;font-size:12px;" ' + act('mpLeave') + '>Leave Lobby</button>';
+            return h;
+        }
+
+        // ── postMessage bridge (SPA ⇄ game iframe) ────────────────────────────
+        // Origin handling depends on deployment:
+        //   - With --games-domain the iframe has that real origin: post with it
+        //     as targetOrigin and require it on inbound events.
+        //   - Without it the sandbox (no allow-same-origin) makes the iframe's
+        //     origin opaque — targetOrigin must be '*' and inbound ev.origin is
+        //     'null'. The ev.source === contentWindow check is what actually
+        //     pins the peer to our frame in both modes; the game is untrusted
+        //     either way (it is the very thing playing in the lobby).
+        function mpGameWindow() {
+            const f = document.getElementById('player-frame');
+            return f ? f.contentWindow : null;
+        }
+        function mpTargetOrigin() { return gameOrigin() || '*'; }
+        function mpNotifyGame(obj) {
+            const w = mpGameWindow();
+            if (w) { try { w.postMessage(obj, mpTargetOrigin()); } catch {} }
+        }
+        window.addEventListener('message', (ev) => {
+            if (!mpLaunched || !mpLobby || !currentUser) return;
+            if (!ev.source || ev.source !== mpGameWindow()) return;
+            if (gameOrigin() && ev.origin !== gameOrigin()) return;
+            const d = ev.data;
+            if (!d || typeof d !== 'object' || !d.playmore) return;
+            if (d.playmore === 'ready') {
+                // Game announced it's loaded — hand it the lobby context.
+                mpNotifyGame({
+                    playmore: 'init',
+                    code: mpLobby.code,
+                    game_id: mpLobby.game_id,
+                    you: { id: currentUser.id, username: currentUser.username },
+                    host: mpLobby.host_id === currentUser.id,
+                    players: mpLobby.players
+                });
+            } else if (d.playmore === 'send') {
+                mpSend({ type: 'msg', to: d.to || '', data: d.data });
+            }
+        });
 
         /* ============ FPS Counter ============ */
         let fpsVisible = false;
@@ -3296,6 +3549,7 @@
                 html += '<div class="form-group"><label class="form-label">Tags (comma separated)</label><input type="text" class="form-input" id="edit-game-tags" value="' + escapeHtml((g.tags||[]).join(', ')) + '"></div>';
                 html += '<div class="form-group"><label class="form-label">Description</label><textarea class="form-textarea" id="edit-game-desc">' + escapeHtml(g.description || '') + '</textarea></div>';
                 html += '<div class="form-group"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--text-secondary);"><input type="checkbox" id="edit-game-webgpu"' + (g.is_webgpu ? ' checked' : '') + ' style="accent-color:var(--accent);width:16px;height:16px;"> Uses WebGPU</label></div>';
+                html += '<div class="form-group"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--text-secondary);"><input type="checkbox" id="edit-game-multiplayer"' + (g.multiplayer ? ' checked' : '') + ' style="accent-color:var(--accent);width:16px;height:16px;"> Online multiplayer (implements the lobby protocol — see /docs)</label></div>';
                 html += '</div>';
 
                 // === Media ===
@@ -3385,6 +3639,7 @@
                         description: document.getElementById('edit-game-desc').value,
                         tags: tags,
                         is_webgpu: document.getElementById('edit-game-webgpu').checked,
+                        multiplayer: document.getElementById('edit-game-multiplayer').checked,
                         videos: videos,
                         theme_color: document.getElementById('edit-game-theme').value,
                         header_image: document.getElementById('edit-game-header').value,

@@ -1864,6 +1864,7 @@ components:
         cover_path: { type: string }
         developer_id: { type: string }
         is_webgpu: { type: boolean }
+        multiplayer: { type: boolean, description: "Game supports online lobbies (implements the postMessage lobby protocol)" }
         published: { type: boolean }
         featured_rank: { type: integer, description: "Higher rank = appears earlier in the featured hero. 0 = unpinned." }
         screenshots:
@@ -1933,6 +1934,7 @@ components:
           type: array
           items: { type: string, maxLength: 30 }
         is_webgpu: { type: boolean, default: false }
+        multiplayer: { type: boolean, default: false }
     GameUpdateRequest:
       type: object
       properties:
@@ -1943,6 +1945,7 @@ components:
           type: array
           items: { type: string }
         is_webgpu: { type: boolean }
+        multiplayer: { type: boolean }
     ProfileUpdateRequest:
       type: object
       properties:
@@ -1988,6 +1991,7 @@ components:
           type: array
           items: { type: string }
         is_webgpu: { type: boolean }
+        multiplayer: { type: boolean }
     UploadInitResponse:
       type: object
       properties:

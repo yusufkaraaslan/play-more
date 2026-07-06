@@ -11,6 +11,7 @@ import (
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 	"github.com/yusufkaraaslan/play-more/internal/handlers"
+	"github.com/yusufkaraaslan/play-more/internal/lobby"
 	"github.com/yusufkaraaslan/play-more/internal/middleware"
 	"github.com/yusufkaraaslan/play-more/internal/storage"
 )
@@ -98,8 +99,9 @@ func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxi
 		c.Next()
 	})
 
-	// Gzip (skip game file serving)
-	r.Use(gzip.Gzip(gzip.DefaultCompression, gzip.WithExcludedPaths([]string{"/play/"})))
+	// Gzip (skip game file serving; skip /ws — the upgrade needs the raw
+	// http.Hijacker, not a compressing writer wrapper)
+	r.Use(gzip.Gzip(gzip.DefaultCompression, gzip.WithExcludedPaths([]string{"/play/", "/ws"})))
 
 	// Site analytics
 	r.Use(middleware.TrackPageView())
@@ -177,6 +179,12 @@ func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxi
 
 	// Deploy script download
 	r.GET("/deploy.sh", middleware.RateLimit(10, 60), handlers.ServeDeployScript)
+
+	// Multiplayer lobby WebSocket (#29). Root-mounted (not under /api —
+	// it is not a REST endpoint and the OpenAPI drift test ignores it).
+	// CSRF-equivalent protection is the Origin check inside the
+	// handler's websocket.Accept; see handlers/ws.go.
+	r.GET("/ws", middleware.RateLimit(30, 60), middleware.AuthOptional(), middleware.AuthRequired(), handlers.GameLobbyWS(lobby.Default))
 
 	// Game file serving (for iframe player)
 	// Game iframe content. spaOrigin gates who can embed via CSP frame-ancestors —
