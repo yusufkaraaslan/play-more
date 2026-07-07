@@ -3227,27 +3227,31 @@
         }
 
         // ── postMessage bridge (SPA ⇄ game iframe) ────────────────────────────
-        // Origin handling depends on deployment:
-        //   - With --games-domain the iframe has that real origin: post with it
-        //     as targetOrigin and require it on inbound events.
-        //   - Without it the sandbox (no allow-same-origin) makes the iframe's
-        //     origin opaque — targetOrigin must be '*' and inbound ev.origin is
-        //     'null'. The ev.source === contentWindow check is what actually
-        //     pins the peer to our frame in both modes; the game is untrusted
-        //     either way (it is the very thing playing in the lobby).
+        // The game document is ALWAYS an opaque origin ('null'): the server sets
+        // a CSP `sandbox` directive WITHOUT allow-same-origin on every game HTML
+        // response, and the browser intersects it with the iframe sandbox — so
+        // even under --games-domain the game's origin is 'null', NOT the games
+        // host. Consequences the bridge must respect:
+        //   - Post with targetOrigin '*'. A specific origin (e.g. the games
+        //     domain) never matches an opaque frame, so the message would be
+        //     silently dropped — which is exactly what left games stuck on
+        //     "waiting" under --games-domain.
+        //   - Do NOT gate inbound events on ev.origin — it is always 'null'.
+        // The real security pin is ev.source === the player-frame's
+        // contentWindow: a foreign window cannot forge that. The game is
+        // untrusted regardless (it is the very thing playing in the lobby), and
+        // the payloads are lobby/relay data, not secrets.
         function mpGameWindow() {
             const f = document.getElementById('player-frame');
             return f ? f.contentWindow : null;
         }
-        function mpTargetOrigin() { return gameOrigin() || '*'; }
         function mpNotifyGame(obj) {
             const w = mpGameWindow();
-            if (w) { try { w.postMessage(obj, mpTargetOrigin()); } catch {} }
+            if (w) { try { w.postMessage(obj, '*'); } catch {} }
         }
         window.addEventListener('message', (ev) => {
             if (!mpLaunched || !mpLobby || !currentUser) return;
             if (!ev.source || ev.source !== mpGameWindow()) return;
-            if (gameOrigin() && ev.origin !== gameOrigin()) return;
             const d = ev.data;
             if (!d || typeof d !== 'object' || !d.playmore) return;
             if (d.playmore === 'ready') {
