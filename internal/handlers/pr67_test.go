@@ -79,6 +79,52 @@ func TestServe_ReuploadServesNewBuildAndHidesOtherBuilds(t *testing.T) {
 	}
 }
 
+// TestServe_BySlugAndID covers the fix for /play/<slug>/ 404ing:
+// ServeGameFiles must resolve the path segment as an ID OR a slug
+// (matching the API's GetGame), and must build the on-disk path from
+// the resolved game.ID (a UUID) rather than the raw segment.
+func TestServe_BySlugAndID(t *testing.T) {
+	ts := testutil.NewTestServer(t)
+
+	prevGames := storage.GamesDir
+	storage.GamesDir = t.TempDir()
+	t.Cleanup(func() { storage.GamesDir = prevGames })
+	ts.Engine.GET("/play/:id", handlers.ServeGameFiles("", ""))
+	ts.Engine.GET("/play/:id/*filepath", handlers.ServeGameFiles("", ""))
+
+	owner := testutil.SeedUser(t, nil, testutil.SeedUserOpts{EmailVerified: true})
+	// SeedGame derives slug = lower(title, spaces→'-'): "Slug Access Game" → "slug-access-game".
+	gameID := testutil.SeedGame(t, nil, owner.ID, "Slug Access Game")
+	const slug = "slug-access-game"
+
+	// Files live under the game's UUID dir on disk.
+	dir := filepath.Join(storage.GamesDir, gameID)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "index.html"), []byte("PLAY_MARKER"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Bare form (no /index.html) avoids http.ServeFile's index.html→dir
+	// 301 normalization, matching the existing serve test.
+	// By ID (already worked).
+	w, body := ts.Do(t, "GET", "/play/"+gameID, nil)
+	if w.Code != http.StatusOK || !strings.Contains(string(body), "PLAY_MARKER") {
+		t.Fatalf("serve by id: %d %s", w.Code, body)
+	}
+	// By slug (the regression) — must resolve to the same files.
+	w, body = ts.Do(t, "GET", "/play/"+slug, nil)
+	if w.Code != http.StatusOK || !strings.Contains(string(body), "PLAY_MARKER") {
+		t.Fatalf("serve by slug: %d %s", w.Code, body)
+	}
+	// An unknown segment still 404s.
+	w, _ = ts.Do(t, "GET", "/play/no-such-id-or-slug", nil)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("unknown segment should 404, got %d", w.Code)
+	}
+}
+
 // TestBuilds_ActivateRequiresVerifiedEmail confirms the build
 // activate path (which changes the live served content) is gated
 // behind email verification, matching every other content-write.

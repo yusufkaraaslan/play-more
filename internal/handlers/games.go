@@ -844,8 +844,14 @@ func ServeGameFiles(spaOrigin, gamesDomain string) gin.HandlerFunc {
 
 		// Always look up the game so we can enforce visibility on file serving,
 		// not just on the API endpoint. Unpublished games are reachable only by
-		// the developer.
+		// the developer. Accept an ID *or* a slug in the path segment — the API's
+		// GetGame accepts both, and share/bookmark links use the slug; without
+		// the fallback /play/<slug>/ 404s. Disk paths below key off game.ID (the
+		// UUID), so files resolve correctly regardless of which form was used.
 		game, err := models.GetGameByID(gameID)
+		if err != nil {
+			game, err = models.GetGameBySlug(gameID)
+		}
 		if err != nil {
 			c.String(http.StatusNotFound, "game not found")
 			return
@@ -883,7 +889,10 @@ func ServeGameFiles(spaOrigin, gamesDomain string) gin.HandlerFunc {
 			}
 		}
 
-		gameRoot := filepath.Join(storage.GamesDir, gameID)
+		// Key the on-disk path off the resolved game.ID (a validated UUID from
+		// the DB), never the raw path segment — which may be a slug and, either
+		// way, must not be trusted for filesystem path construction.
+		gameRoot := filepath.Join(storage.GamesDir, game.ID)
 		fullPath := filepath.Join(gameRoot, filepath.FromSlash(filePath))
 		if fullPath != gameRoot && !strings.HasPrefix(fullPath, gameRoot+string(filepath.Separator)) {
 			c.String(http.StatusForbidden, "forbidden")
