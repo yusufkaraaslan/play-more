@@ -357,6 +357,7 @@ func main() {
 
 	middleware.StartRateLimitCleanup()
 	middleware.StartAnalyticsWriter()
+	lobby.Default.RestoreLobbies()
 	lobby.Default.StartCleanup(middleware.ShutdownCh)
 	webhook.Start()
 	uploadgc.UploadsGCEnabled = *uploadsGC

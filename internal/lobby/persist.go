@@ -1,0 +1,100 @@
+package lobby
+
+import (
+	"encoding/json"
+	"time"
+
+	"github.com/yusufkaraaslan/play-more/internal/storage"
+)
+
+// persistLobby saves the lobby state to the DB. Called after every state
+// change (create, join, leave, start, set_metadata). Synchronous — the
+// hub mutex is held, and SQLite single-row writes are sub-millisecond.
+func persistLobby(l *Lobby) {
+	if storage.DB == nil {
+		return
+	}
+	memberIDs := make([]string, 0, len(l.Members))
+	for _, m := range l.Members {
+		memberIDs = append(memberIDs, m.UserID)
+	}
+	formerIDs := make([]string, 0, len(l.FormerMembers))
+	for id := range l.FormerMembers {
+		formerIDs = append(formerIDs, id)
+	}
+	memberJSON, _ := json.Marshal(memberIDs)
+	formerJSON, _ := json.Marshal(formerIDs)
+	metaStr := ""
+	if l.Metadata != nil {
+		metaStr = string(l.Metadata)
+	}
+	storage.DB.Exec(
+		`INSERT INTO lobbies (code, game_id, started, metadata, member_ids, former_member_ids, last_active)
+		 VALUES (?, ?, ?, ?, ?, ?, ?)
+		 ON CONFLICT(code) DO UPDATE SET
+		   started = excluded.started,
+		   metadata = excluded.metadata,
+		   member_ids = excluded.member_ids,
+		   former_member_ids = excluded.former_member_ids,
+		   last_active = excluded.last_active`,
+		l.Code, l.GameID, l.Started, metaStr, string(memberJSON), string(formerJSON),
+		time.Now().UTC().Format(time.RFC3339),
+	)
+}
+
+// deleteLobby removes a lobby from the DB. Called when a lobby is closed.
+func deleteLobby(code string) {
+	if storage.DB == nil {
+		return
+	}
+	storage.DB.Exec(`DELETE FROM lobbies WHERE code = ?`, code)
+}
+
+// RestoreLobbies loads active lobbies from the DB into the hub. Called
+// once on server startup. Lobbies with last_active within IdleTTL are
+// restored — their members are gone (WebSocket disconnected) but
+// FormerMembers is populated so players can rejoin.
+func (h *Hub) RestoreLobbies() {
+	if storage.DB == nil {
+		return
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	cutoff := time.Now().Add(-IdleTTL).UTC().Format(time.RFC3339)
+	rows, err := storage.DB.Query(
+		`SELECT code, game_id, started, metadata, member_ids, former_member_ids FROM lobbies WHERE last_active > ?`,
+		cutoff,
+	)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var code, gameID, metaStr, memberJSON, formerJSON string
+		var started int
+		if err := rows.Scan(&code, &gameID, &started, &metaStr, &memberJSON, &formerJSON); err != nil {
+			continue
+		}
+		var memberIDs, formerIDs []string
+		json.Unmarshal([]byte(memberJSON), &memberIDs)
+		json.Unmarshal([]byte(formerJSON), &formerIDs)
+
+		l := &Lobby{
+			Code:          code,
+			GameID:        gameID,
+			Started:       started == 1,
+			Metadata:      []byte(metaStr),
+			Members:       nil, // no sessions — players must reconnect
+			FormerMembers: make(map[string]bool),
+			LastActive:    time.Now(),
+		}
+		// All previous members + former members can rejoin.
+		for _, id := range memberIDs {
+			l.FormerMembers[id] = true
+		}
+		for _, id := range formerIDs {
+			l.FormerMembers[id] = true
+		}
+		h.lobbies[code] = l
+	}
+}

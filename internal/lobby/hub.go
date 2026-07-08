@@ -156,6 +156,7 @@ func (h *Hub) Create(s *Session, gameID string) error {
 	s.lobby = l
 	s.ready = false
 	l.broadcastState()
+	persistLobby(l)
 	return nil
 }
 
@@ -190,6 +191,7 @@ func (h *Hub) Join(s *Session, code string) error {
 	s.lobby = l
 	s.ready = false
 	l.broadcastState()
+	persistLobby(l)
 	return nil
 }
 
@@ -229,6 +231,7 @@ func (h *Hub) SetMetadata(s *Session, metadata []byte) error {
 	l.Metadata = metadata
 	l.LastActive = time.Now()
 	l.broadcastState()
+	persistLobby(l)
 	return nil
 }
 
@@ -256,6 +259,7 @@ func (h *Hub) Start(s *Session) error {
 	l.Started = true
 	l.LastActive = time.Now()
 	state := l.snapshot()
+	persistLobby(l)
 	for _, m := range l.Members {
 		m.trySend(ServerMsg{Type: "launch", Lobby: state})
 	}
@@ -355,6 +359,7 @@ func (h *Hub) leaveLocked(s *Session) {
 	h.decGameCountLocked(l.GameID)
 	l.LastActive = time.Now()
 	l.broadcastState()
+	persistLobby(l)
 }
 
 // closeLobbyLocked destroys a lobby and notifies members. Members stay
@@ -362,6 +367,7 @@ func (h *Hub) leaveLocked(s *Session) {
 // can create or join another lobby.
 func (h *Hub) closeLobbyLocked(l *Lobby, reason string) {
 	delete(h.lobbies, l.Code)
+	deleteLobby(l.Code)
 	for _, m := range l.Members {
 		m.lobby = nil
 		m.ready = false

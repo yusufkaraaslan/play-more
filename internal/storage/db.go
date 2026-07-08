@@ -237,6 +237,18 @@ func migrationsAll() []string {
 			ended_at DATETIME)`,
 		`CREATE INDEX IF NOT EXISTS idx_play_sessions_heartbeat ON play_sessions(last_heartbeat)`,
 		`CREATE INDEX IF NOT EXISTS idx_play_sessions_user_game ON play_sessions(user_id, game_id)`,
+		// Lobby persistence — survive server restart. Lobbies are restored
+		// on startup so players can reconnect and rejoin.
+		`CREATE TABLE IF NOT EXISTS lobbies (
+			code TEXT PRIMARY KEY,
+			game_id TEXT NOT NULL,
+			started INTEGER DEFAULT 0,
+			metadata TEXT,
+			member_ids TEXT DEFAULT '[]',
+			former_member_ids TEXT DEFAULT '[]',
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			last_active DATETIME DEFAULT CURRENT_TIMESTAMP)`,
+		`CREATE INDEX IF NOT EXISTS idx_lobbies_last_active ON lobbies(last_active)`,
 	}
 }
 
@@ -594,4 +606,16 @@ CREATE TABLE IF NOT EXISTS play_sessions (
 );
 CREATE INDEX IF NOT EXISTS idx_play_sessions_heartbeat ON play_sessions(last_heartbeat);
 CREATE INDEX IF NOT EXISTS idx_play_sessions_user_game ON play_sessions(user_id, game_id);
+
+CREATE TABLE IF NOT EXISTS lobbies (
+    code             TEXT PRIMARY KEY,
+    game_id          TEXT NOT NULL,
+    started          INTEGER DEFAULT 0,
+    metadata         TEXT,
+    member_ids       TEXT DEFAULT '[]',
+    former_member_ids TEXT DEFAULT '[]',
+    created_at       DATETIME DEFAULT CURRENT_TIMESTAMP,
+    last_active      DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_lobbies_last_active ON lobbies(last_active);
 `
