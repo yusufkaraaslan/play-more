@@ -1646,6 +1646,81 @@ paths:
                   message: { type: string }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  # ===== Play Sessions =====
+  /games/{id}/play-sessions:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+        description: Game ID
+    post:
+      tags: [Play Sessions]
+      summary: Open a play session (called on game launch)
+      description: |
+        Accepts session auth (SPA) or pm_gs_ game session tokens (game iframe
+        via CORS). Creates a play_sessions row; the SPA heartbeats every ~30s
+        and ends the session on game close. admin_analytics counts active
+        sessions (heartbeat within 5 min, not ended) for realtime_players.
+      security:
+        - session: []
+        - apiKey: []
+      responses:
+        "201":
+          description: Play session opened
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlaySession" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /play-sessions/{sid}/heartbeat:
+    parameters:
+      - in: path
+        name: sid
+        required: true
+        schema: { type: string }
+        description: Play session ID
+    post:
+      tags: [Play Sessions]
+      summary: Heartbeat a play session (every ~30s while playing)
+      security:
+        - session: []
+        - apiKey: []
+      responses:
+        "200":
+          description: Heartbeat recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /play-sessions/{sid}/end:
+    parameters:
+      - in: path
+        name: sid
+        required: true
+        schema: { type: string }
+        description: Play session ID
+    post:
+      tags: [Play Sessions]
+      summary: End a play session (called on game close)
+      description: Idempotent — ending an already-ended session is a no-op.
+      security:
+        - session: []
+        - apiKey: []
+      responses:
+        "200":
+          description: Session ended
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string }
+
   # ===== Webhooks =====
   /webhooks:
     get:
@@ -2205,3 +2280,12 @@ components:
         scopes: { type: string, description: "CSV scopes. 'all' grants every scope." }
         last_used_at: { type: string, format: date-time, nullable: true }
         created_at: { type: string, format: date-time }
+    PlaySession:
+      type: object
+      properties:
+        session_id: { type: string }
+        user_id: { type: string }
+        game_id: { type: string }
+        started_at: { type: string, format: date-time }
+        last_heartbeat: { type: string, format: date-time }
+        ended_at: { type: string, format: date-time, nullable: true }

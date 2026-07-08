@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/yusufkaraaslan/play-more/internal/models"
 	"github.com/yusufkaraaslan/play-more/internal/storage"
 )
 
@@ -68,8 +69,9 @@ func AdminSiteAnalytics(c *gin.Context) {
 	storage.DB.QueryRow(`SELECT COUNT(*), COUNT(DISTINCT ip_hash) FROM page_views WHERE created_at >= datetime('now', '-30 days')`).Scan(&data.Month.Views, &data.Month.Unique)
 	storage.DB.QueryRow(`SELECT COUNT(*), COUNT(DISTINCT ip_hash) FROM page_views WHERE created_at >= datetime('now', '-14 days') AND created_at < datetime('now', '-7 days')`).Scan(&data.LastWeek.Views, &data.LastWeek.Unique)
 
-	// Real-time: active in last 5 minutes
-	storage.DB.QueryRow(`SELECT COUNT(DISTINCT ip_hash) FROM page_views WHERE created_at >= datetime('now', '-5 minutes')`).Scan(&data.RealTimeActive)
+	// Real-time: active play sessions in last 5 minutes
+	rtCount, _ := models.CountActivePlaySessions()
+	data.RealTimeActive = rtCount
 
 	// Popular pages
 	data.PopularPages = queryNameCounts(`SELECT path, COUNT(*) as cnt FROM page_views WHERE created_at >= datetime('now', '-7 days') GROUP BY path ORDER BY cnt DESC LIMIT 15`)
@@ -161,8 +163,8 @@ func AdminSiteAnalytics(c *gin.Context) {
 		data.RegistrationsPerDay = []DayCount{}
 	}
 
-	// Gameplay stats
-	storage.DB.QueryRow(`SELECT COALESCE(SUM(play_count), 0) FROM playtime`).Scan(&data.TotalPlaySessions)
+	// Gameplay stats — total play sessions from the play_sessions ledger
+	storage.DB.QueryRow(`SELECT COUNT(*) FROM play_sessions`).Scan(&data.TotalPlaySessions)
 	storage.DB.QueryRow(`SELECT COALESCE(AVG(total_seconds / NULLIF(play_count, 0)), 0) FROM playtime WHERE play_count > 0`).Scan(&data.AvgPlayDuration)
 
 	// Most played games

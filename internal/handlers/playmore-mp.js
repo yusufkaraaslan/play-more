@@ -19,6 +19,7 @@
  *     PlayMore.send({ move: 'e4' });        // broadcast to the lobby
  *     PlayMore.send(state, somePlayerId);   // send to one player
  *     PlayMore.transport(peerId);           // 'webrtc' or 'relay'
+ *     PlayMore.stats();                     // { sent: N, received: N, peers: {...} }
  *   </script>
  *
  * Transport: after the lobby starts, the shim negotiates WebRTC data
@@ -27,12 +28,17 @@
  * path. If WebRTC fails (NAT, firewall, old browser), the shim
  * transparently falls back to the relay for that peer.
  *
+ * Connection health: a 15s keepalive ping/pong runs on each data
+ * channel. If a pong isn't received within 5s, the channel is marked
+ * failed and the shim falls back to relay. A reconnection attempt is
+ * made after 5s — if it succeeds, the peer switches back to P2P.
+ *
  * Full protocol + limits: <base>/docs and docs/DEVELOPER.md.
  */
 (function () {
   'use strict';
 
-  if (window.PlayMore) return; // idempotent if included twice
+  if (window.PlayMore) return;
 
   var parent = window.parent;
   var parentOrigin = null;
@@ -43,13 +49,30 @@
   // ── WebRTC state ──────────────────────────────────────────────
   // peers[peerId] = {
   //   pc: RTCPeerConnection,
-  //   dc: RTCDataChannel,       // set when data channel is open
+  //   dc: RTCDataChannel,
   //   state: 'new' | 'connecting' | 'open' | 'failed',
-  //   isOfferer: bool           // true = we create the offer
+  //   isOfferer: bool,
+  //   keepaliveTimer: timer,
+  //   pongTimer: timer,
+  //   reconnectTimer: timer,
+  //   reconnectAttempts: int,
+  //   bytesSent: int,
+  //   bytesReceived: int
   // }
   var peers = {};
   var rtcIceServers = [{ urls: 'stun:stun.l.google.com:19302' }];
   var transportChangeHandlers = [];
+
+  // ── Config ────────────────────────────────────────────────────
+  var KEEPALIVE_INTERVAL = 15000;  // 15s ping
+  var PONG_TIMEOUT = 5000;         // 5s to receive pong before marking failed
+  var RECONNECT_DELAY = 5000;      // 5s before reconnection attempt
+  var RECONNECT_MAX_ATTEMPTS = 3;  // give up after 3 tries
+  var STAGGER_DELAY = 200;         // 200ms between initiating each peer connection
+
+  // ── Global bandwidth stats ────────────────────────────────────
+  var totalBytesSent = 0;
+  var totalBytesReceived = 0;
 
   var handlers = {
     ready: [],
@@ -68,17 +91,15 @@
   function emit(kind, a, b) {
     var list = handlers[kind];
     for (var i = 0; i < list.length; i++) {
-      try { list[i](a, b); } catch (e) { /* keep going */ }
+      try { list[i](a, b); } catch (e) {}
     }
   }
 
   function post(obj, origin) {
-    try { parent.postMessage(obj, origin || '*'); } catch (e) { /* parent gone */ }
+    try { parent.postMessage(obj, origin || '*'); } catch (e) {}
   }
 
-  // ── Signaling: send via the existing relay path ───────────────
-  // Signaling messages are wrapped in { __pm_rtc: ... } so the game's
-  // onMessage callback never sees them.
+  // ── Signaling ─────────────────────────────────────────────────
   function signalSend(to, signal) {
     post({ playmore: 'send', to: to, data: { __pm_rtc: signal } }, parentOrigin);
   }
@@ -86,8 +107,6 @@
   // ── WebRTC mesh management ────────────────────────────────────
 
   function shouldOffer(myId, peerId) {
-    // Deterministic: lexicographically smaller ID creates the offer.
-    // This avoids "glare" (both sides offering simultaneously).
     return myId < peerId;
   }
 
@@ -95,14 +114,24 @@
     if (peers[peerId]) return;
     var myId = ctx.you ? ctx.you.id : '';
     var isOfferer = shouldOffer(myId, peerId);
-    peers[peerId] = { pc: null, dc: null, state: 'new', isOfferer: isOfferer };
+    peers[peerId] = {
+      pc: null, dc: null, state: 'new', isOfferer: isOfferer,
+      keepaliveTimer: null, pongTimer: null, reconnectTimer: null,
+      reconnectAttempts: 0, bytesSent: 0, bytesReceived: 0
+    };
+
+    createPeerConnection(peerId);
+  }
+
+  function createPeerConnection(peerId) {
+    var p = peers[peerId];
+    if (!p) return;
 
     try {
       var pc = new RTCPeerConnection({ iceServers: rtcIceServers });
-      peers[peerId].pc = pc;
+      p.pc = pc;
 
-      // The offerer creates the data channel; the answerer receives it.
-      if (isOfferer) {
+      if (p.isOfferer) {
         var dc = pc.createDataChannel('pm', { ordered: true });
         setupDataChannel(peerId, dc);
       } else {
@@ -120,14 +149,11 @@
       pc.onconnectionstatechange = function () {
         var st = pc.connectionState;
         if (st === 'failed' || st === 'disconnected' || st === 'closed') {
-          setPeerState(peerId, 'failed');
-          // Close and clean up — relay fallback kicks in automatically.
-          closePeer(peerId);
+          handlePeerFailure(peerId);
         }
       };
 
-      // If offerer, create and send the offer.
-      if (isOfferer) {
+      if (p.isOfferer) {
         pc.createOffer().then(function (offer) {
           return pc.setLocalDescription(offer);
         }).then(function () {
@@ -139,34 +165,108 @@
 
       setPeerState(peerId, 'connecting');
     } catch (e) {
-      // RTCPeerConnection not available (old browser, disabled).
-      // Relay fallback handles all traffic — no action needed.
       setPeerState(peerId, 'failed');
     }
   }
 
   function setupDataChannel(peerId, dc) {
-    peers[peerId].dc = dc;
+    var p = peers[peerId];
+    if (!p) return;
+    p.dc = dc;
 
     dc.onopen = function () {
+      p.reconnectAttempts = 0;
       setPeerState(peerId, 'open');
+      startKeepalive(peerId);
     };
 
     dc.onclose = function () {
-      setPeerState(peerId, 'failed');
+      handlePeerFailure(peerId);
     };
 
     dc.onerror = function () {
-      setPeerState(peerId, 'failed');
+      handlePeerFailure(peerId);
     };
 
     dc.onmessage = function (ev) {
-      // Data channel messages arrive as strings (we send JSON strings).
-      // Emit to the game's onMessage — same as relay messages.
       var data;
       try { data = JSON.parse(ev.data); } catch { data = ev.data; }
+
+      // Internal keepalive — don't emit to game.
+      if (data && data.__pm_ping) {
+        sendRawDataChannel(peerId, { __pm_pong: true });
+        return;
+      }
+      if (data && data.__pm_pong) {
+        clearPongTimer(peerId);
+        return;
+      }
+
+      // Track bandwidth
+      p.bytesReceived += ev.data.length || 0;
+      totalBytesReceived += ev.data.length || 0;
+
       emit('message', peerId, data);
     };
+  }
+
+  // ── Keepalive (Phase 2) ───────────────────────────────────────
+  // Every 15s, send a ping over the data channel. If no pong within
+  // 5s, the channel is dead — fall back to relay and attempt reconnect.
+
+  function startKeepalive(peerId) {
+    stopKeepalive(peerId);
+    var p = peers[peerId];
+    if (!p) return;
+    p.keepaliveTimer = setInterval(function () {
+      if (p.state !== 'open') { stopKeepalive(peerId); return; }
+      sendRawDataChannel(peerId, { __pm_ping: true });
+      // Set pong timeout — if no pong, mark failed.
+      clearPongTimer(peerId);
+      p.pongTimer = setTimeout(function () {
+        handlePeerFailure(peerId);
+      }, PONG_TIMEOUT);
+    }, KEEPALIVE_INTERVAL);
+  }
+
+  function stopKeepalive(peerId) {
+    var p = peers[peerId];
+    if (!p) return;
+    if (p.keepaliveTimer) { clearInterval(p.keepaliveTimer); p.keepaliveTimer = null; }
+    clearPongTimer(peerId);
+  }
+
+  function clearPongTimer(peerId) {
+    var p = peers[peerId];
+    if (!p) return;
+    if (p.pongTimer) { clearTimeout(p.pongTimer); p.pongTimer = null; }
+  }
+
+  // ── Failure handling + reconnection (Phase 2) ────────────────
+
+  function handlePeerFailure(peerId) {
+    var p = peers[peerId];
+    if (!p) return;
+
+    stopKeepalive(peerId);
+    setPeerState(peerId, 'failed');
+
+    // Close the dead connection.
+    try { if (p.dc) p.dc.close(); } catch {}
+    try { if (p.pc) p.pc.close(); } catch {}
+    p.dc = null;
+    p.pc = null;
+
+    // Attempt reconnection (limited tries).
+    if (p.reconnectAttempts < RECONNECT_MAX_ATTEMPTS) {
+      p.reconnectAttempts++;
+      p.reconnectTimer = setTimeout(function () {
+        // Only reconnect if the lobby is still active.
+        if (!started) return;
+        p.reconnectTimer = null;
+        createPeerConnection(peerId);
+      }, RECONNECT_DELAY);
+    }
   }
 
   function setPeerState(peerId, state) {
@@ -188,6 +288,8 @@
   function closePeer(peerId) {
     var p = peers[peerId];
     if (!p) return;
+    stopKeepalive(peerId);
+    if (p.reconnectTimer) { clearTimeout(p.reconnectTimer); p.reconnectTimer = null; }
     try { if (p.dc) p.dc.close(); } catch {}
     try { if (p.pc) p.pc.close(); } catch {}
     p.dc = null;
@@ -200,11 +302,9 @@
     peers = {};
   }
 
-  // ── Inbound signaling handler ─────────────────────────────────
-  // Called from the message listener when a __pm_rtc wrapper is detected.
+  // ── Inbound signaling ─────────────────────────────────────────
+
   function handleSignal(from, signal) {
-    // Ensure peer exists. If we didn't init them yet (they're the offerer
-    // and we're the answerer), create the peer now.
     if (!peers[from]) initPeer(from);
     var p = peers[from];
     if (!p || !p.pc) return;
@@ -212,7 +312,6 @@
     if (signal.type === 'offer' || signal.type === 'answer') {
       p.pc.setRemoteDescription(signal.sdp).then(function () {
         if (signal.type === 'offer' && !p.isOfferer) {
-          // We're the answerer — create and send the answer.
           p.pc.createAnswer().then(function (answer) {
             return p.pc.setLocalDescription(answer);
           }).then(function () {
@@ -229,21 +328,40 @@
     }
   }
 
-  // ── Send: prefer WebRTC, fall back to relay ───────────────────
+  // ── Send ──────────────────────────────────────────────────────
 
   function sendViaRelay(to, data) {
     post({ playmore: 'send', to: to || '', data: data }, parentOrigin);
+  }
+
+  function sendRawDataChannel(peerId, data) {
+    var p = peers[peerId];
+    if (p && p.dc && p.state === 'open') {
+      try {
+        var raw = JSON.stringify(data);
+        p.dc.send(raw);
+        p.bytesSent += raw.length;
+        totalBytesSent += raw.length;
+        return true;
+      } catch (e) {
+        handlePeerFailure(peerId);
+        return false;
+      }
+    }
+    return false;
   }
 
   function sendViaDataChannel(peerId, data) {
     var p = peers[peerId];
     if (p && p.dc && p.state === 'open') {
       try {
-        p.dc.send(JSON.stringify(data));
+        var raw = JSON.stringify(data);
+        p.dc.send(raw);
+        p.bytesSent += raw.length;
+        totalBytesSent += raw.length;
         return true;
       } catch (e) {
-        // Channel might have closed between the check and the send.
-        setPeerState(peerId, 'failed');
+        handlePeerFailure(peerId);
         return false;
       }
     }
@@ -269,20 +387,24 @@
           players: d.players || [],
           sessionToken: d.session_token || ''
         };
-        // Use ICE servers from the platform if provided.
         if (d.rtc_config && d.rtc_config.iceServers) {
           rtcIceServers = d.rtc_config.iceServers;
         }
         started = true;
         emit('ready', ctx);
 
-        // Initiate WebRTC mesh with all peers (except self).
+        // Staggered connection initiation (Phase 3) — avoids signaling
+        // burst when 8 players all try to connect simultaneously.
         if (ctx.you) {
+          var toConnect = [];
           for (var i = 0; i < ctx.players.length; i++) {
             var pid = ctx.players[i].id;
-            if (pid && pid !== ctx.you.id) {
-              initPeer(pid);
-            }
+            if (pid && pid !== ctx.you.id) toConnect.push(pid);
+          }
+          for (var j = 0; j < toConnect.length; j++) {
+            (function(peerId, delay) {
+              setTimeout(function() { initPeer(peerId); }, delay);
+            })(toConnect[j], j * STAGGER_DELAY);
           }
         }
         break;
@@ -291,7 +413,6 @@
         emit('players', ctx.players);
         break;
       case 'msg':
-        // Check for internal signaling messages — don't emit to game.
         if (d.data && typeof d.data === 'object' && d.data.__pm_rtc) {
           handleSignal(d.from, d.data.__pm_rtc);
         } else {
@@ -314,19 +435,14 @@
     onPlayers: on('players'),
     onClosed: on('closed'),
 
-    /* Relay `data` to the lobby. Omit `to` to broadcast; pass a
-     * player id to unicast. Uses WebRTC data channels when available,
-     * falls back to the server relay transparently. */
     send: function (data, to) {
       if (!started || parentOrigin === null) return API;
 
       if (to) {
-        // Unicast: try data channel first, relay fallback.
         if (!sendViaDataChannel(to, data)) {
           sendViaRelay(to, data);
         }
       } else {
-        // Broadcast: for each peer, use data channel or relay.
         for (var i = 0; i < ctx.players.length; i++) {
           var pid = ctx.players[i].id;
           if (pid && pid !== (ctx.you ? ctx.you.id : '')) {
@@ -339,7 +455,6 @@
       return API;
     },
 
-    /* Lobby snapshot accessors. */
     players: function () { return ctx.players.slice(); },
     me: function () { return ctx.you; },
     isHost: function () { return ctx.host; },
@@ -348,18 +463,33 @@
     sessionToken: function () { return ctx.sessionToken; },
     isActive: function () { return started; },
 
-    /* Transport reporting. */
     transport: function (peerId) {
       return transportFor(peerId);
     },
     onTransportChange: function (fn) {
       if (typeof fn === 'function') transportChangeHandlers.push(fn);
       return API;
+    },
+
+    /* Bandwidth stats (Phase 3). Returns per-peer and aggregate. */
+    stats: function () {
+      var peerStats = {};
+      for (var id in peers) {
+        peerStats[id] = {
+          transport: transportFor(id),
+          sent: peers[id].bytesSent,
+          received: peers[id].bytesReceived
+        };
+      }
+      return {
+        sent: totalBytesSent,
+        received: totalBytesReceived,
+        peers: peerStats
+      };
     }
   };
 
   window.PlayMore = API;
 
-  // Announce readiness.
   post({ playmore: 'ready' });
 })();

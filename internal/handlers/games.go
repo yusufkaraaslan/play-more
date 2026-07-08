@@ -81,9 +81,10 @@ func GetGame(c *gin.Context) {
 	}
 	fileSize := storage.GameDirSize(game.ID)
 	resp := gin.H{"game": game, "file_size": fileSize}
-	if game.Multiplayer {
-		// Live players (in a lobby or mid-game) for the multiplayer badge.
-		resp["online_players"] = lobby.Default.OnlineCount(game.ID)
+	// Active play sessions (heartbeat within 5 min) — works for all games,
+	// not just multiplayer. Falls back to 0 if the query fails.
+	if online, err := models.CountActivePlaySessionsForGame(game.ID); err == nil {
+		resp["online_players"] = online
 	}
 	c.JSON(http.StatusOK, resp)
 }

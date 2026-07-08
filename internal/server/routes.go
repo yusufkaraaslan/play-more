@@ -197,6 +197,14 @@ func mountAPIRoutes(g *gin.RouterGroup, cfg apiConfig) {
 	g.DELETE("/games/:id/sdk-keys/:kid", middleware.AuthRequired(), middleware.RateLimit(30, 3600), handlers.DeleteGameAPIKeyHandler)
 	g.POST("/games/:id/sdk-token", middleware.AuthRequired(), middleware.RateLimit(60, 3600), handlers.MintGameSessionTokenHandler)
 	g.DELETE("/sdk-tokens/:id", middleware.AuthRequired(), middleware.RateLimit(30, 3600), handlers.RevokeGameSessionTokenHandler)
+
+	// Play sessions — track live game sessions for analytics + realtime
+	// player counts. Accept session auth (SPA) or pm_gs_ tokens (game
+	// iframe can call directly via CORS). Heartbeat is rate-limited to
+	// 12/min (one every 5s; SPA sends every 30s).
+	g.POST("/games/:id/play-sessions", middleware.AuthRequiredOrGameSession(), middleware.RateLimit(30, 60), handlers.OpenPlaySessionHandler)
+	g.POST("/play-sessions/:sid/heartbeat", middleware.AuthRequiredOrGameSession(), middleware.RateLimit(12, 60), handlers.HeartbeatPlaySessionHandler)
+	g.POST("/play-sessions/:sid/end", middleware.AuthRequiredOrGameSession(), middleware.RateLimit(10, 60), handlers.EndPlaySessionHandler)
 }
 
 // NewTestConfig returns the body-cap configuration used by

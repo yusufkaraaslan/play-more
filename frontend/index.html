@@ -824,6 +824,8 @@
         let pendingFile = null;
         let gameSessionStart = null;
         let sessionTimerInterval = null;
+        let playSessionId = null;
+        let playSessionHeartbeat = null;
         let storePage = 1;
         const STORE_LIMIT = 12;
 
@@ -3019,10 +3021,36 @@
                 const s = Math.floor((Date.now() - gameSessionStart) / 1000);
                 document.getElementById('session-timer').textContent = String(Math.floor(s/3600)).padStart(2,'0') + ':' + String(Math.floor((s%3600)/60)).padStart(2,'0') + ':' + String(s%60).padStart(2,'0');
             }, 1000);
+
+            // Open a play session for analytics (realtime player count).
+            if (currentUser) {
+                fetch('/api/v1/games/' + gameId + '/play-sessions', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include'
+                }).then(r => r.json()).then(data => {
+                    if (data.session_id) {
+                        playSessionId = data.session_id;
+                        playSessionHeartbeat = setInterval(() => {
+                            fetch('/api/v1/play-sessions/' + playSessionId + '/heartbeat', {
+                                method: 'POST', credentials: 'include'
+                            }).catch(() => {});
+                        }, 30000);
+                    }
+                }).catch(() => {});
+            }
         }
 
         async function closePlayer() {
             if (sessionTimerInterval) { clearInterval(sessionTimerInterval); sessionTimerInterval = null; }
+            // End play session
+            if (playSessionHeartbeat) { clearInterval(playSessionHeartbeat); playSessionHeartbeat = null; }
+            if (playSessionId) {
+                fetch('/api/v1/play-sessions/' + playSessionId + '/end', {
+                    method: 'POST', credentials: 'include'
+                }).catch(() => {});
+                playSessionId = null;
+            }
             if (gameSessionStart && currentUser) {
                 const seconds = (Date.now() - gameSessionStart) / 1000;
                 const match = document.getElementById('player-frame').src.match(/\/play\/([^/]+)\//);

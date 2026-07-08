@@ -363,12 +363,13 @@ func main() {
 	uploadgc.UploadsGCDryRun = *uploadsGCDryRun
 	uploadgc.Start(context.Background())
 
-	// Periodic cleanup of expired sessions and email tokens
+	// Periodic cleanup of expired sessions, email tokens, and stale play sessions
 	go func() {
 		for {
 			select {
 			case <-time.After(1 * time.Hour):
 				models.CleanupExpiredSessions()
+				models.CleanupStalePlaySessions()
 			case <-middleware.ShutdownCh:
 				return
 			}
