@@ -472,3 +472,65 @@ func TestSetMetadata(t *testing.T) {
 		t.Fatalf("non-host SetMetadata: err=%v, want ErrNotHost", err)
 	}
 }
+
+func TestRejoinAfterDisconnect(t *testing.T) {
+	h := NewHub()
+	host := register(t, h, "alice")
+	guest := register(t, h, "bob")
+
+	h.Create(host, "game1")
+	code := last(drain(host), "lobby").Lobby.Code
+	h.Join(guest, code)
+	drain(host)
+	guest.ready = true
+	h.Ready(guest, true)
+	drain(host)
+	drain(guest)
+
+	// Start the game.
+	if err := h.Start(host); err != nil {
+		t.Fatal(err)
+	}
+	drain(guest) // consume launch
+
+	// Guest disconnects.
+	h.Unregister(guest)
+	drain(host) // host gets state update (guest left, host stays)
+
+	// Guest can't join with a fresh session — lobby is started.
+	guest2 := register(t, h, "carol")
+	if err := h.Join(guest2, code); err != ErrLobbyStarted {
+		t.Fatalf("new player joined started lobby: err=%v, want ErrLobbyStarted", err)
+	}
+
+	// But the original guest can rejoin (former member).
+	guestRejoined := register(t, h, "bob")
+	if err := h.Join(guestRejoined, code); err != nil {
+		t.Fatalf("rejoin failed: %v", err)
+	}
+
+	// Host should see the rejoined player.
+	state := last(drain(host), "lobby")
+	if state == nil || state.Lobby == nil {
+		t.Fatal("host got no state update on rejoin")
+	}
+	found := false
+	for _, p := range state.Lobby.Players {
+		if p.ID == "bob" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("rejoined player not in lobby state")
+	}
+
+	// Rejoined player should get the lobby state.
+	rejoinedState := last(drain(guestRejoined), "lobby")
+	if rejoinedState == nil || rejoinedState.Lobby == nil {
+		t.Fatal("rejoined player got no lobby state")
+	}
+	if !rejoinedState.Lobby.Started {
+		t.Fatal("rejoined player doesn't see started=true")
+	}
+}

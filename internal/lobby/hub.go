@@ -144,11 +144,12 @@ func (h *Hub) Create(s *Session, gameID string) error {
 		return err
 	}
 	l := &Lobby{
-		Code:       code,
-		GameID:     gameID,
-		Host:       s,
-		Members:    []*Session{s},
-		LastActive: time.Now(),
+		Code:          code,
+		GameID:        gameID,
+		Host:          s,
+		Members:       []*Session{s},
+		FormerMembers: make(map[string]bool),
+		LastActive:    time.Now(),
 	}
 	h.lobbies[code] = l
 	h.gameCount[gameID]++
@@ -168,7 +169,12 @@ func (h *Hub) Join(s *Session, code string) error {
 		return ErrLobbyNotFound
 	}
 	if l.Started {
-		return ErrLobbyStarted
+		// Started lobbies block new joins — but former members can rejoin.
+		if !l.FormerMembers[s.UserID] {
+			return ErrLobbyStarted
+		}
+		// Rejoin: remove from former members, fall through to add.
+		delete(l.FormerMembers, s.UserID)
 	}
 	if len(l.Members) >= MaxPlayers {
 		return ErrLobbyFull
@@ -328,6 +334,11 @@ func (h *Hub) leaveLocked(s *Session) {
 			l.Members = append(l.Members[:i], l.Members[i+1:]...)
 			break
 		}
+	}
+
+	// Track former members so they can rejoin a started lobby.
+	if l.Started && l.FormerMembers != nil {
+		l.FormerMembers[s.UserID] = true
 	}
 
 	// If s was the host, promote the next member (or close if empty).

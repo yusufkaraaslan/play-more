@@ -437,6 +437,15 @@
             }
           }
         }
+        // Initiate WebRTC connections for new players (rejoin or late join).
+        if (started && ctx.you) {
+          for (var ni = 0; ni < ctx.players.length; ni++) {
+            var npid = ctx.players[ni].id;
+            if (npid && npid !== ctx.you.id && !peers[npid]) {
+              initPeer(npid);
+            }
+          }
+        }
         emit('players', ctx.players);
         break;
       case 'msg':

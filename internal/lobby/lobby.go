@@ -5,13 +5,14 @@ import "time"
 // Lobby is one live game lobby. All fields are guarded by the owning
 // Hub's mutex — Lobby has no lock of its own.
 type Lobby struct {
-	Code       string
-	GameID     string
-	Host       *Session
-	Members    []*Session // includes Host, in join order
-	Started    bool
-	Metadata   []byte // opaque JSON — game settings (map, difficulty, etc.)
-	LastActive time.Time
+	Code          string
+	GameID        string
+	Host          *Session
+	Members       []*Session // includes Host, in join order
+	Started       bool
+	Metadata      []byte // opaque JSON — game settings (map, difficulty, etc.)
+	FormerMembers map[string]bool // user IDs that left a started lobby — can rejoin
+	LastActive    time.Time
 }
 
 // snapshot builds the client-facing State. Caller holds hub.mu.
