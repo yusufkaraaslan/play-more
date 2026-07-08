@@ -200,7 +200,7 @@ func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxi
 	// it is not a REST endpoint and the OpenAPI drift test ignores it).
 	// CSRF-equivalent protection is the Origin check inside the
 	// handler's websocket.Accept; see handlers/ws.go.
-	r.GET("/ws", middleware.RateLimit(30, 60), middleware.AuthOptional(), middleware.AuthRequired(), handlers.GameLobbyWS(lobby.Default))
+	r.GET("/ws", middleware.RateLimit(30, 60), middleware.WSQueryTokenAuth(), middleware.AuthOptional(), middleware.AuthRequiredOrGameSession(), handlers.GameLobbyWS(lobby.Default))
 
 	// Game file serving (for iframe player)
 	// Game iframe content. spaOrigin gates who can embed via CSP frame-ancestors —

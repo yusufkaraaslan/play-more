@@ -1509,6 +1509,143 @@ paths:
         "400": { description: "Build is not the active build, or no previous build exists" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  # ===== SDK Keys =====
+  /games/{id}/sdk-keys:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+        description: Game ID
+    get:
+      tags: [SDK Keys]
+      summary: List SDK keys for a game (developer only)
+      security:
+        - session: []
+      responses:
+        "200":
+          description: SDK keys (masked)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  keys:
+                    type: array
+                    items: { $ref: "#/components/schemas/GameAPIKey" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      tags: [SDK Keys]
+      summary: Create a new SDK key for a game (developer only)
+      security:
+        - session: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string, description: "Unique per game (max 100 chars)" }
+                scopes: { type: string, description: "CSV scopes, default 'all'" }
+      responses:
+        "201":
+          description: SDK key created — raw key shown exactly once
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  key: { $ref: "#/components/schemas/GameAPIKey" }
+                  raw_key: { type: string, description: "Plaintext key (pm_gk_...). Store it now." }
+                  message: { type: string }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /games/{id}/sdk-keys/{kid}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: kid
+        required: true
+        schema: { type: string }
+    delete:
+      tags: [SDK Keys]
+      summary: Revoke (delete) an SDK key
+      security:
+        - session: []
+      responses:
+        "200":
+          description: Key revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ===== Session Tokens =====
+  /games/{id}/sdk-token:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+        description: Game ID
+    post:
+      tags: [Session Tokens]
+      summary: Mint a short-lived (5 min) game session token for the iframe
+      description: Any authenticated user can mint for a published game; only the developer can mint for unpublished games.
+      security:
+        - session: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                scopes: { type: string, description: "CSV scopes, default 'session:write'" }
+      responses:
+        "201":
+          description: Token minted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string, description: "Plaintext token (pm_gs_...)" }
+                  token_id: { type: string, description: "Row ID for revocation via DELETE /sdk-tokens/{id}" }
+                  expires_at: { type: string, format: date-time }
+                  scopes: { type: string }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /sdk-tokens/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+        description: Token row ID (returned by POST /games/{id}/sdk-token)
+    delete:
+      tags: [Session Tokens]
+      summary: Revoke a game session token
+      security:
+        - session: []
+      responses:
+        "200":
+          description: Token revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   # ===== Webhooks =====
   /webhooks:
     get:
@@ -2058,3 +2195,13 @@ components:
         is_active: { type: boolean, description: "True when this build is the active one for its channel." }
         created_at: { type: string, format: date-time }
         created_by: { type: string }
+    GameAPIKey:
+      type: object
+      properties:
+        id: { type: string }
+        game_id: { type: string }
+        name: { type: string }
+        key_prefix: { type: string, description: "First 14 chars of the key (pm_gk_XXXXXXXX). Used for display." }
+        scopes: { type: string, description: "CSV scopes. 'all' grants every scope." }
+        last_used_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }

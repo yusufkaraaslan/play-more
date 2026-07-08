@@ -37,6 +37,9 @@ func bodyLimit(maxBytes int64) gin.HandlerFunc {
 // applied here so both prefixes get identical protection without callers
 // having to remember to add it.
 func mountAPIRoutes(g *gin.RouterGroup, cfg apiConfig) {
+	// CORS must run BEFORE auth so OPTIONS preflights are answered
+	// for unauthenticated requests (game iframes with opaque origin).
+	g.Use(middleware.CORS())
 	g.Use(middleware.GlobalRateLimit(600, 300))
 	g.Use(middleware.AuthOptional())
 	// CSRF after auth so we can check auth_method (API keys skip CSRF)
@@ -184,6 +187,16 @@ func mountAPIRoutes(g *gin.RouterGroup, cfg apiConfig) {
 	g.PUT("/games/:id/builds/:build_id/activate", middleware.AuthRequired(), handlers.RequireVerifiedEmail(), middleware.RateLimit(30, 3600), handlers.ActivateBuildHandler)
 	g.POST("/games/:id/builds/:build_id/rollback", middleware.AuthRequired(), handlers.RequireVerifiedEmail(), middleware.RateLimit(30, 3600), handlers.RollbackBuildHandler)
 	g.DELETE("/games/:id/builds/:build_id", middleware.AuthRequired(), handlers.RequireVerifiedEmail(), middleware.RateLimit(30, 3600), handlers.DeleteBuildHandler)
+
+	// Multiplayer substrate — game-scoped SDK keys and runtime session tokens.
+	// SDK keys are long-lived per-game credentials for server-side logic.
+	// Session tokens are short-lived (5 min) tokens minted by the SPA and
+	// passed into the game iframe for game-scoped API calls + WebSocket auth.
+	g.GET("/games/:id/sdk-keys", middleware.AuthRequired(), middleware.RateLimit(60, 3600), handlers.ListGameAPIKeysHandler)
+	g.POST("/games/:id/sdk-keys", middleware.AuthRequired(), handlers.RequireVerifiedEmail(), middleware.RateLimit(10, 3600), handlers.CreateGameAPIKeyHandler)
+	g.DELETE("/games/:id/sdk-keys/:kid", middleware.AuthRequired(), middleware.RateLimit(30, 3600), handlers.DeleteGameAPIKeyHandler)
+	g.POST("/games/:id/sdk-token", middleware.AuthRequired(), middleware.RateLimit(60, 3600), handlers.MintGameSessionTokenHandler)
+	g.DELETE("/sdk-tokens/:id", middleware.AuthRequired(), middleware.RateLimit(30, 3600), handlers.RevokeGameSessionTokenHandler)
 }
 
 // NewTestConfig returns the body-cap configuration used by

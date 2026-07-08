@@ -18,12 +18,15 @@ func CSRFProtect() gin.HandlerFunc {
 			return
 		}
 
-		// Skip CSRF for API key auth (non-browser clients don't send Origin/Referer).
-		// Safe because AuthOptional rejects invalid Bearer tokens before we reach here,
-		// and only valid API key auth sets this context value.
-		if method, exists := c.Get("auth_method"); exists && method == "api_key" {
-			c.Next()
-			return
+		// Skip CSRF for Bearer-token auth (non-browser clients don't send Origin/Referer).
+		// Game session tokens (pm_gs_) come from sandboxed iframes with Origin: null,
+		// so the Origin check would reject them — the token itself is the auth gate.
+		if method, exists := c.Get("auth_method"); exists {
+			switch method {
+			case "api_key", "game_api_key", "game_session":
+				c.Next()
+				return
+			}
 		}
 
 		// Check Content-Type — reject form submissions (CSRF vector)

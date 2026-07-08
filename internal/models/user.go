@@ -106,6 +106,24 @@ func GetUserByID(id string) (*User, error) {
 	return user, nil
 }
 
+// GetDeveloperByGameID returns the developer (owner) user for a game
+// in a single JOIN. Used by the pm_gk_ auth path.
+func GetDeveloperByGameID(gameID string) (*User, error) {
+	user := &User{}
+	var linksJSON string
+	err := storage.DB.QueryRow(
+		`SELECT u.id, u.username, u.email, u.password, u.avatar_url, u.bio, u.is_developer, u.banner_url, u.theme_color, u.links, u.autoplay_media, u.email_verified, u.created_at
+		 FROM games g JOIN users u ON u.id = g.developer_id
+		 WHERE g.id = ?`,
+		gameID,
+	).Scan(&user.ID, &user.Username, &user.Email, &user.Password, &user.AvatarURL, &user.Bio, &user.IsDeveloper, &user.BannerURL, &user.ThemeColor, &linksJSON, &user.AutoplayMedia, &user.EmailVerified, &user.CreatedAt)
+	if err != nil {
+		return nil, fmt.Errorf("get developer by game id: %w", err)
+	}
+	scanUser(user, linksJSON)
+	return user, nil
+}
+
 func GetUserByUsername(username string) (*User, error) {
 	user := &User{}
 	var linksJSON string

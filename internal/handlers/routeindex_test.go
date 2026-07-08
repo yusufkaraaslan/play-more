@@ -189,6 +189,13 @@ func mountDriftFixture(r *gin.Engine) {
 	r.PUT("/api/v1/games/:id/builds/:build_id/activate", func(c *gin.Context) {})
 	r.POST("/api/v1/games/:id/builds/:build_id/rollback", func(c *gin.Context) {})
 	r.DELETE("/api/v1/games/:id/builds/:build_id", func(c *gin.Context) {})
+
+	// SDK Keys / Session Tokens
+	r.GET("/api/v1/games/:id/sdk-keys", func(c *gin.Context) {})
+	r.POST("/api/v1/games/:id/sdk-keys", func(c *gin.Context) {})
+	r.DELETE("/api/v1/games/:id/sdk-keys/:kid", func(c *gin.Context) {})
+	r.POST("/api/v1/games/:id/sdk-token", func(c *gin.Context) {})
+	r.DELETE("/api/v1/sdk-tokens/:id", func(c *gin.Context) {})
 }
 
 // developerSurfacePath reports whether an OpenAPI path is part of

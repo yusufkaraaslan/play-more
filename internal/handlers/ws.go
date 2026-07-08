@@ -33,8 +33,15 @@ const (
 )
 
 // GameLobbyWS upgrades GET /ws to a WebSocket and runs the multiplayer
-// lobby session. Auth comes from the session cookie (or a Bearer API
-// key) via AuthOptional+AuthRequired on the route.
+// lobby session. Auth comes from the session cookie, a Bearer API key,
+// or a pm_gs_ game session token (minted by the SPA and passed to the
+// game iframe) via AuthOptional+AuthRequiredOrGameSession on the route.
+//
+// When the connection is authenticated with a pm_gs_ token, the game_id
+// from the token is available for scoping (e.g. restricting lobby creation
+// to the token's game). The current implementation still allows any
+// multiplayer game — the token's primary value is scoped, short-lived
+// auth that doesn't expose the user's session cookie to the iframe.
 //
 // CSRF note: WebSocket handshakes are GETs, so CSRFProtect never sees
 // them — the equivalent protection against cross-site WebSocket
@@ -46,7 +53,6 @@ func GameLobbyWS(hub *lobby.Hub) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		user := middleware.GetUser(c)
 		if user == nil {
-			// AuthRequired already guards the route; belt and suspenders.
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "not authenticated"})
 			return
 		}

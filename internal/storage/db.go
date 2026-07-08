@@ -200,6 +200,43 @@ func migrationsAll() []string {
 		// Multiplayer lobby (#29) — developer opt-in flag. Gates the
 		// lobby UI on the game page and lobby creation over /ws.
 		`ALTER TABLE games ADD COLUMN multiplayer BOOLEAN DEFAULT 0`,
+		// Multiplayer Phase 0 substrate — game-scoped SDK keys, runtime
+		// session tokens, and play-session ledger. Idempotent (IF NOT EXISTS).
+		`CREATE TABLE IF NOT EXISTS game_api_keys (
+			id TEXT PRIMARY KEY,
+			game_id TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+			name TEXT NOT NULL,
+			key_prefix TEXT NOT NULL,
+			key_hash TEXT NOT NULL,
+			scopes TEXT NOT NULL DEFAULT 'all',
+			last_used_at DATETIME,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE (game_id, name))`,
+		`CREATE INDEX IF NOT EXISTS idx_game_api_keys_game ON game_api_keys(game_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_game_api_keys_prefix ON game_api_keys(key_prefix)`,
+		`CREATE TABLE IF NOT EXISTS game_session_tokens (
+			id TEXT PRIMARY KEY,
+			user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			game_id TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+			token_prefix TEXT NOT NULL,
+			token_hash TEXT NOT NULL,
+			scopes TEXT NOT NULL,
+			expires_at DATETIME NOT NULL,
+			last_used_at DATETIME,
+			revoked INTEGER NOT NULL DEFAULT 0,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`,
+		`CREATE INDEX IF NOT EXISTS idx_gst_user_game ON game_session_tokens(user_id, game_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_gst_prefix ON game_session_tokens(token_prefix)`,
+		`CREATE INDEX IF NOT EXISTS idx_gst_expires ON game_session_tokens(expires_at)`,
+		`CREATE TABLE IF NOT EXISTS play_sessions (
+			session_id TEXT PRIMARY KEY,
+			user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			game_id TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+			started_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			last_heartbeat DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			ended_at DATETIME)`,
+		`CREATE INDEX IF NOT EXISTS idx_play_sessions_heartbeat ON play_sessions(last_heartbeat)`,
+		`CREATE INDEX IF NOT EXISTS idx_play_sessions_user_game ON play_sessions(user_id, game_id)`,
 	}
 }
 
@@ -516,4 +553,45 @@ CREATE INDEX IF NOT EXISTS idx_games_developer ON games(developer_id);
 CREATE INDEX IF NOT EXISTS idx_reviews_game ON reviews(game_id);
 CREATE INDEX IF NOT EXISTS idx_activity_user ON activity(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
+
+CREATE TABLE IF NOT EXISTS game_api_keys (
+    id          TEXT PRIMARY KEY,
+    game_id     TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+    name        TEXT NOT NULL,
+    key_prefix  TEXT NOT NULL,
+    key_hash    TEXT NOT NULL,
+    scopes      TEXT NOT NULL DEFAULT 'all',
+    last_used_at DATETIME,
+    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (game_id, name)
+);
+CREATE INDEX IF NOT EXISTS idx_game_api_keys_game ON game_api_keys(game_id);
+CREATE INDEX IF NOT EXISTS idx_game_api_keys_prefix ON game_api_keys(key_prefix);
+
+CREATE TABLE IF NOT EXISTS game_session_tokens (
+    id          TEXT PRIMARY KEY,
+    user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    game_id     TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+    token_prefix TEXT NOT NULL,
+    token_hash  TEXT NOT NULL,
+    scopes      TEXT NOT NULL,
+    expires_at  DATETIME NOT NULL,
+    last_used_at DATETIME,
+    revoked     INTEGER NOT NULL DEFAULT 0,
+    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_gst_user_game ON game_session_tokens(user_id, game_id);
+CREATE INDEX IF NOT EXISTS idx_gst_prefix ON game_session_tokens(token_prefix);
+CREATE INDEX IF NOT EXISTS idx_gst_expires ON game_session_tokens(expires_at);
+
+CREATE TABLE IF NOT EXISTS play_sessions (
+    session_id      TEXT PRIMARY KEY,
+    user_id         TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    game_id         TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+    started_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_heartbeat  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    ended_at        DATETIME
+);
+CREATE INDEX IF NOT EXISTS idx_play_sessions_heartbeat ON play_sessions(last_heartbeat);
+CREATE INDEX IF NOT EXISTS idx_play_sessions_user_game ON play_sessions(user_id, game_id);
 `

@@ -375,3 +375,20 @@ func scanGameRow(rows *sql.Rows) (*Game, error) {
 	parseGameJSON(g, tagsJSON, screenshotsJSON, videosJSON, featuresJSON)
 	return g, nil
 }
+
+// IsGameOwner checks whether userID is the developer (owner) of the
+// game identified by gameID. Returns (exists, true) when the game
+// exists and the user owns it; (exists, false) when the game exists
+// but the user is not the owner; (!exists, false) when no such game
+// exists. Callers should 404 on !exists and 403 on exists+!owner.
+func IsGameOwner(gameID, userID string) (exists bool, err error) {
+	var devID string
+	err = storage.DB.QueryRow(`SELECT developer_id FROM games WHERE id = ?`, gameID).Scan(&devID)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return devID == userID, nil
+}

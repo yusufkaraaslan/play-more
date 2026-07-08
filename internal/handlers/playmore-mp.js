@@ -10,7 +10,10 @@
  *   <script src="/playmore-mp.js"></script>
  *   <script>
  *     PlayMore.onReady(function (ctx) {
- *       // ctx = { code, gameId, you:{id,username}, host:bool, players:[...] }
+ *       // ctx = { code, gameId, you:{id,username}, host:bool, players:[...], sessionToken }
+ *       // ctx.sessionToken is a short-lived pm_gs_ bearer token for game-scoped
+ *       // API calls (e.g. POST /api/v1/games/:id/play-sessions). It expires in
+ *       // 5 minutes — the SPA refreshes it; do not cache.
  *     });
  *     PlayMore.onMessage(function (from, data) {  ...  });
  *     PlayMore.onPlayers(function (players) {  ...  });
@@ -82,7 +85,8 @@
           gameId: d.game_id || '',
           you: d.you || null,
           host: !!d.host,
-          players: d.players || []
+          players: d.players || [],
+          sessionToken: d.session_token || ''
         };
         started = true;
         emit('ready', ctx);
@@ -122,6 +126,7 @@
     isHost: function () { return ctx.host; },
     code: function () { return ctx.code; },
     gameId: function () { return ctx.gameId; },
+    sessionToken: function () { return ctx.sessionToken; },
     isActive: function () { return started; }
   };
 

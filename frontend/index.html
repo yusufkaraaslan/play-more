@@ -1279,6 +1279,7 @@
                     html += '<div class="dev-sidebar-item" data-act="scrollToElement" data-act-args="[&quot;dev-settings-playback&quot;]">Playback</div>';
                     html += '<div class="dev-sidebar-item" data-act="scrollToElement" data-act-args="[&quot;dev-settings-security&quot;]">Security</div>';
                     html += '<div class="dev-sidebar-item" data-act="scrollToElement" data-act-args="[&quot;dev-settings-apikeys&quot;]">API Keys</div>';
+                    html += '<div class="dev-sidebar-item" data-act="scrollToElement" data-act-args="[&quot;dev-settings-gamekeys&quot;]">Game SDK Keys</div>';
                     html += '<div class="dev-sidebar-item" data-act="scrollToElement" data-act-args="[&quot;dev-settings-data&quot;]">Data</div>';
                     html += '<div class="dev-sidebar-item" style="color:var(--danger);" data-act="scrollToElement" data-act-args="[&quot;dev-settings-danger&quot;]">Danger Zone</div>';
                     html += '</div>';
@@ -3047,11 +3048,22 @@
         let mpOnlineCount = 0;      // online-player count from the game payload
         let mpPendingCreate = null; // game id to create once the socket opens
         let mpPendingJoin = null;   // lobby code to join once the socket opens
+        let mpGameToken = null;     // pm_gs_ token for the current game (passed to iframe + WS)
+
+        async function mpMintToken(gameId) {
+            try {
+                const res = await api('/games/' + gameId + '/sdk-token', { method: 'POST', body: '{}' });
+                mpGameToken = res.token;
+                return res.token;
+            } catch { return null; }
+        }
 
         function mpConnect() {
             if (mpSocket && (mpSocket.readyState === WebSocket.CONNECTING || mpSocket.readyState === WebSocket.OPEN)) return;
             const proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
-            mpSocket = new WebSocket(proto + location.host + '/ws');
+            let wsUrl = proto + location.host + '/ws';
+            if (mpGameToken) wsUrl += '?token=' + encodeURIComponent(mpGameToken);
+            mpSocket = new WebSocket(wsUrl);
             mpSocket.onopen = () => {
                 if (mpPendingCreate) { mpSend({ type: 'create', game_id: mpPendingCreate }); mpPendingCreate = null; }
                 else if (mpPendingJoin) { mpSend({ type: 'join', code: mpPendingJoin }); mpPendingJoin = null; }
@@ -3062,6 +3074,7 @@
             };
             mpSocket.onclose = () => {
                 mpSocket = null;
+                mpGameToken = null;
                 if (mpLobby) {
                     mpLobby = null;
                     if (mpLaunched) { mpNotifyGame({ playmore: 'closed' }); mpLaunched = false; }
@@ -3111,9 +3124,10 @@
             }
         }
 
-        function mpCreate(gameId) {
+        async function mpCreate(gameId) {
             if (!currentUser) { showAuth('login'); return; }
             mpPendingJoin = null;
+            await mpMintToken(gameId);
             if (mpSocket && mpSocket.readyState === WebSocket.OPEN) {
                 mpSend({ type: 'create', game_id: gameId });
             } else {
@@ -3122,11 +3136,12 @@
             }
         }
 
-        function mpJoinCode(code) {
+        async function mpJoinCode(code) {
             if (!currentUser) { showAuth('login'); return; }
             code = String(code || '').trim().toUpperCase();
             if (code.length < 4) { toast('Enter a lobby code.', 'error'); return; }
             mpPendingCreate = null;
+            if (currentGameData) await mpMintToken(currentGameData.id);
             if (mpSocket && mpSocket.readyState === WebSocket.OPEN) {
                 mpSend({ type: 'join', code: code });
             } else {
@@ -3158,7 +3173,7 @@
         function mpStart() { mpSend({ type: 'start' }); }
 
         function mpLeave(silent) {
-            mpPendingCreate = null; mpPendingJoin = null;
+            mpPendingCreate = null; mpPendingJoin = null; mpGameToken = null;
             const hadLobby = !!mpLobby;
             mpLobby = null; mpLaunched = false;
             if (mpSocket) {
@@ -3255,14 +3270,15 @@
             const d = ev.data;
             if (!d || typeof d !== 'object' || !d.playmore) return;
             if (d.playmore === 'ready') {
-                // Game announced it's loaded — hand it the lobby context.
+                // Game announced it's loaded — hand it the lobby context + session token.
                 mpNotifyGame({
                     playmore: 'init',
                     code: mpLobby.code,
                     game_id: mpLobby.game_id,
                     you: { id: currentUser.id, username: currentUser.username },
                     host: mpLobby.host_id === currentUser.id,
-                    players: mpLobby.players
+                    players: mpLobby.players,
+                    session_token: mpGameToken
                 });
             } else if (d.playmore === 'send') {
                 mpSend({ type: 'msg', to: d.to || '', data: d.data });
@@ -3822,6 +3838,12 @@
                 '<button class="btn-accent" style="padding:4px 14px;font-size:11px;" ' + act('showGenerateKeyModal') + '>+ Generate Key</button></div>' +
                 '<p style="color:var(--text-secondary);font-size:12px;margin-bottom:12px;">Use API keys to deploy games from the command line or CI/CD. <a style="color:var(--accent);cursor:pointer;" ' + act('openUrl', '/deploy.sh') + '>Download deploy script</a></p>' +
                 '<div id="api-keys-list" style="color:var(--text-secondary);font-size:13px;">Loading...</div></div>' +
+                '<div class="card-box" id="dev-settings-gamekeys">' +
+                '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><h3 style="font-size:16px;margin-bottom:0;">Game SDK Keys</h3>' +
+                '<button class="btn-accent" style="padding:4px 14px;font-size:11px;" ' + act('showGenerateGameKeyModal') + '>+ Generate Key</button></div>' +
+                '<p style="color:var(--text-secondary);font-size:12px;margin-bottom:8px;">SDK keys let game logic (not user accounts) call the API. Select a game, then manage its keys below.</p>' +
+                '<div style="margin-bottom:10px;"><select id="gamekey-game-select" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--border);background:var(--bg-secondary);color:var(--text);font-size:13px;" ' + onEv('change', 'loadGameSDKKeys') + '><option value="">— Select a game —</option></select></div>' +
+                '<div id="game-sdk-keys-list" style="color:var(--text-secondary);font-size:13px;">Select a game above to see its SDK keys.</div></div>' +
                 '<div class="card-box" id="dev-settings-data">' +
                 '<h3 style="font-size:16px;margin-bottom:10px;">Export Backup</h3>' +
                 '<p style="color:var(--text-secondary);font-size:13px;margin-bottom:15px;">Download your profile and activity data as JSON.</p>' +
@@ -3837,6 +3859,7 @@
                 '<button class="btn-secondary" style="border-color:var(--danger);color:var(--danger);" ' + act('deleteAccount') + '>Delete Account</button></div>' +
                 '</div>';
             loadAPIKeys();
+            populateGameKeyGameSelect();
         }
 
         async function saveAccountSettings() {
@@ -3914,6 +3937,65 @@
         async function revokeAPIKey(id, name) {
             showModal('Revoke API Key', 'Revoke <strong>' + escapeHtml(name) + '</strong>? Any scripts using this key will stop working immediately.', async () => {
                 try { await api('/api-keys/' + id, { method: 'DELETE' }); closeModal(); toast('Key revoked.', 'info'); loadAPIKeys(); } catch (e) { toast(e.message, 'error'); closeModal(); }
+            });
+        }
+
+        // ============ Game SDK Keys ============
+        async function populateGameKeyGameSelect() {
+            const sel = document.getElementById('gamekey-game-select');
+            if (!sel) return;
+            try {
+                const data = await api('/games?developer=me&limit=100');
+                const games = data.games || [];
+                sel.innerHTML = '<option value="">— Select a game —</option>' + games.map(g =>
+                    '<option value="' + esc(g.id) + '">' + escapeHtml(g.title) + '</option>'
+                ).join('');
+            } catch {}
+        }
+
+        async function loadGameSDKKeys() {
+            const sel = document.getElementById('gamekey-game-select');
+            const el = document.getElementById('game-sdk-keys-list');
+            if (!sel || !el) return;
+            const gameId = sel.value;
+            if (!gameId) { el.innerHTML = '<span style="font-style:italic;">Select a game above to see its SDK keys.</span>'; return; }
+            try {
+                const data = await api('/games/' + gameId + '/sdk-keys');
+                const keys = data.keys || [];
+                if (!keys.length) { el.innerHTML = '<span style="font-style:italic;">No SDK keys for this game yet.</span>'; return; }
+                el.innerHTML = keys.map(k =>
+                    '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);">' +
+                    '<div><span style="font-weight:bold;">' + escapeHtml(k.name) + '</span>' +
+                    '<span style="font-family:monospace;font-size:11px;color:var(--text-secondary);margin-left:8px;">' + esc(k.key_prefix) + '…</span>' +
+                    '<span style="font-size:11px;color:var(--text-secondary);margin-left:8px;">scopes: ' + esc(k.scopes) + '</span></div>' +
+                    '<button class="btn-secondary" style="padding:3px 10px;font-size:11px;color:var(--danger);" ' + act('revokeGameSDKKey', k.id, k.game_id, k.name) + '>Revoke</button></div>'
+                ).join('');
+            } catch (e) { el.innerHTML = '<span style="color:var(--danger);">Failed to load: ' + escapeHtml(e.message) + '</span>'; }
+        }
+
+        function showGenerateGameKeyModal() {
+            const sel = document.getElementById('gamekey-game-select');
+            const gameId = sel ? sel.value : '';
+            if (!gameId) { toast('Select a game first.', 'error'); return; }
+            showModal('Generate SDK Key for selected game',
+                '<div class="form-group"><label class="form-label">Key Name</label><input type="text" class="form-input" id="gen-game-key-name" placeholder="e.g. CI Deploy, Matchmaker"></div>' +
+                '<p style="color:var(--text-secondary);font-size:12px;">The raw key will be shown only once — copy it immediately.</p>',
+                async () => {
+                    const name = document.getElementById('gen-game-key-name').value.trim();
+                    if (!name) { toast('Enter a key name.', 'error'); return; }
+                    try {
+                        const data = await api('/games/' + gameId + '/sdk-keys', { method: 'POST', body: JSON.stringify({ name }) });
+                        showModal('SDK Key Created',
+                            '<div style="display:flex;gap:6px;"><input type="text" class="form-input" id="raw-sdk-key-display" value="' + escapeHtml(data.raw_key) + '" readonly style="font-family:monospace;font-size:12px;">' +
+                            '<button class="btn-accent" style="padding:6px 14px;white-space:nowrap;" ' + act('copyToClipboard', 'raw-sdk-key-display') + '>Copy</button></div>',
+                            () => { closeModal(); loadGameSDKKeys(); });
+                    } catch (e) { toast(e.message, 'error'); closeModal(); }
+                });
+        }
+
+        async function revokeGameSDKKey(keyId, gameId, name) {
+            showModal('Revoke SDK Key', 'Revoke SDK key <strong>' + escapeHtml(name) + '</strong>? This key will stop working immediately.', async () => {
+                try { await api('/games/' + gameId + '/sdk-keys/' + keyId, { method: 'DELETE' }); closeModal(); toast('Key revoked.', 'info'); loadGameSDKKeys(); } catch (e) { toast(e.message, 'error'); closeModal(); }
             });
         }
 
