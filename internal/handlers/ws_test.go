@@ -312,11 +312,14 @@ func TestWS_FullLobbyFlow(t *testing.T) {
 		t.Fatalf("bad targeted relay: %+v", back)
 	}
 
-	// Host disconnects → guest is told the lobby closed.
+	// Host disconnects → host migrates to guest (lobby continues).
 	host.Close(websocket.StatusNormalClosure, "")
-	closed := expectFrame(t, ctx, guest, "closed")
-	if closed.Reason != "host_left" {
-		t.Fatalf("closed reason = %q, want host_left", closed.Reason)
+	migrated := expectFrame(t, ctx, guest, "lobby")
+	if migrated.Lobby.HostID != guestUser.ID {
+		t.Fatalf("host not migrated: host_id=%s, want %s", migrated.Lobby.HostID, guestUser.ID)
+	}
+	if len(migrated.Lobby.Players) != 1 {
+		t.Fatalf("players=%d, want 1 after host migration", len(migrated.Lobby.Players))
 	}
 }
 

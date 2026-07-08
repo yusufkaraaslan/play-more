@@ -293,9 +293,9 @@ func (h *Hub) CloseGameLobbies(gameID, reason string) int {
 	return len(doomed)
 }
 
-// leaveLocked detaches s from its lobby. Host leaving closes the whole
-// lobby (v1: no host migration — the lobby dies with its creator).
-// Callers hold h.mu.
+// leaveLocked detaches s from its lobby. If s is the host, the next
+// member (by join order) is promoted to host — the lobby continues.
+// If s is the last member, the lobby is closed. Callers hold h.mu.
 func (h *Hub) leaveLocked(s *Session) {
 	l := s.lobby
 	if l == nil {
@@ -303,16 +303,26 @@ func (h *Hub) leaveLocked(s *Session) {
 	}
 	s.lobby = nil
 	s.ready = false
-	if l.Host == s {
-		h.closeLobbyLocked(l, "host_left")
-		return
-	}
+
+	// Remove s from the member list.
 	for i, m := range l.Members {
 		if m == s {
 			l.Members = append(l.Members[:i], l.Members[i+1:]...)
 			break
 		}
 	}
+
+	// If s was the host, promote the next member (or close if empty).
+	if l.Host == s {
+		if len(l.Members) == 0 {
+			h.decGameCountLocked(l.GameID)
+			h.closeLobbyLocked(l, "host_left")
+			return
+		}
+		l.Host = l.Members[0]
+		l.Host.ready = true // host is implicitly ready
+	}
+
 	h.decGameCountLocked(l.GameID)
 	l.LastActive = time.Now()
 	l.broadcastState()

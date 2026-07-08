@@ -410,6 +410,15 @@
         break;
       case 'players':
         ctx.players = d.players || [];
+        // Update host flag — host may have migrated to another player.
+        if (ctx.you) {
+          for (var pi = 0; pi < ctx.players.length; pi++) {
+            if (ctx.players[pi].id === ctx.you.id) {
+              ctx.host = !!ctx.players[pi].host;
+              break;
+            }
+          }
+        }
         emit('players', ctx.players);
         break;
       case 'msg':

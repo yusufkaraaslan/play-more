@@ -100,7 +100,7 @@ func TestCreateJoinReadyStartFlow(t *testing.T) {
 	}
 }
 
-func TestHostLeaveClosesLobby(t *testing.T) {
+func TestHostLeaveMigratesHost(t *testing.T) {
 	h := NewHub()
 	host := register(t, h, "alice")
 	guest := register(t, h, "bob")
@@ -116,18 +116,92 @@ func TestHostLeaveClosesLobby(t *testing.T) {
 
 	h.Unregister(host) // host disconnects
 
-	closed := last(drain(guest), "closed")
-	if closed == nil || closed.Reason != "host_left" {
-		t.Fatalf("guest did not get closed(host_left): %+v", closed)
+	// Guest should get a lobby state update (not closed) showing they're now host.
+	state := last(drain(guest), "lobby")
+	if state == nil {
+		t.Fatal("guest did not get lobby state update after host migration")
 	}
-	if guest.lobby != nil {
-		t.Fatal("guest still attached to dead lobby")
+	if state.Lobby.HostID != "bob" {
+		t.Fatalf("host not migrated: host_id=%s, want bob", state.Lobby.HostID)
 	}
+	if len(state.Lobby.Players) != 1 {
+		t.Fatalf("players=%d, want 1", len(state.Lobby.Players))
+	}
+	// The remaining player should be marked as host.
+	if !state.Lobby.Players[0].Host {
+		t.Fatal("remaining player not marked as host")
+	}
+	// Guest should still be in the lobby.
+	if guest.lobby == nil {
+		t.Fatal("guest detached from lobby after host migration")
+	}
+	if guest.lobby.Host != guest {
+		t.Fatal("guest is not the new host in the lobby struct")
+	}
+	// Online count should reflect 1 remaining player.
+	if h.OnlineCount("game1") != 1 {
+		t.Fatalf("online count=%d, want 1", h.OnlineCount("game1"))
+	}
+	// Lobby should still be joinable (if not started).
+	if err := h.Join(guest, code); err != nil {
+		t.Fatalf("re-join after migration failed: %v", err)
+	}
+}
+
+func TestHostLeaveLastMemberClosesLobby(t *testing.T) {
+	h := NewHub()
+	host := register(t, h, "alice")
+
+	if err := h.Create(host, "game1"); err != nil {
+		t.Fatal(err)
+	}
+	code := last(drain(host), "lobby").Lobby.Code
+
+	h.Unregister(host) // host disconnects — was the only member
+
 	if h.OnlineCount("game1") != 0 {
-		t.Fatalf("online count = %d, want 0", h.OnlineCount("game1"))
+		t.Fatalf("online count=%d, want 0", h.OnlineCount("game1"))
 	}
-	if err := h.Join(guest, code); err != ErrLobbyNotFound {
+	if err := h.Join(host, code); err != ErrLobbyNotFound {
 		t.Fatalf("dead lobby still joinable: %v", err)
+	}
+}
+
+func TestHostMigrationDuringStartedGame(t *testing.T) {
+	h := NewHub()
+	host := register(t, h, "alice")
+	guest := register(t, h, "bob")
+
+	h.Create(host, "game1")
+	code := last(drain(host), "lobby").Lobby.Code
+	h.Join(guest, code)
+	drain(host)
+	guest.ready = true
+	h.Ready(guest, true)
+	drain(host)
+	drain(guest)
+
+	// Start the game, then host leaves.
+	if err := h.Start(host); err != nil {
+		t.Fatal(err)
+	}
+	drain(guest) // consume launch frame
+
+	h.Unregister(host) // host disconnects mid-game
+
+	// Guest should get a lobby state update showing they're the new host.
+	state := last(drain(guest), "lobby")
+	if state == nil {
+		t.Fatal("guest did not get state update after host migration mid-game")
+	}
+	if state.Lobby.HostID != "bob" {
+		t.Fatalf("host not migrated: host_id=%s, want bob", state.Lobby.HostID)
+	}
+	if !state.Lobby.Started {
+		t.Fatal("lobby lost started flag after host migration")
+	}
+	if guest.lobby == nil || guest.lobby.Host != guest {
+		t.Fatal("guest not promoted to host in lobby struct")
 	}
 }
 
