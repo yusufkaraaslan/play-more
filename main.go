@@ -200,6 +200,8 @@ func main() {
 	gamesDomain := flag.String("games-domain", "", "Optional separate domain for game files (e.g. games.example.com) — strongest isolation against malicious uploaded games")
 	trustedProxies := flag.String("trusted-proxies", "", "Comma-separated list of trusted proxy CIDRs (e.g. '127.0.0.1/32,10.0.0.0/8'). Empty = trust no proxy headers.")
 	forceSecure := flag.Bool("behind-tls-proxy", false, "Always set Secure flag on cookies (use when behind a TLS-terminating reverse proxy)")
+	stunServers := flag.String("stun-servers", "stun:stun.l.google.com:19302", "Comma-separated STUN server URLs for WebRTC NAT traversal")
+	turnServers := flag.String("turn-servers", "", "Comma-separated TURN server URLs for WebRTC relay fallback (e.g. 'turn:user:pass@turn.example.com:3478')")
 	uploadsGC := flag.Bool("uploads-gc", false, "Enable daily uploads/ directory sweep — deletes files unreferenced by any DB row and older than 90 days. Off by default; review --uploads-gc-dry-run output before enabling.")
 	uploadsGCDryRun := flag.Bool("uploads-gc-dry-run", false, "Run uploads GC in dry-run mode — log what would be pruned but don't actually delete. Requires --uploads-gc.")
 	flag.Parse()
@@ -291,6 +293,19 @@ func main() {
 		}
 	}
 	middleware.ForceSecureCookies = *forceSecure
+
+	// STUN/TURN env var fallbacks
+	if !isFlagSet("stun-servers") {
+		if v := os.Getenv("PLAYMORE_STUN_SERVERS"); v != "" {
+			*stunServers = v
+		}
+	}
+	if !isFlagSet("turn-servers") {
+		if v := os.Getenv("PLAYMORE_TURN_SERVERS"); v != "" {
+			*turnServers = v
+		}
+	}
+	server.RTCIceServers = server.ParseIceServers(*stunServers, *turnServers)
 
 	// Validate TLS options
 	if (*tlsCert == "") != (*tlsKey == "") {

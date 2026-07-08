@@ -19,6 +19,49 @@ import (
 	"github.com/yusufkaraaslan/play-more/internal/storage"
 )
 
+// RTCIceServers is the WebRTC ICE server config, set by main.go from
+// --stun-servers / --turn-servers flags. Exposed via GET /rtc-config
+// so the SPA can pass it to the game iframe for RTCPeerConnection.
+var RTCIceServers []map[string]any
+
+// ParseIceServers builds the iceServers array for WebRTC from
+// comma-separated STUN and TURN URL strings.
+func ParseIceServers(stun, turn string) []map[string]any {
+	var servers []map[string]any
+	for _, s := range strings.Split(stun, ",") {
+		s = strings.TrimSpace(s)
+		if s != "" {
+			servers = append(servers, map[string]any{"urls": s})
+		}
+	}
+	for _, t := range strings.Split(turn, ",") {
+		t = strings.TrimSpace(t)
+		if t == "" {
+			continue
+		}
+		// TURN URLs may embed credentials: turn:user:pass@host:port
+		// Parse and extract them into the RTCIceServer fields.
+		server := map[string]any{"urls": t}
+		if i := strings.Index(t, "://"); i != -1 {
+			rest := t[i+3:]
+			if at := strings.LastIndex(rest, "@"); at != -1 {
+				creds := rest[:at]
+				host := rest[at+1:]
+				if colon := strings.Index(creds, ":"); colon != -1 {
+					server["username"] = creds[:colon]
+					server["credential"] = creds[colon+1:]
+				}
+				server["urls"] = t[:i+3] + host
+			}
+		}
+		servers = append(servers, server)
+	}
+	if servers == nil {
+		servers = []map[string]any{{"urls": "stun:stun.l.google.com:19302"}}
+	}
+	return servers
+}
+
 // =============================================================================
 // Server setup
 // =============================================================================
@@ -128,6 +171,9 @@ func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxi
 			return
 		}
 		c.JSON(200, gin.H{"status": "ready"})
+	})
+	r.GET("/rtc-config", func(c *gin.Context) {
+		c.JSON(200, gin.H{"iceServers": RTCIceServers})
 	})
 
 	// =========================================================================

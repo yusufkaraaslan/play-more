@@ -3049,12 +3049,17 @@
         let mpPendingCreate = null; // game id to create once the socket opens
         let mpPendingJoin = null;   // lobby code to join once the socket opens
         let mpGameToken = null;     // pm_gs_ token for the current game (passed to iframe + WS)
+        let mpRtcConfig = null;     // WebRTC ICE servers from /rtc-config
 
         async function mpMintToken(gameId) {
             try {
-                const res = await api('/games/' + gameId + '/sdk-token', { method: 'POST', body: '{}' });
-                mpGameToken = res.token;
-                return res.token;
+                const [tokenRes, rtcRes] = await Promise.all([
+                    api('/games/' + gameId + '/sdk-token', { method: 'POST', body: '{}' }),
+                    fetch('/rtc-config').then(r => r.json()).catch(() => null)
+                ]);
+                mpGameToken = tokenRes.token;
+                if (rtcRes && rtcRes.iceServers) mpRtcConfig = rtcRes;
+                return tokenRes.token;
             } catch { return null; }
         }
 
@@ -3075,6 +3080,7 @@
             mpSocket.onclose = () => {
                 mpSocket = null;
                 mpGameToken = null;
+                mpRtcConfig = null;
                 if (mpLobby) {
                     mpLobby = null;
                     if (mpLaunched) { mpNotifyGame({ playmore: 'closed' }); mpLaunched = false; }
@@ -3173,7 +3179,7 @@
         function mpStart() { mpSend({ type: 'start' }); }
 
         function mpLeave(silent) {
-            mpPendingCreate = null; mpPendingJoin = null; mpGameToken = null;
+            mpPendingCreate = null; mpPendingJoin = null; mpGameToken = null; mpRtcConfig = null;
             const hadLobby = !!mpLobby;
             mpLobby = null; mpLaunched = false;
             if (mpSocket) {
@@ -3278,7 +3284,8 @@
                     you: { id: currentUser.id, username: currentUser.username },
                     host: mpLobby.host_id === currentUser.id,
                     players: mpLobby.players,
-                    session_token: mpGameToken
+                    session_token: mpGameToken,
+                    rtc_config: mpRtcConfig
                 });
             } else if (d.playmore === 'send') {
                 mpSend({ type: 'msg', to: d.to || '', data: d.data });
