@@ -37,9 +37,6 @@ func bodyLimit(maxBytes int64) gin.HandlerFunc {
 // applied here so both prefixes get identical protection without callers
 // having to remember to add it.
 func mountAPIRoutes(g *gin.RouterGroup, cfg apiConfig) {
-	// CORS must run BEFORE auth so OPTIONS preflights are answered
-	// for unauthenticated requests (game iframes with opaque origin).
-	g.Use(middleware.CORS())
 	g.Use(middleware.GlobalRateLimit(600, 300))
 	g.Use(middleware.AuthOptional())
 	// CSRF after auth so we can check auth_method (API keys skip CSRF)
@@ -51,7 +48,7 @@ func mountAPIRoutes(g *gin.RouterGroup, cfg apiConfig) {
 	auth.POST("/register", middleware.RateLimit(5, 3600), handlers.Register)
 	auth.POST("/login", middleware.RateLimit(10, 300), handlers.Login)
 	auth.POST("/logout", handlers.Logout)
-	auth.GET("/me", handlers.Me)
+	auth.GET("/me", middleware.AuthRequired(), handlers.Me)
 	auth.POST("/verify", middleware.RateLimit(10, 3600), handlers.VerifyEmail)
 	auth.POST("/forgot-password", middleware.RateLimit(5, 3600), handlers.ForgotPassword)
 	auth.POST("/reset-password", middleware.RateLimit(10, 3600), handlers.ResetPassword)

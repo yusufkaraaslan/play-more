@@ -46,6 +46,14 @@ func CORS() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		path := c.Request.URL.Path
 
+		// Only handle CORS for API paths — non-API routes (SPA, /play/,
+		// /uploads/, /health, /rtc-config) don't need CORS headers from
+		// this middleware (some set their own, e.g. /play/ sets ACAO:*).
+		if !strings.HasPrefix(path, "/api/") {
+			c.Next()
+			return
+		}
+
 		// The account/credential surface stays on the SPA shell —
 		// same-origin only. Match on both /api/ and /api/v1/ prefixes
 		// since mountAPIRoutes registers the same routes on both.

@@ -142,6 +142,12 @@ func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxi
 	r.Use(securityHeaders(goatCounterURL))
 	r.Use(cacheHeaders())
 
+	// CORS — mounted at engine level so OPTIONS preflights are answered
+	// even for routes that only register POST/GET (Gin doesn't run group
+	// middleware for unmatched methods). The middleware itself only
+	// handles /api/ paths and skips non-API routes.
+	r.Use(middleware.CORS())
+
 	// JSON body size limit
 	r.Use(func(c *gin.Context) {
 		ct := c.GetHeader("Content-Type")

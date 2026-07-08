@@ -121,6 +121,16 @@ func SeedData(c *gin.Context) {
 			SysReqMin:   "Any modern browser",
 			SysReqRec:   "Chrome, Firefox, or Safari",
 		},
+		{
+			Title: "MP Test Arena", Genre: "experimental", Price: 0, Discount: 0,
+			Tags: []string{"Multiplayer", "Diagnostic", "WebRTC"}, IsWebGPU: false, Multiplayer: true,
+			Color1: [3]uint8{60, 140, 220}, Color2: [3]uint8{12, 18, 28},
+			Desc:        "A multiplayer diagnostic dashboard — tests every feature: WebRTC P2P, relay fallback, transport switching, bandwidth stats, keepalive, play sessions.",
+			CustomAbout: "The end-to-end test game for PlayMore's multiplayer stack. Shows live transport status (WebRTC vs relay) per peer, bandwidth stats, connection state changes, cursor sync, and message logging. Use this to verify that P2P data channels are working, keepalive is running, and relay fallback kicks in correctly.",
+			Features:    []string{"Per-peer transport indicator (WebRTC/relay)", "Live bandwidth stats (sent/received)", "Connection state change log", "Cursor sync + click-to-ping test", "Broadcast + unicast message test", "Play session status display"},
+			SysReqMin:   "Chrome 90+, Firefox 88+, Safari 15+",
+			SysReqRec:   "Latest Chrome or Firefox",
+		},
 	}
 
 	reviews := map[string][]struct {
@@ -193,6 +203,9 @@ func SeedData(c *gin.Context) {
 			game.UpdateFiles(storage.GameDir(game.ID), "index.html")
 		} else if sg.Title == "Co-op Canvas" {
 			storage.SaveGameFile(game.ID, "index.html", []byte(generateCoopCanvasGame()))
+			game.UpdateFiles(storage.GameDir(game.ID), "index.html")
+		} else if sg.Title == "MP Test Arena" {
+			storage.SaveGameFile(game.ID, "index.html", []byte(generateMPTestArenaGame()))
 			game.UpdateFiles(storage.GameDir(game.ID), "index.html")
 		} else {
 			// Create placeholder game file
@@ -517,6 +530,256 @@ func generateCoopCanvasGame() string {
   }
 
   // If opened outside a lobby (direct /play link), still render.
+  resize();
+})();
+</script>
+</body>
+</html>`
+}
+
+func generateMPTestArenaGame() string {
+	return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>MP Test Arena</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{height:100%;background:#0c121c;color:#c8d6e5;font-family:system-ui,-apple-system,sans-serif;overflow:hidden;}
+  #app{display:flex;flex-direction:column;height:100%;}
+  #top{padding:8px 14px;background:rgba(0,0,0,.3);display:flex;gap:14px;align-items:center;font-size:13px;border-bottom:1px solid #1a2735;}
+  #top b{color:#3c8ce0;}
+  .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px;}
+  .dot.on{background:#3c8ce0;box-shadow:0 0 6px #3c8ce0;}
+  .dot.off{background:#555;}
+  #main{flex:1;display:flex;overflow:hidden;}
+  #canvas-area{flex:1;position:relative;cursor:crosshair;touch-action:none;background:#0a0f16;}
+  canvas{position:absolute;inset:0;width:100%;height:100%;}
+  #sidebar{width:300px;border-left:1px solid #1a2735;display:flex;flex-direction:column;overflow:hidden;}
+  #sidebar h3{padding:8px 12px;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#5a7a99;background:rgba(0,0,0,.2);border-bottom:1px solid #1a2735;}
+  #peers{flex:1;overflow-y:auto;padding:6px;}
+  .peer{padding:6px 8px;margin-bottom:4px;border-radius:6px;background:rgba(255,255,255,.04);font-size:12px;}
+  .peer .name{font-weight:bold;display:flex;align-items:center;gap:6px;}
+  .peer .tport{font-size:10px;padding:1px 6px;border-radius:3px;margin-left:auto;}
+  .tport.webrtc{background:#1a3a1a;color:#4ade80;}
+  .tport.relay{background:#3a2a1a;color:#fbbf24;}
+  .peer .bw{font-size:10px;color:#5a7a99;margin-top:3px;}
+  #log{height:180px;border-top:1px solid #1a2735;overflow-y:auto;padding:4px 8px;font-family:monospace;font-size:11px;line-height:1.4;}
+  #log .ts{color:#3a5070;}
+  #log .ev{color:#5a7a99;}
+  #log .ok{color:#4ade80;}
+  #log .warn{color:#fbbf24;}
+  #log .err{color:#f87171;}
+  #controls{padding:8px 12px;border-top:1px solid #1a2735;display:flex;gap:8px;flex-wrap:wrap;}
+  button{padding:5px 12px;border-radius:6px;border:1px solid #2a3a4a;background:#15212e;color:#c8d6e5;font-size:12px;cursor:pointer;}
+  button:hover{background:#1d2d3a;border-color:#3c5a7a;}
+  .btn-pri{background:#1a3a5a;border-color:#3c8ce0;color:#c8e0ff;}
+  #stats{padding:6px 12px;font-size:11px;color:#5a7a99;border-top:1px solid #1a2735;}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="top">
+    <span>Lobby <b id="code">--</b></span>
+    <span><span class="dot off" id="dot-mp"></span>MP</span>
+    <span id="me-label">connecting...</span>
+    <span id="session-status" style="margin-left:auto;font-size:11px;color:#5a7a99;"></span>
+  </div>
+  <div id="main">
+    <div id="canvas-area">
+      <canvas id="cv-dots"></canvas>
+      <canvas id="cv-cursors"></canvas>
+    </div>
+    <div id="sidebar">
+      <h3>Peers</h3>
+      <div id="peers"><div style="color:#5a7a99;font-size:12px;padding:8px;">No peers connected</div></div>
+      <div id="log"></div>
+      <div id="controls">
+        <button class="btn-pri" id="btn-bcast">Broadcast Ping</button>
+        <button id="btn-uni">Unicast to #1</button>
+        <button id="btn-stats">Stats</button>
+      </div>
+      <div id="stats"></div>
+    </div>
+  </div>
+</div>
+<script src="/playmore-mp.js"></script>
+<script>
+(function(){
+  'use strict';
+  var area=document.getElementById('canvas-area');
+  var dotCv=document.getElementById('cv-dots'), curCv=document.getElementById('cv-cursors');
+  var dctx=dotCv.getContext('2d'), cctx=curCv.getContext('2d');
+  var peers={};
+  var myId=null, myColor='#3c8ce0';
+  var lastSent=0;
+  var logEl=document.getElementById('log');
+  var statsEl=document.getElementById('stats');
+
+  function log(type,msg){
+    var t=new Date().toLocaleTimeString();
+    var d=document.createElement('div');
+    d.innerHTML='<span class="ts">'+t+'</span> <span class="'+type+'">'+msg+'</span>';
+    logEl.appendChild(d);
+    logEl.scrollTop=logEl.scrollHeight;
+    while(logEl.children.length>100) logEl.removeChild(logEl.firstChild);
+  }
+
+  function resize(){
+    var r=area.getBoundingClientRect();
+    [dotCv,curCv].forEach(function(c){c.width=r.width;c.height=r.height;});
+  }
+  window.addEventListener('resize',function(){resize();redrawCursors();});
+
+  function colorFor(id){
+    var h=0;for(var i=0;i<id.length;i++){h=(h*31+id.charCodeAt(i))>>>0;}
+    return 'hsl('+(h%360)+',65%,60%)';
+  }
+  function drawDot(nx,ny,color){
+    dctx.fillStyle=color;
+    dctx.beginPath();
+    dctx.arc(nx*dotCv.width,ny*dotCv.height,7,0,Math.PI*2);
+    dctx.fill();
+  }
+  function redrawCursors(){
+    cctx.clearRect(0,0,curCv.width,curCv.height);
+    for(var id in peers){
+      var p=peers[id];
+      if(p.x==null)continue;
+      var x=p.x*curCv.width,y=p.y*curCv.height;
+      cctx.fillStyle=p.color;
+      cctx.beginPath();cctx.arc(x,y,5,0,Math.PI*2);cctx.fill();
+      cctx.font='11px system-ui';cctx.fillText(p.name||'',x+9,y+4);
+    }
+  }
+
+  function norm(ev){
+    var r=area.getBoundingClientRect();
+    return{x:Math.min(1,Math.max(0,(ev.clientX-r.left)/r.width)),
+           y:Math.min(1,Math.max(0,(ev.clientY-r.top)/r.height))};
+  }
+  area.addEventListener('pointermove',function(ev){
+    var now=Date.now();
+    if(now-lastSent<66)return;
+    lastSent=now;
+    var p=norm(ev);
+    PlayMore.send({t:'cur',x:p.x,y:p.y});
+  });
+  area.addEventListener('pointerdown',function(ev){
+    var p=norm(ev);
+    drawDot(p.x,p.y,myColor);
+    PlayMore.send({t:'dot',x:p.x,y:p.y});
+    log('ok','sent dot to peers');
+  });
+
+  // ── Peer list rendering ────────────────────────────────────
+  function renderPeers(){
+    var el=document.getElementById('peers');
+    var ids=Object.keys(peers);
+    if(ids.length===0){
+      el.innerHTML='<div style="color:#5a7a99;font-size:12px;padding:8px;">No peers connected</div>';
+      return;
+    }
+    el.innerHTML=ids.map(function(id){
+      var p=peers[id];
+      var t=PlayMore.transport(id);
+      var s=PlayMore.stats();
+      var ps=s.peers[id]||{sent:0,received:0};
+      return '<div class="peer"><div class="name"><span class="dot '+(t==='webrtc'?'on':'off')+'"></span>'+p.name+
+        '<span class="tport '+t+'">'+t.toUpperCase()+'</span></div>'+
+        '<div class="bw">sent '+ps.sent+'B | recv '+ps.received+'B</div></div>';
+    }).join('');
+  }
+
+  // ── PlayMore wiring ────────────────────────────────────────
+  PlayMore.onReady(function(ctx){
+    resize();
+    myId=ctx.you?ctx.you.id:null;
+    myColor=myId?colorFor(myId):'#3c8ce0';
+    document.getElementById('code').textContent=ctx.code||'--';
+    document.getElementById('dot-mp').className='dot on';
+    document.getElementById('me-label').textContent='you: '+(ctx.you?ctx.you.username:'?');
+    log('ok','Lobby ready: '+ctx.code+' | players: '+(ctx.players?ctx.players.length:0));
+    if(ctx.sessionToken){
+      log('ok','Session token received (pm_gs_)');
+      document.getElementById('session-status').textContent='pm_gs_ token active';
+    }
+    syncPeers(ctx.players);
+    renderPeers();
+    setInterval(renderPeers,2000);
+  });
+
+  PlayMore.onPlayers(function(players){
+    syncPeers(players);
+    renderPeers();
+    log('ev','Players updated: '+(players?players.length:0));
+  });
+
+  PlayMore.onMessage(function(from,d){
+    if(!d||from===myId)return;
+    if(!peers[from])peers[from]={x:null,y:null,color:colorFor(from),name:''};
+    if(d.t==='cur'){peers[from].x=d.x;peers[from].y=d.y;redrawCursors();}
+    else if(d.t==='dot'){drawDot(d.x,d.y,peers[from].color);}
+    else if(d.t==='ping'){
+      PlayMore.send({t:'pong',n:d.n},from);
+      log('ev','ping from '+peers[from].name+' (#'+d.n+')');
+    }
+    else if(d.t==='pong'){
+      log('ok','pong from '+(peers[from]?peers[from].name:from)+' (#'+d.n+')');
+    }
+    else if(d.t==='bcast'){
+      log('ok','broadcast from '+(peers[from]?peers[from].name:from)+': '+d.msg);
+    }
+    else if(d.t==='uni'){
+      log('ok','unicast from '+(peers[from]?peers[from].name:from)+': '+d.msg);
+    }
+  });
+
+  PlayMore.onTransportChange(function(peerId,transport){
+    var name=peers[peerId]?peers[peerId].name:peerId;
+    log(transport==='webrtc'?'ok':'warn',name+' transport -> '+transport.toUpperCase());
+    renderPeers();
+  });
+
+  PlayMore.onClosed(function(){
+    log('err','Lobby closed');
+    peers={};redrawCursors();renderPeers();
+    document.getElementById('dot-mp').className='dot off';
+  });
+
+  function syncPeers(players){
+    var live={};
+    (players||[]).forEach(function(p){
+      if(p.id===myId)return;
+      live[p.id]=true;
+      if(!peers[p.id])peers[p.id]={x:null,y:null,color:colorFor(p.id),name:p.username||''};
+      else peers[p.id].name=p.username||peers[p.id].name;
+    });
+    for(var id in peers){if(!live[id])delete peers[id];}
+    redrawCursors();
+  }
+
+  // ── Controls ───────────────────────────────────────────────
+  var pingN=0;
+  document.getElementById('btn-bcast').onclick=function(){
+    pingN++;
+    PlayMore.send({t:'bcast',msg:'hello #'+pingN});
+    log('ev','broadcast sent #'+pingN);
+  };
+  document.getElementById('btn-uni').onclick=function(){
+    var ids=Object.keys(peers);
+    if(ids.length===0){log('warn','no peers to unicast to');return;}
+    pingN++;
+    PlayMore.send({t:'uni',msg:'unicast #'+pingN},ids[0]);
+    log('ev','unicast to '+(peers[ids[0]].name)+' #'+pingN);
+  };
+  document.getElementById('btn-stats').onclick=function(){
+    var s=PlayMore.stats();
+    statsEl.innerHTML='total: sent '+s.sent+'B | recv '+s.received+'B | peers: '+Object.keys(s.peers).length;
+    log('ev','stats: '+JSON.stringify(s));
+  };
+
   resize();
 })();
 </script>
