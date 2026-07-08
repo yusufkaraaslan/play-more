@@ -113,10 +113,14 @@ func ValidateAPIKey(rawKey string) (*User, *APIKey, error) {
 	}
 	key.LastUsedAt = lastUsed
 
-	// Capture ID before goroutine to avoid race
+	// Capture DB before goroutine to avoid race with test harness swapping it.
 	keyID := key.ID
+	db := storage.DB
 	go func() {
-		if _, err := storage.DB.Exec(`UPDATE api_keys SET last_used_at = ? WHERE id = ?`, time.Now().UTC().Format(time.RFC3339), keyID); err != nil {
+		if db == nil {
+			return
+		}
+		if _, err := db.Exec(`UPDATE api_keys SET last_used_at = ? WHERE id = ?`, time.Now().UTC().Format(time.RFC3339), keyID); err != nil {
 			log.Printf("failed to update API key last_used_at: %v", err)
 		}
 	}()

@@ -3150,7 +3150,7 @@
                     mpLobby = null;
                     if (mpLaunched) { mpNotifyGame({ playmore: 'closed' }); mpLaunched = false; }
                     renderMpBox();
-                    toast(m.reason === 'host_left' ? 'The host closed the lobby.' : 'Lobby closed.', 'error');
+                    toast(m.reason === 'host_left' ? 'The host closed the lobby.' : m.reason === 'server_restarting' ? 'Server restarting — rejoin in a moment.' : 'Lobby closed.', 'error');
                     break;
                 case 'error':
                     toast(m.error || 'Lobby error', 'error');

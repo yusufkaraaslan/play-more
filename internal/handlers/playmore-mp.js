@@ -49,7 +49,8 @@
   // ── WebRTC state ──────────────────────────────────────────────
   // peers[peerId] = {
   //   pc: RTCPeerConnection,
-  //   dc: RTCDataChannel,
+  //   dc: RTCDataChannel,       // reliable channel (ordered)
+  //   dcRT: RTCDataChannel,     // unreliable channel (maxRetransmits=0)
   //   state: 'new' | 'connecting' | 'open' | 'failed',
   //   isOfferer: bool,
   //   keepaliveTimer: timer,
@@ -57,12 +58,15 @@
   //   reconnectTimer: timer,
   //   reconnectAttempts: int,
   //   bytesSent: int,
-  //   bytesReceived: int
+  //   bytesReceived: int,
+  //   rtt: int,
+  //   lastPingTime: int
   // }
   var peers = {};
   var rtcIceServers = [{ urls: 'stun:stun.l.google.com:19302' }];
   var transportChangeHandlers = [];
   var pingChangeHandlers = [];
+  var topology = 'mesh'; // 'mesh' (default) or 'star' (host-authoritative)
 
   // ── Config ────────────────────────────────────────────────────
   var KEEPALIVE_INTERVAL = 15000;  // 15s ping
@@ -111,12 +115,29 @@
     return myId < peerId;
   }
 
+  // shouldConnect decides whether to initiate a WebRTC connection to
+  // peerId. In mesh topology (default), connect to everyone. In star
+  // topology, only the host connects to all peers; non-host peers only
+  // connect to the host.
+  function shouldConnect(peerId) {
+    if (topology !== 'star') return true;
+    if (!ctx.you) return true;
+    // Host connects to everyone. Non-host only connects to the host.
+    if (ctx.host) return true;
+    // I'm not the host — only connect to the host.
+    var hostPlayer = null;
+    for (var i = 0; i < ctx.players.length; i++) {
+      if (ctx.players[i].host) { hostPlayer = ctx.players[i].id; break; }
+    }
+    return peerId === hostPlayer;
+  }
+
   function initPeer(peerId) {
     if (peers[peerId]) return;
     var myId = ctx.you ? ctx.you.id : '';
     var isOfferer = shouldOffer(myId, peerId);
     peers[peerId] = {
-      pc: null, dc: null, state: 'new', isOfferer: isOfferer,
+      pc: null, dc: null, dcRT: null, state: 'new', isOfferer: isOfferer,
       keepaliveTimer: null, pongTimer: null, reconnectTimer: null,
       reconnectAttempts: 0, bytesSent: 0, bytesReceived: 0,
       rtt: -1, lastPingTime: 0
@@ -135,10 +156,13 @@
 
       if (p.isOfferer) {
         var dc = pc.createDataChannel('pm', { ordered: true });
-        setupDataChannel(peerId, dc);
+        setupDataChannel(peerId, dc, false);
+        var dcRT = pc.createDataChannel('pm-rt', { ordered: false, maxRetransmits: 0 });
+        setupDataChannel(peerId, dcRT, true);
       } else {
         pc.ondatachannel = function (ev) {
-          setupDataChannel(peerId, ev.channel);
+          var unreliable = ev.channel.label === 'pm-rt';
+          setupDataChannel(peerId, ev.channel, unreliable);
         };
       }
 
@@ -171,24 +195,30 @@
     }
   }
 
-  function setupDataChannel(peerId, dc) {
+  function setupDataChannel(peerId, dc, unreliable) {
     var p = peers[peerId];
     if (!p) return;
-    p.dc = dc;
 
-    dc.onopen = function () {
-      p.reconnectAttempts = 0;
-      setPeerState(peerId, 'open');
-      startKeepalive(peerId);
-    };
+    if (unreliable) {
+      p.dcRT = dc;
+    } else {
+      p.dc = dc;
+    }
 
-    dc.onclose = function () {
-      handlePeerFailure(peerId);
-    };
-
-    dc.onerror = function () {
-      handlePeerFailure(peerId);
-    };
+    // Only the reliable channel triggers state transitions + keepalive.
+    if (!unreliable) {
+      dc.onopen = function () {
+        p.reconnectAttempts = 0;
+        setPeerState(peerId, 'open');
+        startKeepalive(peerId);
+      };
+      dc.onclose = function () {
+        handlePeerFailure(peerId);
+      };
+      dc.onerror = function () {
+        handlePeerFailure(peerId);
+      };
+    }
 
     dc.onmessage = function (ev) {
       var data;
@@ -201,7 +231,6 @@
       }
       if (data && data.__pm_pong) {
         clearPongTimer(peerId);
-        // Compute RTT from the last ping.
         if (p.lastPingTime > 0) {
           var newRtt = Date.now() - p.lastPingTime;
           if (Math.abs(newRtt - p.rtt) >= 20) {
@@ -216,7 +245,6 @@
         return;
       }
 
-      // Track bandwidth
       p.bytesReceived += ev.data.length || 0;
       totalBytesReceived += ev.data.length || 0;
 
@@ -268,8 +296,10 @@
 
     // Close the dead connection.
     try { if (p.dc) p.dc.close(); } catch {}
+    try { if (p.dcRT) p.dcRT.close(); } catch {}
     try { if (p.pc) p.pc.close(); } catch {}
     p.dc = null;
+    p.dcRT = null;
     p.pc = null;
 
     // Attempt reconnection (limited tries).
@@ -306,8 +336,10 @@
     stopKeepalive(peerId);
     if (p.reconnectTimer) { clearTimeout(p.reconnectTimer); p.reconnectTimer = null; }
     try { if (p.dc) p.dc.close(); } catch {}
+    try { if (p.dcRT) p.dcRT.close(); } catch {}
     try { if (p.pc) p.pc.close(); } catch {}
     p.dc = null;
+    p.dcRT = null;
     p.pc = null;
     p.state = 'failed';
   }
@@ -383,6 +415,23 @@
     return false;
   }
 
+  function sendViaDataChannelUnreliable(peerId, data) {
+    var p = peers[peerId];
+    if (p && p.dcRT && p.state === 'open') {
+      try {
+        var raw = JSON.stringify(data);
+        p.dcRT.send(raw);
+        p.bytesSent += raw.length;
+        totalBytesSent += raw.length;
+        return true;
+      } catch (e) {
+        // Unreliable channel errors are non-fatal — fall back to reliable.
+        return sendViaDataChannel(peerId, data);
+      }
+    }
+    return false;
+  }
+
   // ── Message listener ──────────────────────────────────────────
 
   window.addEventListener('message', function (ev) {
@@ -406,6 +455,9 @@
         if (d.rtc_config && d.rtc_config.iceServers) {
           rtcIceServers = d.rtc_config.iceServers;
         }
+        if (d.topology) {
+          topology = d.topology;
+        }
         started = true;
         emit('ready', ctx);
 
@@ -415,7 +467,7 @@
           var toConnect = [];
           for (var i = 0; i < ctx.players.length; i++) {
             var pid = ctx.players[i].id;
-            if (pid && pid !== ctx.you.id) toConnect.push(pid);
+            if (pid && pid !== ctx.you.id && shouldConnect(pid)) toConnect.push(pid);
           }
           for (var j = 0; j < toConnect.length; j++) {
             (function(peerId, delay) {
@@ -441,7 +493,7 @@
         if (started && ctx.you) {
           for (var ni = 0; ni < ctx.players.length; ni++) {
             var npid = ctx.players[ni].id;
-            if (npid && npid !== ctx.you.id && !peers[npid]) {
+            if (npid && npid !== ctx.you.id && !peers[npid] && shouldConnect(npid)) {
               initPeer(npid);
             }
           }
@@ -491,6 +543,30 @@
       return API;
     },
 
+    /* Send via the unreliable data channel (maxRetransmits=0, unordered).
+     * For high-frequency state updates where stale data should be dropped,
+     * not retransmitted (e.g., position sync). Falls back to reliable
+     * send() if the unreliable channel isn't available. */
+    sendUnreliable: function (data, to) {
+      if (!started || parentOrigin === null) return API;
+
+      if (to) {
+        if (!sendViaDataChannelUnreliable(to, data)) {
+          if (!sendViaDataChannel(to, data)) sendViaRelay(to, data);
+        }
+      } else {
+        for (var i = 0; i < ctx.players.length; i++) {
+          var pid = ctx.players[i].id;
+          if (pid && pid !== (ctx.you ? ctx.you.id : '')) {
+            if (!sendViaDataChannelUnreliable(pid, data)) {
+              if (!sendViaDataChannel(pid, data)) sendViaRelay(pid, data);
+            }
+          }
+        }
+      }
+      return API;
+    },
+
     players: function () { return ctx.players.slice(); },
     me: function () { return ctx.you; },
     isHost: function () { return ctx.host; },
@@ -499,6 +575,15 @@
     sessionToken: function () { return ctx.sessionToken; },
     metadata: function () { return ctx.metadata; },
     isActive: function () { return started; },
+
+    /* Set the WebRTC topology. 'mesh' (default) = every peer connects
+     * to every other peer. 'star' = all peers connect to the host only
+     * (fewer connections, host is authoritative). Must be called before
+     * the lobby starts (before onReady). */
+    setTopology: function (t) {
+      if (!started) topology = t;
+      return API;
+    },
 
     /* Update lobby metadata (host-only). The metadata object is an
      * opaque JSON value — game settings like map, difficulty, mode.

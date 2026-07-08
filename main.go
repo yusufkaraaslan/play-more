@@ -481,6 +481,7 @@ func main() {
 
 	middleware.StopAnalyticsWriter()
 	webhook.Stop()
+	lobby.Default.Shutdown()
 	close(middleware.ShutdownCh)
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

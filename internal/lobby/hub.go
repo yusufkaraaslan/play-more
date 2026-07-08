@@ -385,6 +385,22 @@ func (h *Hub) decGameCountLocked(gameID string) {
 	}
 }
 
+// Shutdown notifies all lobby members that the server is restarting,
+// then closes all lobbies. Called from main.go on SIGTERM/SIGINT.
+// Players see "server_restarting" and know to reconnect.
+func (h *Hub) Shutdown() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for _, l := range h.lobbies {
+		for _, m := range l.Members {
+			m.trySend(ServerMsg{Type: "closed", Reason: "server_restarting"})
+		}
+		deleteLobby(l.Code)
+	}
+	h.lobbies = make(map[string]*Lobby)
+	h.gameCount = make(map[string]int)
+}
+
 // StartCleanup launches the idle-lobby reaper. Follows the same
 // pattern as middleware.StartRateLimitCleanup: a goroutine that ticks
 // until stop is closed (main passes middleware.ShutdownCh).
