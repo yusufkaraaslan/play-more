@@ -47,6 +47,7 @@ Gin defaults to release mode unless `GIN_MODE` is set.
 - **Routing**: Hash-based SPA (`#store`, `#game/<id>`, `#developer/<name>`). All non-API/non-play routes fall back to `index.html`. API routes are mounted on both `/api/v1/` (canonical) and `/api/` (permanent alias for backward compat) — see `internal/server/routes.go` and the route-equivalence test in `internal/server/routes_test.go`.
 - **Game files**: Served at `/play/:id/*filepath` for iframe embedding. Stored at `{dataDir}/games/{gameID}/`.
 - **Uploads**: Images at `{dataDir}/uploads/`, served at `/uploads/`.
+- **Multiplayer**: Lobby matchmaking over WebSocket (`/ws`), WebRTC P2P mesh with relay fallback. Client SDK: `playmore-mp.js` (embedded, served at `/playmore-mp.js`). Auth: `pm_gs_` game session tokens (5-min, scoped) + `pm_gk_` SDK keys (long-lived, per-game). CORS middleware for opaque-origin game iframes. Play sessions track active game sessions for analytics. STUN/TURN configurable via `--stun-servers` / `--turn-servers`. See `docs/sdk/` for the full SDK documentation.
 
 ## Database
 

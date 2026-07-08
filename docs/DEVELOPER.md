@@ -1,5 +1,19 @@
 # PlayMore Developer Guide
 
+## Multiplayer SDK
+
+PlayMore includes a complete multiplayer system with lobby matchmaking, WebRTC P2P data transport, and transparent relay fallback. Game developers include one script tag and get a callback API.
+
+- [SDK Home](sdk/README.md) — Quick start + 60-second guide
+- [API Reference](sdk/api-reference.md) — Every method, parameter, and return value
+- [Architecture](sdk/architecture.md) — How lobby → signaling → WebRTC works
+- [WebRTC Transport](sdk/webrtc.md) — P2P, keepalive, reconnection, fallback
+- [Authentication](sdk/authentication.md) — pm_gs_ tokens, CORS, SDK keys
+- [Play Sessions](sdk/play-sessions.md) — Track active game sessions
+- [Examples](sdk/examples.md) — Reference games and patterns
+- [Limits](sdk/limits.md) — All rate limits, sizes, and caps
+- [Troubleshooting](sdk/troubleshooting.md) — Common issues and solutions
+
 ## API Keys
 
 API keys let you automate game uploads, updates, and devlog posts from the command line, CI/CD pipelines, or scripts — without storing your password.
