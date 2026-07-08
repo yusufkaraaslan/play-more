@@ -62,6 +62,7 @@
   var peers = {};
   var rtcIceServers = [{ urls: 'stun:stun.l.google.com:19302' }];
   var transportChangeHandlers = [];
+  var pingChangeHandlers = [];
 
   // ── Config ────────────────────────────────────────────────────
   var KEEPALIVE_INTERVAL = 15000;  // 15s ping
@@ -117,7 +118,8 @@
     peers[peerId] = {
       pc: null, dc: null, state: 'new', isOfferer: isOfferer,
       keepaliveTimer: null, pongTimer: null, reconnectTimer: null,
-      reconnectAttempts: 0, bytesSent: 0, bytesReceived: 0
+      reconnectAttempts: 0, bytesSent: 0, bytesReceived: 0,
+      rtt: -1, lastPingTime: 0
     };
 
     createPeerConnection(peerId);
@@ -199,6 +201,18 @@
       }
       if (data && data.__pm_pong) {
         clearPongTimer(peerId);
+        // Compute RTT from the last ping.
+        if (p.lastPingTime > 0) {
+          var newRtt = Date.now() - p.lastPingTime;
+          if (Math.abs(newRtt - p.rtt) >= 20) {
+            p.rtt = newRtt;
+            for (var qi = 0; qi < pingChangeHandlers.length; qi++) {
+              try { pingChangeHandlers[qi](peerId, newRtt); } catch {}
+            }
+          } else {
+            p.rtt = newRtt;
+          }
+        }
         return;
       }
 
@@ -220,6 +234,7 @@
     if (!p) return;
     p.keepaliveTimer = setInterval(function () {
       if (p.state !== 'open') { stopKeepalive(peerId); return; }
+      p.lastPingTime = Date.now();
       sendRawDataChannel(peerId, { __pm_ping: true });
       // Set pong timeout — if no pong, mark failed.
       clearPongTimer(peerId);
@@ -493,12 +508,24 @@
       return API;
     },
 
+    /* Connection quality — RTT in ms from keepalive ping/pong.
+     * Returns -1 for relay peers or unknown peers. */
+    ping: function (peerId) {
+      var p = peers[peerId];
+      return p ? p.rtt : -1;
+    },
+    onPingChange: function (fn) {
+      if (typeof fn === 'function') pingChangeHandlers.push(fn);
+      return API;
+    },
+
     /* Bandwidth stats (Phase 3). Returns per-peer and aggregate. */
     stats: function () {
       var peerStats = {};
       for (var id in peers) {
         peerStats[id] = {
           transport: transportFor(id),
+          ping: peers[id].rtt,
           sent: peers[id].bytesSent,
           received: peers[id].bytesReceived
         };
