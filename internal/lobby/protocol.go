@@ -10,7 +10,7 @@ import "encoding/json"
 
 // ClientMsg is a client → server frame.
 type ClientMsg struct {
-	// Type is one of: create, join, leave, ready, start, msg.
+	// Type is one of: create, join, leave, ready, start, msg, set_metadata.
 	Type string `json:"type"`
 	// GameID — for create: the game to open a lobby for.
 	GameID string `json:"game_id,omitempty"`
@@ -23,6 +23,9 @@ type ClientMsg struct {
 	To string `json:"to,omitempty"`
 	// Data — for msg: opaque game payload, relayed verbatim.
 	Data json.RawMessage `json:"data,omitempty"`
+	// Metadata — for create/set_metadata: opaque JSON object with game
+	// settings (map, difficulty, mode, etc.). Host-only on set_metadata.
+	Metadata json.RawMessage `json:"metadata,omitempty"`
 }
 
 // ServerMsg is a server → client frame.
@@ -52,9 +55,10 @@ type Player struct {
 
 // State is a full lobby snapshot as sent to clients.
 type State struct {
-	Code    string   `json:"code"`
-	GameID  string   `json:"game_id"`
-	HostID  string   `json:"host_id"`
-	Started bool     `json:"started"`
-	Players []Player `json:"players"`
+	Code     string          `json:"code"`
+	GameID   string          `json:"game_id"`
+	HostID   string          `json:"host_id"`
+	Started  bool            `json:"started"`
+	Players  []Player        `json:"players"`
+	Metadata json.RawMessage `json:"metadata,omitempty"`
 }

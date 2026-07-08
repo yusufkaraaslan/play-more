@@ -176,6 +176,8 @@ func dispatchLobbyMsg(hub *lobby.Hub, sess *lobby.Session, user *models.User, ms
 		err = hub.Start(sess)
 	case "msg":
 		err = hub.Relay(sess, msg.To, msg.Data)
+	case "set_metadata":
+		err = hub.SetMetadata(sess, msg.Metadata)
 	default:
 		sess.Send(lobby.ServerMsg{Type: "error", Error: "unknown message type"})
 		return

@@ -10,6 +10,7 @@ type Lobby struct {
 	Host       *Session
 	Members    []*Session // includes Host, in join order
 	Started    bool
+	Metadata   []byte // opaque JSON — game settings (map, difficulty, etc.)
 	LastActive time.Time
 }
 
@@ -26,11 +27,12 @@ func (l *Lobby) snapshot() *State {
 		})
 	}
 	return &State{
-		Code:    l.Code,
-		GameID:  l.GameID,
-		HostID:  l.Host.UserID,
-		Started: l.Started,
-		Players: players,
+		Code:     l.Code,
+		GameID:   l.GameID,
+		HostID:   l.Host.UserID,
+		Started:  l.Started,
+		Players:  players,
+		Metadata: l.Metadata,
 	}
 }
 

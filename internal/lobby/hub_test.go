@@ -433,3 +433,42 @@ func TestUnregisterReleasesConnSlot(t *testing.T) {
 	// Slot freed — a new connection fits again.
 	register(t, h, "alice")
 }
+
+func TestSetMetadata(t *testing.T) {
+	h := NewHub()
+	host := register(t, h, "alice")
+	guest := register(t, h, "bob")
+
+	h.Create(host, "game1")
+	code := last(drain(host), "lobby").Lobby.Code
+	h.Join(guest, code)
+	drain(host) // host gets join broadcast
+	drain(guest) // guest gets lobby state
+
+	// Host sets metadata.
+	meta := json.RawMessage(`{"map":"de_dust2","difficulty":"hard"}`)
+	if err := h.SetMetadata(host, meta); err != nil {
+		t.Fatalf("SetMetadata: %v", err)
+	}
+
+	// Both should get a lobby state update with metadata.
+	hostState := last(drain(host), "lobby")
+	guestState := last(drain(guest), "lobby")
+	if hostState == nil || hostState.Lobby == nil {
+		t.Fatal("host got no state update")
+	}
+	if string(hostState.Lobby.Metadata) != `{"map":"de_dust2","difficulty":"hard"}` {
+		t.Fatalf("host metadata = %s, want map/difficulty", string(hostState.Lobby.Metadata))
+	}
+	if guestState == nil || guestState.Lobby == nil {
+		t.Fatal("guest got no state update")
+	}
+	if string(guestState.Lobby.Metadata) != `{"map":"de_dust2","difficulty":"hard"}` {
+		t.Fatalf("guest metadata = %s, want map/difficulty", string(guestState.Lobby.Metadata))
+	}
+
+	// Non-host can't set metadata.
+	if err := h.SetMetadata(guest, json.RawMessage(`{"hack":true}`)); err != ErrNotHost {
+		t.Fatalf("non-host SetMetadata: err=%v, want ErrNotHost", err)
+	}
+}

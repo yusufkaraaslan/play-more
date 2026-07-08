@@ -385,7 +385,8 @@
           you: d.you || null,
           host: !!d.host,
           players: d.players || [],
-          sessionToken: d.session_token || ''
+          sessionToken: d.session_token || '',
+          metadata: d.metadata || null
         };
         if (d.rtc_config && d.rtc_config.iceServers) {
           rtcIceServers = d.rtc_config.iceServers;
@@ -410,7 +411,9 @@
         break;
       case 'players':
         ctx.players = d.players || [];
-        // Update host flag — host may have migrated to another player.
+        // Update host flag and metadata — host may have migrated,
+        // metadata may have changed.
+        ctx.metadata = d.metadata !== undefined ? d.metadata : ctx.metadata;
         if (ctx.you) {
           for (var pi = 0; pi < ctx.players.length; pi++) {
             if (ctx.players[pi].id === ctx.you.id) {
@@ -470,7 +473,17 @@
     code: function () { return ctx.code; },
     gameId: function () { return ctx.gameId; },
     sessionToken: function () { return ctx.sessionToken; },
+    metadata: function () { return ctx.metadata; },
     isActive: function () { return started; },
+
+    /* Update lobby metadata (host-only). The metadata object is an
+     * opaque JSON value — game settings like map, difficulty, mode.
+     * Non-host callers are rejected by the server. */
+    setMetadata: function (obj) {
+      if (!started || parentOrigin === null) return API;
+      post({ playmore: 'set_metadata', metadata: obj }, parentOrigin);
+      return API;
+    },
 
     transport: function (peerId) {
       return transportFor(peerId);

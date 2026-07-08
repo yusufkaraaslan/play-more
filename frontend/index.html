@@ -3132,7 +3132,7 @@
                         await showGameDetail(mpLobby.game_id);
                     }
                     renderMpBox();
-                    if (mpLaunched) mpNotifyGame({ playmore: 'players', players: mpLobby.players });
+                    if (mpLaunched) mpNotifyGame({ playmore: 'players', players: mpLobby.players, metadata: mpLobby.metadata });
                     break;
                 case 'launch':
                     mpLobby = m.lobby;
@@ -3313,10 +3313,13 @@
                     host: mpLobby.host_id === currentUser.id,
                     players: mpLobby.players,
                     session_token: mpGameToken,
-                    rtc_config: mpRtcConfig
+                    rtc_config: mpRtcConfig,
+                    metadata: mpLobby.metadata
                 });
             } else if (d.playmore === 'send') {
                 mpSend({ type: 'msg', to: d.to || '', data: d.data });
+            } else if (d.playmore === 'set_metadata') {
+                mpSend({ type: 'set_metadata', metadata: d.metadata });
             }
         });
 

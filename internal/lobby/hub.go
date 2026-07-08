@@ -208,6 +208,24 @@ func (h *Hub) Ready(s *Session, ready bool) error {
 	return nil
 }
 
+// SetMetadata updates the lobby's metadata (game settings like map,
+// difficulty, mode). Host-only. Broadcasts the new state to all members.
+func (h *Hub) SetMetadata(s *Session, metadata []byte) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	l := s.lobby
+	if l == nil {
+		return ErrNotInLobby
+	}
+	if l.Host != s {
+		return ErrNotHost
+	}
+	l.Metadata = metadata
+	l.LastActive = time.Now()
+	l.broadcastState()
+	return nil
+}
+
 // Start launches the lobby's game. Host only; every other member must
 // be ready (the host's click is their ready signal). Solo start is
 // allowed — useful for developers testing their protocol integration.
