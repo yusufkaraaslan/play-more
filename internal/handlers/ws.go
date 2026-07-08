@@ -165,9 +165,13 @@ func dispatchLobbyMsg(hub *lobby.Hub, sess *lobby.Session, user *models.User, ms
 	var err error
 	switch msg.Type {
 	case "create":
-		err = createLobby(hub, sess, user, msg.GameID)
+		err = createLobby(hub, sess, user, msg.GameID, msg.Public)
 	case "join":
-		err = hub.Join(sess, msg.Code)
+		if msg.Spectator {
+			err = hub.JoinSpectator(sess, msg.Code)
+		} else {
+			err = hub.Join(sess, msg.Code)
+		}
 	case "leave":
 		hub.Leave(sess)
 	case "ready":
@@ -191,7 +195,7 @@ func dispatchLobbyMsg(hub *lobby.Hub, sess *lobby.Session, user *models.User, ms
 // hub itself stays DB-free. Unpublished games are visible only to
 // their developer (matching GetGame), and the developer must have
 // opted the game into multiplayer.
-func createLobby(hub *lobby.Hub, sess *lobby.Session, user *models.User, gameID string) error {
+func createLobby(hub *lobby.Hub, sess *lobby.Session, user *models.User, gameID string, public bool) error {
 	game, err := models.GetGameByID(gameID)
 	if err != nil {
 		return errGameNotFound
@@ -202,7 +206,13 @@ func createLobby(hub *lobby.Hub, sess *lobby.Session, user *models.User, gameID 
 	if !game.Multiplayer {
 		return errNotMultiplayer
 	}
-	return hub.Create(sess, game.ID)
+	if err := hub.Create(sess, game.ID); err != nil {
+		return err
+	}
+	if public {
+		hub.SetPublic(sess, true)
+	}
+	return nil
 }
 
 var (

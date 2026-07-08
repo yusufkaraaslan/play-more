@@ -1647,6 +1647,37 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
 
   # ===== Play Sessions =====
+  /games/{id}/lobbies:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+        description: Game ID
+    get:
+      tags: [Lobby Browser]
+      summary: List public, open lobbies for a game
+      description: Returns lobbies that the host marked as public and that haven't started yet. Used by the lobby browser UI.
+      responses:
+        "200":
+          description: Public lobbies
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  lobbies:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        code: { type: string }
+                        player_count: { type: integer }
+                        started: { type: boolean }
+                        host_name: { type: string }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  # ===== Play Sessions (cont) =====
   /games/{id}/play-sessions:
     parameters:
       - in: path

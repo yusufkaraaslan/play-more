@@ -201,6 +201,9 @@ func mountDriftFixture(r *gin.Engine) {
 	r.POST("/api/v1/games/:id/play-sessions", func(c *gin.Context) {})
 	r.POST("/api/v1/play-sessions/:sid/heartbeat", func(c *gin.Context) {})
 	r.POST("/api/v1/play-sessions/:sid/end", func(c *gin.Context) {})
+
+	// Lobby Browser
+	r.GET("/api/v1/games/:id/lobbies", func(c *gin.Context) {})
 }
 
 // developerSurfacePath reports whether an OpenAPI path is part of

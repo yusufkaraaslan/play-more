@@ -202,6 +202,9 @@ func mountAPIRoutes(g *gin.RouterGroup, cfg apiConfig) {
 	g.POST("/games/:id/play-sessions", middleware.AuthRequiredOrGameSession(), middleware.RateLimit(30, 60), handlers.OpenPlaySessionHandler)
 	g.POST("/play-sessions/:sid/heartbeat", middleware.AuthRequiredOrGameSession(), middleware.RateLimit(12, 60), handlers.HeartbeatPlaySessionHandler)
 	g.POST("/play-sessions/:sid/end", middleware.AuthRequiredOrGameSession(), middleware.RateLimit(10, 60), handlers.EndPlaySessionHandler)
+
+	// Public lobby browser — list open, public, non-started lobbies.
+	g.GET("/games/:id/lobbies", middleware.RateLimit(30, 60), handlers.ListPublicLobbiesHandler)
 }
 
 // NewTestConfig returns the body-cap configuration used by

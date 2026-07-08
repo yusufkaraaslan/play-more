@@ -12,6 +12,7 @@ type Lobby struct {
 	Started       bool
 	Metadata      []byte // opaque JSON — game settings (map, difficulty, etc.)
 	FormerMembers map[string]bool // user IDs that left a started lobby — can rejoin
+	Public        bool   // listed in the public lobby browser
 	LastActive    time.Time
 }
 
@@ -25,6 +26,7 @@ func (l *Lobby) snapshot() *State {
 			AvatarURL: m.AvatarURL,
 			Ready:     m.ready,
 			Host:      m == l.Host,
+			Spectator: m.spectator,
 		})
 	}
 	return &State{

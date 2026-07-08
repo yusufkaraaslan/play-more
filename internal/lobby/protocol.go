@@ -26,6 +26,13 @@ type ClientMsg struct {
 	// Metadata — for create/set_metadata: opaque JSON object with game
 	// settings (map, difficulty, mode, etc.). Host-only on set_metadata.
 	Metadata json.RawMessage `json:"metadata,omitempty"`
+	// Spectator — for join: if true, join as a read-only observer.
+	// Spectators bypass the started check and player cap, but can't send
+	// game messages (msg type is rejected).
+	Spectator bool `json:"spectator,omitempty"`
+	// Public — for create: if true, the lobby is listed in the public
+	// lobby browser (GET /api/v1/games/:id/lobbies).
+	Public bool `json:"public,omitempty"`
 }
 
 // ServerMsg is a server → client frame.
@@ -51,6 +58,7 @@ type Player struct {
 	AvatarURL string `json:"avatar_url"`
 	Ready     bool   `json:"ready"`
 	Host      bool   `json:"host"`
+	Spectator bool   `json:"spectator,omitempty"`
 }
 
 // State is a full lobby snapshot as sent to clients.

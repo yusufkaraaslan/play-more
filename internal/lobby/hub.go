@@ -27,6 +27,7 @@ var (
 	ErrNotInLobby     = errors.New("not in a lobby")
 	ErrNotHost        = errors.New("only the host can start the game")
 	ErrNotReady       = errors.New("not all players are ready")
+	ErrSpectator      = errors.New("spectators cannot send game messages")
 )
 
 // Session is one connected /ws client. The HTTP handler owns the
@@ -38,12 +39,13 @@ type Session struct {
 	Username  string
 	AvatarURL string
 
-	hub   *Hub
-	lobby *Lobby // guarded by hub.mu
-	ready bool   // guarded by hub.mu
-	send  chan ServerMsg
-	done  chan struct{}
-	once  sync.Once
+	hub       *Hub
+	lobby     *Lobby // guarded by hub.mu
+	ready     bool   // guarded by hub.mu
+	spectator bool   // guarded by hub.mu — read-only observer
+	send      chan ServerMsg
+	done      chan struct{}
+	once      sync.Once
 }
 
 // Out is the outbound frame queue for the handler's writer goroutine.
@@ -195,6 +197,29 @@ func (h *Hub) Join(s *Session, code string) error {
 	return nil
 }
 
+// JoinSpectator adds s to a lobby as a read-only observer. Spectators
+// bypass the started check and player cap. They receive relayed
+// messages but can't send (Relay returns ErrSpectator).
+func (h *Hub) JoinSpectator(s *Session, code string) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	l, ok := h.lobbies[normalizeCode(code)]
+	if !ok {
+		return ErrLobbyNotFound
+	}
+	if s.lobby == l {
+		l.broadcastState()
+		return nil
+	}
+	h.leaveLocked(s)
+	s.spectator = true
+	l.Members = append(l.Members, s)
+	l.LastActive = time.Now()
+	s.lobby = l
+	l.broadcastState()
+	return nil
+}
+
 // Leave removes s from its lobby (closing it if s hosts it).
 func (h *Hub) Leave(s *Session) {
 	h.mu.Lock()
@@ -231,6 +256,24 @@ func (h *Hub) SetMetadata(s *Session, metadata []byte) error {
 	l.Metadata = metadata
 	l.LastActive = time.Now()
 	l.broadcastState()
+	persistLobby(l)
+	return nil
+}
+
+// SetPublic toggles the lobby's visibility in the public lobby browser.
+// Host-only.
+func (h *Hub) SetPublic(s *Session, public bool) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	l := s.lobby
+	if l == nil {
+		return ErrNotInLobby
+	}
+	if l.Host != s {
+		return ErrNotHost
+	}
+	l.Public = public
+	l.LastActive = time.Now()
 	persistLobby(l)
 	return nil
 }
@@ -276,6 +319,9 @@ func (h *Hub) Relay(s *Session, to string, data []byte) error {
 	if l == nil {
 		return ErrNotInLobby
 	}
+	if s.spectator {
+		return ErrSpectator
+	}
 	l.LastActive = time.Now()
 	msg := ServerMsg{Type: "msg", From: s.UserID, Data: data}
 	for _, m := range l.Members {
@@ -288,6 +334,44 @@ func (h *Hub) Relay(s *Session, to string, data []byte) error {
 		m.trySend(msg)
 	}
 	return nil
+}
+
+// PublicLobbyInfo is a safe (no Session pointers) view of a public lobby.
+type PublicLobbyInfo struct {
+	Code        string `json:"code"`
+	PlayerCount int    `json:"player_count"`
+	Started     bool   `json:"started"`
+	HostName    string `json:"host_name"`
+}
+
+// ListPublicLobbies returns public, non-started lobbies for a game.
+// Used by the lobby browser API (GET /api/v1/games/:id/lobbies).
+func (h *Hub) ListPublicLobbies(gameID string) []PublicLobbyInfo {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	var out []PublicLobbyInfo
+	for _, l := range h.lobbies {
+		if l.GameID != gameID || !l.Public || l.Started {
+			continue
+		}
+		players := 0
+		hostName := ""
+		for _, m := range l.Members {
+			if !m.spectator {
+				players++
+			}
+			if m == l.Host {
+				hostName = m.Username
+			}
+		}
+		out = append(out, PublicLobbyInfo{
+			Code:        l.Code,
+			PlayerCount: players,
+			Started:     l.Started,
+			HostName:    hostName,
+		})
+	}
+	return out
 }
 
 // OnlineCount reports how many players are currently in a lobby

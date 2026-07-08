@@ -450,7 +450,8 @@
           host: !!d.host,
           players: d.players || [],
           sessionToken: d.session_token || '',
-          metadata: d.metadata || null
+          metadata: d.metadata || null,
+          spectator: !!d.spectator
         };
         if (d.rtc_config && d.rtc_config.iceServers) {
           rtcIceServers = d.rtc_config.iceServers;
@@ -575,6 +576,23 @@
     sessionToken: function () { return ctx.sessionToken; },
     metadata: function () { return ctx.metadata; },
     isActive: function () { return started; },
+    isSpectator: function () { return !!ctx.spectator; },
+
+    /* Recommended send throttle (ms) based on average peer RTT.
+     * Games should wait at least this long between high-frequency
+     * sends (e.g., position updates). Returns 66ms default if no
+     * RTT data is available. */
+    recommendedThrottle: function () {
+      var sum = 0, count = 0;
+      for (var id in peers) {
+        if (peers[id].rtt >= 0) { sum += peers[id].rtt; count++; }
+      }
+      if (count === 0) return 66;
+      var avg = sum / count;
+      if (avg < 50) return 33;
+      if (avg < 150) return 66;
+      return 100;
+    },
 
     /* Set the WebRTC topology. 'mesh' (default) = every peer connects
      * to every other peer. 'star' = all peers connect to the host only
