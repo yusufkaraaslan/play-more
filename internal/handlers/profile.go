@@ -59,16 +59,30 @@ func UpdateProfile(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Username must be 3-30 characters (letters, numbers, underscores, hyphens) and not a reserved name."})
 		return
 	}
-	if input.Links == nil {
-		input.Links = []models.Link{}
-	}
-
 	// Bio is stored raw and escaped at render time by the frontend's escapeHtml().
 	// Avatar/Banner URLs flow into <img src="..."> in the SPA. SanitizeWebURL
 	// strips javascript:/data:/vbscript: and other non-http(s) schemes so a
 	// malicious URL can't fire via image-error handlers or browser quirks.
 	input.AvatarURL = SanitizeWebURL(input.AvatarURL)
 	input.BannerURL = SanitizeWebURL(input.BannerURL)
+
+	// ThemeColor flows into style="" attributes — must be a valid hex color
+	// to prevent CSS injection. Matches the pattern in developer.go.
+	input.ThemeColor = SanitizeColor(input.ThemeColor)
+
+	// Filter Links — drop any with non-http(s)/mailto URLs (javascript:,
+	// data:, etc.). Matches the pattern in developer.go.
+	if input.Links == nil {
+		input.Links = []models.Link{}
+	}
+	cleanLinks := input.Links[:0]
+	for _, l := range input.Links {
+		if u := SanitizeWebURL(l.URL); u != "" {
+			l.URL = u
+			cleanLinks = append(cleanLinks, l)
+		}
+	}
+	input.Links = cleanLinks
 
 	autoplay := user.AutoplayMedia
 	if input.AutoplayMedia != nil {

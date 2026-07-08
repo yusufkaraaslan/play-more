@@ -110,6 +110,10 @@ func UploadGame(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "title and genre are required"})
 		return
 	}
+	if len(title) > 120 || len(genre) > 40 || len(description) > 10000 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "field too long"})
+		return
+	}
 
 	tags := []string{}
 	if tagsStr != "" {
@@ -490,7 +494,8 @@ func UpdateCoverImage(c *gin.Context) {
 	declared := strings.ToLower(filepath.Ext(header.Filename))
 	data, ext, vErr := ValidateImageBytes(file, declared, maxImageSize)
 	if vErr != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": vErr.Error()})
+		log.Printf("UpdateCoverImage validate failed: %v", vErr)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid image"})
 		return
 	}
 	coverName := "cover" + ext

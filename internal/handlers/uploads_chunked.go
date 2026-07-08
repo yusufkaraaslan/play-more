@@ -52,9 +52,9 @@ type initResp struct {
 
 // gameMetadata is the schema of the `metadata` field for kind=new_game.
 type gameMetadata struct {
-	Title       string   `json:"title"`
-	Genre       string   `json:"genre"`
-	Description string   `json:"description,omitempty"`
+	Title       string   `json:"title" binding:"required,min=1,max=120"`
+	Genre       string   `json:"genre" binding:"required,min=1,max=40"`
+	Description string   `json:"description,omitempty" binding:"max=10000"`
 	Tags        []string `json:"tags,omitempty"`
 	IsWebGPU    bool     `json:"is_webgpu,omitempty"`
 	Multiplayer bool     `json:"multiplayer,omitempty"`
@@ -119,6 +119,10 @@ func InitUpload(c *gin.Context) {
 		}
 		if meta.Title == "" || meta.Genre == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "title and genre required in metadata"})
+			return
+		}
+		if len(meta.Title) > 120 || len(meta.Genre) > 40 || len(meta.Description) > 10000 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "metadata field too long"})
 			return
 		}
 		s.MetadataJSON = string(req.Metadata)

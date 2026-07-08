@@ -53,9 +53,14 @@ func CreateReview(c *gin.Context) {
 
 	gameID := c.Param("id")
 
-	// Prevent developers from reviewing their own games.
+	// Prevent developers from reviewing their own games and block
+	// reviews on unpublished games (stops spam/notifications on hidden games).
 	game, err := models.GetGameByID(gameID)
 	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "game not found"})
+		return
+	}
+	if !game.Published && game.DeveloperID != user.ID {
 		c.JSON(http.StatusNotFound, gin.H{"error": "game not found"})
 		return
 	}

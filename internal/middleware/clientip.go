@@ -31,9 +31,14 @@ func RealClientIP(c *gin.Context) string {
 		return stripPort(c.Request.RemoteAddr)
 	}
 
-	// Prefer X-Real-IP (set by the immediate upstream proxy).
-	if xri := strings.TrimSpace(c.Request.Header.Get("X-Real-IP")); xri != "" {
-		return xri
+	// Prefer X-Real-IP (set by the immediate upstream proxy) — but only
+	// if the immediate connection is from a trusted proxy. Without this
+	// gate, an attacker connecting directly to the backend port could
+	// forge X-Real-IP and bypass every rate limiter and login backoff.
+	if isTrustedProxyAddr(stripPort(c.Request.RemoteAddr)) {
+		if xri := strings.TrimSpace(c.Request.Header.Get("X-Real-IP")); xri != "" {
+			return xri
+		}
 	}
 
 	// Walk X-Forwarded-For from the right (closest to server) outward.

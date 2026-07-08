@@ -4,8 +4,11 @@ import (
 	"embed"
 	"fmt"
 	"io/fs"
+	"log"
 	"net/http"
+	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 
 	"github.com/gin-contrib/gzip"
@@ -22,7 +25,13 @@ import (
 
 func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxies string) *gin.Engine {
 	r := gin.New()
-	r.Use(gin.Recovery())
+	// Custom recovery — logs the panic value and stack to stderr but does
+	// NOT dump HTTP headers (gin.Recovery's secureRequestDump leaks the
+	// session Cookie to log aggregators on panic).
+	r.Use(gin.CustomRecoveryWithWriter(os.Stderr, func(c *gin.Context, recovered any) {
+		log.Printf("panic recovered: %v\n%s", recovered, debug.Stack())
+		c.AbortWithStatus(http.StatusInternalServerError)
+	}))
 	r.MaxMultipartMemory = 32 << 20
 
 	// =========================================================================
@@ -114,7 +123,8 @@ func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxi
 	r.GET("/healthz", func(c *gin.Context) { c.JSON(200, gin.H{"status": "ok"}) })
 	r.GET("/ready", func(c *gin.Context) {
 		if err := storage.DB.Ping(); err != nil {
-			c.JSON(503, gin.H{"status": "not ready", "error": err.Error()})
+			log.Printf("/ready DB ping failed: %v", err)
+			c.JSON(503, gin.H{"status": "not ready"})
 			return
 		}
 		c.JSON(200, gin.H{"status": "ready"})
@@ -175,7 +185,7 @@ func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxi
 	// /openapi.yaml machine-readable spec for tooling and offline
 	// editors. See handlers/openapi_handlers.go for the CSP override.
 	r.GET("/docs", middleware.RateLimit(60, 60), handlers.ServeAPIDocs)
-	r.GET("/openapi.yaml", handlers.ServeOpenAPISpec)
+	r.GET("/openapi.yaml", middleware.AuthRequired(), handlers.AdminRequired(), handlers.ServeOpenAPISpec)
 
 	// Deploy script download
 	r.GET("/deploy.sh", middleware.RateLimit(10, 60), handlers.ServeDeployScript)

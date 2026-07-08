@@ -102,6 +102,23 @@ func CreateComment(c *gin.Context) {
 
 	devlogID := c.Param("id")
 
+	// Verify the devlog's parent game is published (or owned by the commenter).
+	// This mirrors ListComments and stops comment/notifications on unpublished games.
+	var gameID string
+	if err := storage.DB.QueryRow(`SELECT game_id FROM devlogs WHERE id = ?`, devlogID).Scan(&gameID); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "devlog not found"})
+		return
+	}
+	game, err := models.GetGameByID(gameID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "devlog not found"})
+		return
+	}
+	if !game.Published && game.DeveloperID != user.ID {
+		c.JSON(http.StatusNotFound, gin.H{"error": "devlog not found"})
+		return
+	}
+
 	// Validate parent_id (if any) belongs to THIS devlog — stops cross-thread
 	// notification spam where a user replies to a comment in another thread.
 	if input.ParentID != "" {
@@ -114,7 +131,7 @@ func CreateComment(c *gin.Context) {
 	}
 
 	id := uuid.New().String()
-	_, err := storage.DB.Exec(
+	_, err = storage.DB.Exec(
 		`INSERT INTO comments (id, devlog_id, user_id, parent_id, text) VALUES (?, ?, ?, ?, ?)`,
 		id, devlogID, user.ID, input.ParentID, input.Text,
 	)
