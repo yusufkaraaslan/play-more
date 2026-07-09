@@ -194,6 +194,18 @@ func dispatchLobbyMsg(hub *lobby.Hub, sess *lobby.Session, user *models.User, ms
 	case "set_metadata":
 		err = hub.SetMetadata(sess, msg.Metadata)
 	case "matchmake":
+		// M5: scope to the pm_gs_ token's game, then apply the same
+		// existence/published/multiplayer checks as "create" — Matchmake
+		// itself is DB-free and would otherwise create+start a lobby for
+		// any game_id an untrusted client sends.
+		if gameSessionGameID != "" && msg.GameID != gameSessionGameID {
+			sess.Send(lobby.ServerMsg{Type: "error", Error: "token not valid for this game"})
+			return
+		}
+		if _, verr := validateLobbyGame(user, msg.GameID); verr != nil {
+			sess.Send(lobby.ServerMsg{Type: "error", Error: verr.Error()})
+			return
+		}
 		hub.Matchmake(sess, msg.GameID, msg.PlayerCount)
 	case "cancel_matchmake":
 		hub.CancelMatchmake(sess)
@@ -206,20 +218,29 @@ func dispatchLobbyMsg(hub *lobby.Hub, sess *lobby.Session, user *models.User, ms
 	}
 }
 
-// createLobby validates the game before opening a lobby for it — the
-// hub itself stays DB-free. Unpublished games are visible only to
-// their developer (matching GetGame), and the developer must have
-// opted the game into multiplayer.
-func createLobby(hub *lobby.Hub, sess *lobby.Session, user *models.User, gameID string, public bool) error {
+// validateLobbyGame checks a game is eligible for a lobby — the hub itself
+// stays DB-free. Unpublished games are visible only to their developer
+// (matching GetGame), and the developer must have opted the game into
+// multiplayer. Shared by the "create" and "matchmake" paths.
+func validateLobbyGame(user *models.User, gameID string) (*models.Game, error) {
 	game, err := models.GetGameByID(gameID)
 	if err != nil {
-		return errGameNotFound
+		return nil, errGameNotFound
 	}
 	if !game.Published && game.DeveloperID != user.ID {
-		return errGameNotFound
+		return nil, errGameNotFound
 	}
 	if !game.Multiplayer {
-		return errNotMultiplayer
+		return nil, errNotMultiplayer
+	}
+	return game, nil
+}
+
+// createLobby validates the game, then opens a lobby for it.
+func createLobby(hub *lobby.Hub, sess *lobby.Session, user *models.User, gameID string, public bool) error {
+	game, err := validateLobbyGame(user, gameID)
+	if err != nil {
+		return err
 	}
 	if err := hub.Create(sess, game.ID); err != nil {
 		return err

@@ -415,6 +415,20 @@ func generateCoopCanvasGame() string {
   #board{flex:1;position:relative;cursor:crosshair;touch-action:none;}
   canvas{position:absolute;inset:0;width:100%;height:100%;}
   #hint{position:absolute;left:50%;top:14px;transform:translateX(-50%);color:#7f948e;font-size:13px;pointer-events:none;}
+  #menu{position:fixed;inset:0;background:rgba(8,14,18,.94);display:flex;align-items:center;justify-content:center;z-index:10;}
+  #menu.hidden{display:none;}
+  #panel{background:#132229;border:1px solid #1f3640;border-radius:12px;padding:24px;width:min(360px,90vw);text-align:center;}
+  #panel h1{margin:0 0 4px;font-size:20px;color:#50c8a0;}
+  #panel p{margin:0 0 16px;color:#9fb4ae;font-size:13px;}
+  #panel button{width:100%;padding:11px;margin:5px 0;border:0;border-radius:8px;background:#50c8a0;color:#08110d;font-size:14px;font-weight:600;cursor:pointer;}
+  #panel button.sec{background:#1f3640;color:#e6f2ef;}
+  #panel button:disabled{opacity:.5;cursor:default;}
+  #joinrow{display:flex;gap:6px;margin-top:6px;}
+  #joinrow input{flex:1;padding:10px;border-radius:8px;border:1px solid #1f3640;background:#0f191e;color:#e6f2ef;text-transform:uppercase;}
+  #joinrow button{width:auto;padding:10px 16px;margin:0;}
+  #plist{list-style:none;padding:0;margin:12px 0;text-align:left;}
+  #plist li{padding:6px 8px;display:flex;justify-content:space-between;font-size:13px;border-bottom:1px solid #16262d;}
+  .codebig{font-family:monospace;font-size:28px;letter-spacing:4px;color:#e6f2ef;margin:6px 0 2px;}
 </style>
 </head>
 <body>
@@ -430,6 +444,7 @@ func generateCoopCanvasGame() string {
     <div id="hint">Move to show your cursor · click to drop a dot · everyone sees it</div>
   </div>
 </div>
+<div id="menu"><div id="panel"><div id="panelbody"></div></div></div>
 <script src="/playmore-mp.js"></script>
 <script>
 (function(){
@@ -492,18 +507,65 @@ func generateCoopCanvasGame() string {
     PlayMore.send({ t:'dot', x:p.x, y:p.y });   // and tell everyone
   });
 
+  // ── Lobby menu (game-managed) ───────────────────────────────────────
+  // The game owns its own lobby UI. onReady fires pre-lobby with an empty
+  // code — show the menu; the player picks Quick Play / Create / Join, and
+  // onLaunch fires when the match actually begins. See /docs for the protocol.
+  var lobby=null, matchmaking=false;
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+  function showMenu(show){ document.getElementById('menu').classList.toggle('hidden', !show); }
+  function renderMenu(){
+    var body=document.getElementById('panelbody');
+    if(matchmaking){
+      body.innerHTML='<h1>Finding players…</h1><p id="mmstat">Searching…</p><button class="sec" id="mm-cancel">Cancel</button>';
+      document.getElementById('mm-cancel').onclick=function(){ matchmaking=false; PlayMore.cancelMatchmake(); renderMenu(); };
+      return;
+    }
+    if(!lobby){
+      body.innerHTML='<h1>Co-op Canvas</h1><p>Play with friends or match with randoms.</p>'+
+        '<button id="mm">Quick Play</button>'+
+        '<button class="sec" id="create">Create Lobby</button>'+
+        '<div id="joinrow"><input id="jcode" placeholder="CODE" maxlength="6" autocomplete="off"><button class="sec" id="join">Join</button></div>';
+      document.getElementById('mm').onclick=function(){ matchmaking=true; PlayMore.quickPlay(2); renderMenu(); };
+      document.getElementById('create').onclick=function(){ PlayMore.createLobby(); };
+      document.getElementById('join').onclick=function(){ var c=document.getElementById('jcode').value; if(c) PlayMore.joinLobby(c); };
+      return;
+    }
+    var me=null, allReady=true;
+    (lobby.players||[]).forEach(function(p){ if(p.id===myId)me=p; if(!p.host&&!p.ready)allReady=false; });
+    var isHost=!!(me&&me.host);
+    var h='<h1>Lobby</h1><div class="codebig">'+esc(lobby.code)+'</div><p>Share this code with friends</p><ul id="plist">';
+    (lobby.players||[]).forEach(function(p){
+      h+='<li><span>'+esc(p.username)+'</span><span>'+(p.host?'HOST':(p.ready?'✔ ready':'…'))+'</span></li>';
+    });
+    h+='</ul>';
+    h+=isHost ? '<button id="start"'+(allReady?'':' disabled')+'>Start Game</button>'
+             : '<button id="ready">'+((me&&me.ready)?'Not Ready':'Ready Up')+'</button>';
+    h+='<button class="sec" id="leave">Leave</button>';
+    body.innerHTML=h;
+    if(isHost){ document.getElementById('start').onclick=function(){ PlayMore.startGame(); }; }
+    else { document.getElementById('ready').onclick=function(){ PlayMore.readyUp(!(me&&me.ready)); }; }
+    document.getElementById('leave').onclick=function(){ PlayMore.leaveLobby(); lobby=null; renderMenu(); };
+  }
+
   // ── PlayMore lobby wiring ───────────────────────────────────────────
   PlayMore.onReady(function(ctx){
     resize();
     myId = ctx.you ? ctx.you.id : null;
     myColor = myId ? colorFor(myId) : '#50c8a0';
-    document.getElementById('code').textContent = ctx.code || '–';
     var meEl=document.getElementById('me');
     meEl.textContent = 'you are';
     var swatch=document.createElement('span');
     swatch.style.cssText='display:inline-block;width:12px;height:12px;border-radius:50%;margin-left:6px;vertical-align:middle;background:'+myColor;
     meEl.appendChild(swatch);
-    syncPeers(ctx.players);
+    showMenu(true); renderMenu();
+  });
+  PlayMore.onLobbyState(function(l){ lobby=l; matchmaking=false; renderMenu(); });
+  PlayMore.onMatchmaking(function(m){ var el=document.getElementById('mmstat'); if(el) el.textContent='Searching… '+m.queueSize+'/'+m.targetCount; });
+  PlayMore.onLaunch(function(l){
+    lobby=l; matchmaking=false; showMenu(false);
+    document.getElementById('code').textContent = l.code || '–';
+    syncPeers(l.players);
   });
   PlayMore.onPlayers(function(players){ syncPeers(players); });
   PlayMore.onMessage(function(from, d){
@@ -515,6 +577,7 @@ func generateCoopCanvasGame() string {
   PlayMore.onClosed(function(){
     document.getElementById('status').textContent='lobby closed';
     peers={}; redrawCursors();
+    lobby=null; matchmaking=false; showMenu(true); renderMenu();
   });
 
   function syncPeers(players){
@@ -576,6 +639,20 @@ func generateMPTestArenaGame() string {
   button:hover{background:#1d2d3a;border-color:#3c5a7a;}
   .btn-pri{background:#1a3a5a;border-color:#3c8ce0;color:#c8e0ff;}
   #stats{padding:6px 12px;font-size:11px;color:#5a7a99;border-top:1px solid #1a2735;}
+  #menu{position:fixed;inset:0;background:rgba(6,10,16,.95);display:flex;align-items:center;justify-content:center;z-index:20;}
+  #menu.hidden{display:none;}
+  #panel{background:#101a26;border:1px solid #1e3247;border-radius:12px;padding:24px;width:min(360px,90vw);text-align:center;}
+  #panel h1{margin:0 0 4px;font-size:20px;color:#3c8ce0;}
+  #panel p{margin:0 0 16px;color:#5a7a99;font-size:13px;}
+  #panel button{width:100%;padding:11px;margin:5px 0;border:1px solid #3c8ce0;border-radius:8px;background:#1a3a5a;color:#c8e0ff;font-size:14px;font-weight:600;cursor:pointer;}
+  #panel button.sec{background:#15212e;border-color:#2a3a4a;color:#c8d6e5;}
+  #panel button:disabled{opacity:.5;cursor:default;}
+  #joinrow{display:flex;gap:6px;margin-top:6px;}
+  #joinrow input{flex:1;padding:10px;border-radius:8px;border:1px solid #2a3a4a;background:#0a0f16;color:#c8d6e5;text-transform:uppercase;}
+  #joinrow button{width:auto;padding:10px 16px;margin:0;}
+  #plist{list-style:none;padding:0;margin:12px 0;text-align:left;}
+  #plist li{padding:6px 8px;display:flex;justify-content:space-between;font-size:13px;border-bottom:1px solid #16242f;}
+  .codebig{font-family:monospace;font-size:28px;letter-spacing:4px;color:#c8e0ff;margin:6px 0 2px;}
 </style>
 </head>
 <body>
@@ -604,6 +681,7 @@ func generateMPTestArenaGame() string {
     </div>
   </div>
 </div>
+<div id="menu"><div id="panel"><div id="panelbody"></div></div></div>
 <script src="/playmore-mp.js"></script>
 <script>
 (function(){
@@ -692,23 +770,78 @@ func generateMPTestArenaGame() string {
     }).join('');
   }
 
+  // ── Lobby menu (game-managed) ──────────────────────────────
+  // onReady now fires pre-lobby (empty code) — the game shows its own menu
+  // and drives the lobby via createLobby/quickPlay/joinLobby; onLaunch fires
+  // when play begins. See /docs for the protocol.
+  var lobby=null, matchmaking=false;
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+  function showMenu(show){ document.getElementById('menu').classList.toggle('hidden', !show); }
+  function renderMenu(){
+    var body=document.getElementById('panelbody');
+    if(matchmaking){
+      body.innerHTML='<h1>Finding players…</h1><p id="mmstat">Searching…</p><button class="sec" id="mm-cancel">Cancel</button>';
+      document.getElementById('mm-cancel').onclick=function(){ matchmaking=false; PlayMore.cancelMatchmake(); renderMenu(); };
+      return;
+    }
+    if(!lobby){
+      body.innerHTML='<h1>MP Test Arena</h1><p>Diagnostic lobby — match, create, or join.</p>'+
+        '<button id="mm">Quick Play</button>'+
+        '<button class="sec" id="create">Create Lobby</button>'+
+        '<div id="joinrow"><input id="jcode" placeholder="CODE" maxlength="6" autocomplete="off"><button class="sec" id="join">Join</button></div>';
+      document.getElementById('mm').onclick=function(){ matchmaking=true; PlayMore.quickPlay(2); renderMenu(); };
+      document.getElementById('create').onclick=function(){ PlayMore.createLobby(); };
+      document.getElementById('join').onclick=function(){ var c=document.getElementById('jcode').value; if(c) PlayMore.joinLobby(c); };
+      return;
+    }
+    var me=null, allReady=true;
+    (lobby.players||[]).forEach(function(p){ if(p.id===myId)me=p; if(!p.host&&!p.ready)allReady=false; });
+    var isHost=!!(me&&me.host);
+    var h='<h1>Lobby</h1><div class="codebig">'+esc(lobby.code)+'</div><p>Share this code with a tester</p><ul id="plist">';
+    (lobby.players||[]).forEach(function(p){
+      h+='<li><span>'+esc(p.username)+'</span><span>'+(p.host?'HOST':(p.ready?'✔ ready':'…'))+'</span></li>';
+    });
+    h+='</ul>';
+    h+=isHost ? '<button id="start"'+(allReady?'':' disabled')+'>Start Game</button>'
+             : '<button id="ready">'+((me&&me.ready)?'Not Ready':'Ready Up')+'</button>';
+    h+='<button class="sec" id="leave">Leave</button>';
+    body.innerHTML=h;
+    if(isHost){ document.getElementById('start').onclick=function(){ PlayMore.startGame(); }; }
+    else { document.getElementById('ready').onclick=function(){ PlayMore.readyUp(!(me&&me.ready)); }; }
+    document.getElementById('leave').onclick=function(){ PlayMore.leaveLobby(); lobby=null; renderMenu(); };
+  }
+
+  function beginPlay(l){
+    lobby=l; matchmaking=false; showMenu(false);
+    document.getElementById('code').textContent=l.code||'--';
+    document.getElementById('dot-mp').className='dot on';
+    log('ok','Lobby launched: '+l.code+' | players: '+(l.players?l.players.length:0));
+    syncPeers(l.players);
+    renderPeers();
+  }
+
   // ── PlayMore wiring ────────────────────────────────────────
   PlayMore.onReady(function(ctx){
     resize();
     myId=ctx.you?ctx.you.id:null;
     myColor=myId?colorFor(myId):'#3c8ce0';
-    document.getElementById('code').textContent=ctx.code||'--';
-    document.getElementById('dot-mp').className='dot on';
     document.getElementById('me-label').textContent='you: '+(ctx.you?ctx.you.username:'?');
-    log('ok','Lobby ready: '+ctx.code+' | players: '+(ctx.players?ctx.players.length:0));
     if(ctx.sessionToken){
-      log('ok','Session token received (pm_gs_)');
+      log('ok','Session token received (pm_gs_) — pre-lobby');
       document.getElementById('session-status').textContent='pm_gs_ token active';
     }
-    syncPeers(ctx.players);
-    renderPeers();
     setInterval(renderPeers,2000);
+    showMenu(true); renderMenu();
   });
+
+  PlayMore.onLobbyState(function(l){
+    lobby=l; matchmaking=false; renderMenu();
+    log('ev','Lobby state: '+l.code+' | players: '+(l.players?l.players.length:0));
+  });
+  PlayMore.onMatchmaking(function(m){
+    var el=document.getElementById('mmstat'); if(el) el.textContent='Searching… '+m.queueSize+'/'+m.targetCount;
+  });
+  PlayMore.onLaunch(function(l){ beginPlay(l); });
 
   PlayMore.onPlayers(function(players){
     syncPeers(players);
@@ -746,6 +879,7 @@ func generateMPTestArenaGame() string {
     log('err','Lobby closed');
     peers={};redrawCursors();renderPeers();
     document.getElementById('dot-mp').className='dot off';
+    lobby=null; matchmaking=false; showMenu(true); renderMenu();
   });
 
   function syncPeers(players){

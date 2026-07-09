@@ -107,7 +107,7 @@ The shim is a no-op if `window.PlayMore` already exists (`if (window.PlayMore) r
 
 **Cause:** Not enough players were online and queued for that game within the 60-second matchmaking window. Quick Play matches from a per-game queue, so it only succeeds when other players are searching at the same time. New or niche games with small player bases will time out frequently.
 
-**Solution:** This isn't a bug — there simply weren't enough opponents. Have the player use **Create Lobby** and share the code with friends instead. Quick Play works best for popular games with active player bases; for a small audience, direct lobby codes are the reliable path.
+**Solution:** This isn't a bug — there simply weren't enough opponents. Have your menu offer **Create Lobby** (`PlayMore.createLobby()`) so the player can share the code with friends instead, and consider a `cancelMatchmake()` timeout that surfaces that option. Quick Play works best for popular games with active player bases; for a small audience, direct lobby codes are the reliable path.
 
 ---
 

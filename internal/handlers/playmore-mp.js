@@ -45,7 +45,6 @@
 
   var ctx = { code: '', gameId: '', you: null, host: false, players: [], metadata: null, spectator: false };
   var started = false;
-  var mpLobbyState = null; // latest lobby state from the server (null if no lobby)
 
   // ── WebRTC state ──────────────────────────────────────────────
   // peers[peerId] = {
@@ -108,6 +107,17 @@
     try { parent.postMessage(obj, origin || '*'); } catch (e) {}
   }
 
+  // cmd builds a lobby-control API method: it posts to the SPA bridge only when
+  // embedded (parentOrigin resolved) and returns API for chaining. `build`
+  // turns the call arguments into the message object.
+  function cmd(build) {
+    return function () {
+      if (parentOrigin === null) return API;
+      post(build.apply(null, arguments), parentOrigin);
+      return API;
+    };
+  }
+
   // ── Signaling ─────────────────────────────────────────────────
   function signalSend(to, signal) {
     post({ playmore: 'send', to: to, data: { __pm_rtc: signal } }, parentOrigin);
@@ -123,6 +133,38 @@
   // peerId. In mesh topology (default), connect to everyone. In star
   // topology, only the host connects to all peers; non-host peers only
   // connect to the host.
+  // Merge a server lobby snapshot into ctx (code, roster, metadata, and our
+  // own host flag after a possible host migration). Shared by the lobby_state
+  // and launch handlers so they never drift.
+  function applyLobbyState(l) {
+    if (!l) return;
+    ctx.code = l.code || ctx.code;
+    ctx.players = l.players || ctx.players;
+    ctx.metadata = l.metadata !== undefined ? l.metadata : ctx.metadata;
+    if (ctx.you) {
+      for (var i = 0; i < ctx.players.length; i++) {
+        if (ctx.players[i].id === ctx.you.id) { ctx.host = !!ctx.players[i].host; break; }
+      }
+    }
+  }
+
+  // Initiate WebRTC connections to every peer we should connect to and aren't
+  // already connected to. Staggered on start to avoid a signaling burst; called
+  // immediately (stagger=false) for late joins. No-op until the lobby starts.
+  function initPeersNow(stagger) {
+    if (!started || !ctx.you) return;
+    var toConnect = [];
+    for (var i = 0; i < ctx.players.length; i++) {
+      var pid = ctx.players[i].id;
+      if (pid && pid !== ctx.you.id && !peers[pid] && shouldConnect(pid)) toConnect.push(pid);
+    }
+    for (var j = 0; j < toConnect.length; j++) {
+      (function (peerId, delay) {
+        setTimeout(function () { initPeer(peerId); }, delay);
+      })(toConnect[j], stagger ? j * STAGGER_DELAY : 0);
+    }
+  }
+
   function shouldConnect(peerId) {
     if (topology !== 'star') return true;
     if (!ctx.you) return true;
@@ -463,79 +505,37 @@
         if (d.topology) {
           topology = d.topology;
         }
-        // Fire onReady so the game can show its menu.
-        // If code is empty (no lobby yet), the game is in "pre-lobby"
-        // state — it should show its menu and call createLobby/quickPlay.
-        // If code is set (SPA-managed flow), the game starts immediately.
+        // Fire onReady so the game can show its menu. When init carries a
+        // populated code (the game loaded into an already-started lobby, e.g.
+        // an iframe reload mid-game), the lobby is live: start immediately and
+        // establish P2P. Otherwise the game is pre-lobby and should render its
+        // menu and call createLobby/joinLobby/quickPlay.
         if (ctx.code) {
           started = true;
         }
         emit('ready', ctx);
-
-        // Only initiate WebRTC if we have peers (lobby already started).
-        if (started && ctx.you) {
-          var toConnect = [];
-          for (var i = 0; i < ctx.players.length; i++) {
-            var pid = ctx.players[i].id;
-            if (pid && pid !== ctx.you.id && shouldConnect(pid)) toConnect.push(pid);
-          }
-          for (var j = 0; j < toConnect.length; j++) {
-            (function(peerId, delay) {
-              setTimeout(function() { initPeer(peerId); }, delay);
-            })(toConnect[j], j * STAGGER_DELAY);
-          }
-        }
-        break;
-      case 'players':
-        ctx.players = d.players || [];
-        ctx.metadata = d.metadata !== undefined ? d.metadata : ctx.metadata;
-        if (ctx.you) {
-          for (var pi = 0; pi < ctx.players.length; pi++) {
-            if (ctx.players[pi].id === ctx.you.id) {
-              ctx.host = !!ctx.players[pi].host;
-              break;
-            }
-          }
-        }
-        if (started && ctx.you) {
-          for (var ni = 0; ni < ctx.players.length; ni++) {
-            var npid = ctx.players[ni].id;
-            if (npid && npid !== ctx.you.id && !peers[npid] && shouldConnect(npid)) {
-              initPeer(npid);
-            }
-          }
-        }
-        emit('players', ctx.players);
+        if (started) initPeersNow(true);
         break;
       case 'lobby_state':
-        // Lobby state update (lobby created, player joined, metadata changed, etc.)
+        // Lobby state update (lobby created, player joined/left, ready toggled,
+        // host migrated, metadata changed). Update ctx and connect to any newly
+        // joined peers if the game is already running.
         if (d.lobby) {
-          mpLobbyState = d.lobby;
-          ctx.code = d.lobby.code || ctx.code;
-          ctx.players = d.lobby.players || ctx.players;
-          ctx.metadata = d.lobby.metadata !== undefined ? d.lobby.metadata : ctx.metadata;
-          if (ctx.you) {
-            for (var li2 = 0; li2 < ctx.players.length; li2++) {
-              if (ctx.players[li2].id === ctx.you.id) {
-                ctx.host = !!ctx.players[li2].host;
-                break;
-              }
-            }
-          }
+          applyLobbyState(d.lobby);
+          initPeersNow(false);
           emit('lobbyState', d.lobby);
           emit('players', ctx.players);
         }
         break;
       case 'launch':
-        // Game started — lobby is launched.
+        // The lobby started (host pressed start, or matchmaking filled). Mark
+        // the game live, establish P2P to every peer, and fire onLaunch. onReady
+        // already fired at init with the pre-lobby menu context, so it is NOT
+        // fired again here — the game transitions menu -> playing via onLaunch.
         if (d.lobby) {
-          mpLobbyState = d.lobby;
-          ctx.code = d.lobby.code || ctx.code;
-          ctx.players = d.lobby.players || ctx.players;
-          if (!started) {
-            started = true;
-            emit('ready', ctx);
-          }
+          applyLobbyState(d.lobby);
+          started = true;
+          initPeersNow(true);
           emit('launch', d.lobby);
         }
         break;
@@ -660,54 +660,40 @@
 
     /* Create a new lobby for this game. The caller becomes the host.
      * Results in an onLobbyState callback with the new lobby's code. */
-    createLobby: function (opts) {
-      if (parentOrigin === null) return API;
-      post({ playmore: 'create_lobby', public: opts && opts.public || false }, parentOrigin);
-      return API;
-    },
+    createLobby: cmd(function (opts) {
+      return { playmore: 'create_lobby', public: !!(opts && opts.public) };
+    }),
 
     /* Join an existing lobby by code. Results in onLobbyState. */
-    joinLobby: function (code) {
-      if (parentOrigin === null) return API;
-      post({ playmore: 'join_lobby', code: code }, parentOrigin);
-      return API;
-    },
+    joinLobby: cmd(function (code) {
+      return { playmore: 'join_lobby', code: code };
+    }),
 
     /* Quick Play — auto-match with random players. Results in
      * onMatchmaking callbacks (queue status) and then onLaunch. */
-    quickPlay: function (playerCount) {
-      if (parentOrigin === null) return API;
-      post({ playmore: 'quick_play', player_count: playerCount || 2 }, parentOrigin);
-      return API;
-    },
+    quickPlay: cmd(function (playerCount) {
+      return { playmore: 'quick_play', player_count: playerCount || 2 };
+    }),
 
     /* Toggle ready state (non-host). Results in onLobbyState. */
-    readyUp: function (ready) {
-      if (parentOrigin === null) return API;
-      post({ playmore: 'ready_up', ready: ready }, parentOrigin);
-      return API;
-    },
+    readyUp: cmd(function (ready) {
+      return { playmore: 'ready_up', ready: ready };
+    }),
 
     /* Start the game (host-only). Results in onLaunch. */
-    startGame: function () {
-      if (parentOrigin === null) return API;
-      post({ playmore: 'start_game' }, parentOrigin);
-      return API;
-    },
+    startGame: cmd(function () {
+      return { playmore: 'start_game' };
+    }),
 
     /* Leave the current lobby. Results in onClosed. */
-    leaveLobby: function () {
-      if (parentOrigin === null) return API;
-      post({ playmore: 'leave_lobby' }, parentOrigin);
-      return API;
-    },
+    leaveLobby: cmd(function () {
+      return { playmore: 'leave_lobby' };
+    }),
 
     /* Cancel matchmaking search. */
-    cancelMatchmake: function () {
-      if (parentOrigin === null) return API;
-      post({ playmore: 'cancel_matchmake' }, parentOrigin);
-      return API;
-    },
+    cancelMatchmake: cmd(function () {
+      return { playmore: 'cancel_matchmake' };
+    }),
 
     transport: function (peerId) {
       return transportFor(peerId);

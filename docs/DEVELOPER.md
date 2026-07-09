@@ -492,32 +492,57 @@ re-enable after fixing the receiver).
 
 ## Multiplayer lobbies
 
-Games can opt into PlayMore's built-in lobby system: players create
-a lobby on the game's page, share a 6-character code (or a
-`#lobby/<code>` link), ready up, and launch together. After launch
-the platform **relays game messages between the players** — your
-game gets working online multiplayer without running any server.
+Games can opt into PlayMore's built-in lobby system. **The game owns
+its own lobby menu** — clicking Play launches the game immediately and
+the game draws its own Quick Play / Create / Join UI, driving the lobby
+through the `playmore-mp.js` API below. Once a lobby launches, the
+platform **relays game messages between the players** (and upgrades to
+WebRTC P2P where possible) — your game gets working online multiplayer
+without running any server.
 
 Opt in by checking **"Online multiplayer"** when uploading/editing
 the game (API: the `multiplayer` boolean on game create/update).
-The game page then shows a Multiplayer box with a live
-online-player count.
+
+> **Lifecycle in one line:** `onReady` fires **pre-lobby** (empty
+> `code`) — show your menu; the player picks Quick Play / Create /
+> Join; `onLaunch` fires when play actually begins. Don't start your
+> match loop in `onReady` — start it in `onLaunch`.
 
 ### Quick start: the playmore-mp.js client
 
-The platform serves a tiny (~120-line, dependency-free) client shim
-that wraps the whole protocol below in a callback API. Include it and
-you never hand-write postMessage plumbing:
+The platform serves a tiny, dependency-free client shim that wraps the
+whole protocol below in a callback API. Include it and you never
+hand-write postMessage plumbing:
 
 ```html
 <script src="/playmore-mp.js"></script>
 <script>
+  // 1. onReady fires pre-lobby — render your own menu here.
   PlayMore.onReady(function (ctx) {
-    // ctx = { code, gameId, you:{id,username}, host, players:[...] }
+    // ctx.code is '' (no lobby yet); ctx.you = { id, username }
+    // showMenu(); wire your buttons to the lobby-control calls below.
   });
+
+  // 2. Lobby-control (call these from your menu buttons):
+  PlayMore.quickPlay(2);        // auto-match with random players (count)
+  PlayMore.createLobby();       // create a lobby, become host
+  PlayMore.joinLobby('ABC123'); // join by 6-char code
+  PlayMore.readyUp(true);       // toggle ready (non-host)
+  PlayMore.startGame();         // host-only, once everyone is ready
+  PlayMore.leaveLobby();
+  PlayMore.cancelMatchmake();
+
+  // 3. Lobby state updates (redraw your menu):
+  PlayMore.onLobbyState(function (lobby) { /* {code, players, host_id, ...} */ });
+  PlayMore.onMatchmaking(function (m) { /* {queueSize, targetCount} */ });
+
+  // 4. onLaunch fires when the match starts — hide the menu, start playing:
+  PlayMore.onLaunch(function (lobby) { /* {code, players, ...} */ });
+
+  // 5. In-game messaging + membership + teardown:
   PlayMore.onMessage(function (from, data) { /* a peer sent data */ });
   PlayMore.onPlayers(function (players) { /* membership changed */ });
-  PlayMore.onClosed(function () { /* lobby ended */ });
+  PlayMore.onClosed(function () { /* lobby ended / disconnected — show menu again */ });
 
   PlayMore.send({ move: 'e4' });          // broadcast to the lobby
   PlayMore.send(state, aPlayerId);        // send to one player
@@ -529,7 +554,7 @@ you never hand-write postMessage plumbing:
 The shim posts outbound frames only to the platform's real origin
 (learned from the first inbound frame), so game traffic can't be
 intercepted by a re-embedding page. The seeded **Co-op Canvas** demo
-game (`POST /api/seed`) is a complete working example.
+game (`POST /api/seed`) is a complete working example with a menu.
 
 The raw protocol is documented below for non-browser clients or games
 that prefer to speak it directly.
@@ -553,27 +578,44 @@ window.addEventListener('message', (ev) => {
   const d = ev.data;
   if (!d || !d.playmore) return;
   switch (d.playmore) {
-    case 'init':     // reply to your 'ready'
-      // d.code     — lobby code
-      // d.you      — { id, username } (this player)
-      // d.host     — true if this player is the host
-      // d.players  — [{ id, username, avatar_url, ready, host }]
+    case 'init':        // reply to your 'ready' — arrives PRE-LOBBY
+      // d.code         — '' until a lobby exists (show your menu)
+      // d.game_id      — this game's id
+      // d.you          — { id, username } (this player)
+      // d.session_token — pm_gs_ token, d.rtc_config — ICE servers
       break;
-    case 'msg':      // a relayed message from another player
+    case 'lobby_state': // lobby created/joined/changed (redraw menu)
+      // d.lobby = { code, game_id, host_id, started, players:[...], metadata }
+      break;
+    case 'matchmaking': // Quick Play queue update
+      // d.queue_size, d.target_count
+      break;
+    case 'launch':      // the match started — begin play
+      // d.lobby = { code, players:[...], ... }
+      break;
+    case 'msg':         // a relayed message from another player
       // d.from — sender player id, d.data — the payload
       break;
-    case 'players':  // membership changed mid-game
-      // d.players — current player list (someone left = missing)
+    case 'closed':      // lobby gone (host left / disconnected) — d.reason
       break;
-    case 'closed':   // lobby is gone (host left / connection lost)
+    case 'error':       // a lobby command failed — d.error
       break;
   }
 });
 ```
 
-**3. Send messages to other players:**
+**3. Drive the lobby and send messages:**
 
 ```js
+// Lobby control (the game's menu buttons post these):
+window.parent.postMessage({ playmore: 'create_lobby' }, '*');
+window.parent.postMessage({ playmore: 'join_lobby', code: 'ABC123' }, '*');
+window.parent.postMessage({ playmore: 'quick_play', player_count: 2 }, '*');
+window.parent.postMessage({ playmore: 'ready_up', ready: true }, '*');
+window.parent.postMessage({ playmore: 'start_game' }, '*');
+window.parent.postMessage({ playmore: 'leave_lobby' }, '*');
+window.parent.postMessage({ playmore: 'cancel_matchmake' }, '*');
+
 // Broadcast to everyone else in the lobby
 window.parent.postMessage({ playmore: 'send', data: { x: 12, y: 4 } }, '*');
 
@@ -607,12 +649,17 @@ you're building a non-browser client:
 - Client → server: `{"type":"create","game_id":…}`,
   `{"type":"join","code":…}`, `{"type":"leave"}`,
   `{"type":"ready","ready":true}`, `{"type":"start"}` (host only,
-  all others ready), `{"type":"msg","to":…,"data":…}`.
+  all others ready), `{"type":"matchmake","game_id":…,"player_count":N}`,
+  `{"type":"cancel_matchmake"}`, `{"type":"msg","to":…,"data":…}`.
+  `create` and `matchmake` require the game to exist, be published (or
+  yours), and have multiplayer enabled; codes are matched
+  case-insensitively and whitespace-trimmed.
 - Server → client: `{"type":"lobby","lobby":{code,game_id,host_id,started,players}}`
   (full snapshot on every change), `{"type":"launch","lobby":…}`,
+  `{"type":"matchmaking","queue_size":N,"target_count":N}`,
   `{"type":"msg","from":…,"data":…}`, `{"type":"closed","reason":…}`,
   `{"type":"error","error":…}`.
 
-A lobby dies when its host disconnects (no host migration).
 Joining or creating while already in a lobby auto-leaves the old
-one.
+one. If the host disconnects the lobby migrates to the next player;
+former members can rejoin a started lobby by code.

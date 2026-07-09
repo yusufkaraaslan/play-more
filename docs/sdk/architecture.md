@@ -353,12 +353,14 @@ WebSocket used for lobbies.
   WebSocket closes) runs `removeFromQueueLocked`, so a queued player who
   disconnects is dropped from every queue and the remaining players get
   an updated count. Cancellation is the same path, triggered by a
-  `cancel_matchmake` frame or the SPA's 60-second client-side timeout.
+  `cancel_matchmake` frame (which the game sends via
+  `PlayMore.cancelMatchmake()`).
 
-The matchmaking timeout itself is client-side: after 60 seconds with no
-match, the SPA sends `cancel_matchmake` and offers the Create Lobby
-fallback. The server is stateless about the deadline — it only knows
-whether a session is currently queued.
+There is no built-in matchmaking deadline: the server keeps a session
+queued until it matches, the game cancels, or the socket closes. A game
+that wants a timeout runs its own timer and calls `cancelMatchmake()`.
+The server is stateless about any deadline — it only knows whether a
+session is currently queued.
 
 ## Graceful shutdown
 

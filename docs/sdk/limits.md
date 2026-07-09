@@ -12,7 +12,7 @@ Every cap, rate limit, and size bound in the PlayMore multiplayer system. When a
 | Max connections per user | 4 | `lobby.MaxConnsPerUser` | The 5th WebSocket upgrade is rejected with `StatusPolicyViolation` ("too many connections"). Older connections are not kicked — close one to open another. |
 | Lobby code length | 6 chars | `lobby.codeLen` | Codes are generated at exactly 6 characters from an ambiguous-character-free alphabet (`ABCDEFGHJKLMNPQRSTUVWXYZ23456789`). Matching is case-insensitive; a code of any other length simply won't resolve. |
 | Idle lobby lifetime | 2 hours | `lobby.IdleTTL` | A lobby with no activity for 2 hours is reaped by the background sweeper. Members receive a `closed` frame with reason `expired`. |
-| Matchmaking timeout | 60s | SPA client (`mpQuickPlay`) | After 60s with no match, the player is offered the Create Lobby fallback. The server is stateless about the deadline — it only knows whether a session is currently queued. |
+| Matchmaking timeout | none (game-driven) | — | The server keeps a session queued until it matches, the client calls `cancel_matchmake`, or the socket closes. There is no built-in deadline; a game that wants one should call `PlayMore.cancelMatchmake()` from its own timer. |
 | Outbound queue per connection | 64 frames | `lobby.SendBuffer` | If a client isn't draining (dead network, tab backgrounded), the 65th queued frame force-disconnects the session. |
 
 ## WebSocket rate limits

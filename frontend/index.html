@@ -2288,8 +2288,6 @@
                 }
                 html += '</div>';
 
-                if (game.multiplayer) html += '<div class="info-row"><span class="info-label">Multiplayer</span><span class="info-value" style="color:var(--success);">Online Lobby</span></div>';
-
                 // Compact review summary
                 if (allReviews.length > 0) {
                     const revLabelSb = posPct >= 90 ? 'Overwhelmingly Positive' : posPct >= 70 ? 'Very Positive' : posPct >= 50 ? 'Mixed' : 'Negative';
@@ -2961,17 +2959,26 @@
             if (gameData && gameData.id === gameId && gameData.is_webgpu && gpuCapability !== 'webgpu') {
                 showModal('WebGPU Not Available',
                     'This game uses WebGPU which isn\'t available in your browser. It may not load or display correctly.',
-                    () => { closeModal(); launchGame(gameId, entryFile); }
+                    () => { closeModal(); startGamePlayback(gameId, entryFile); }
                 );
                 return;
             }
-            // For multiplayer games, launch the game directly. The game's
-            // own menu handles Quick Play / Create / Join via playmore-mp.js.
-            // The SPA connects the WS and passes the session token + RTC
-            // config via init — the game creates/joins lobbies programmatically.
+            startGamePlayback(gameId, entryFile);
+        }
+
+        // Launch a game, wiring the SPA⇄game multiplayer bridge ONLY for games
+        // that opted into multiplayer. Single-player games never arm the bridge,
+        // so an untrusted single-player iframe can't harvest the user's identity
+        // or a leftover session token through the postMessage 'ready' handshake.
+        // For multiplayer games the game's own menu drives Quick Play / Create /
+        // Join via playmore-mp.js; the SPA connects the WS and hands the game a
+        // session token + RTC config via init so it can create/join lobbies.
+        function startGamePlayback(gameId, entryFile) {
+            const gameData = currentGameData;
             if (gameData && gameData.id === gameId && gameData.multiplayer) {
                 if (!currentUser) { showAuth('login'); return; }
                 mpCurrentGameId = gameId;
+                mpLaunched = true; // arm the bridge for this multiplayer session
                 mpMintToken(gameId).then(() => {
                     mpConnect();
                     launchGame(gameId, entryFile);
@@ -3018,7 +3025,6 @@
             frame.setAttribute('sandbox', sandbox.join(' '));
             frame.src = gameOrigin() + '/play/' + gameId + '/' + (entryFile || 'index.html');
             player.classList.add('active');
-            mpLaunched = true; // game iframe is loaded — accept postMessage from it
             gameSessionStart = Date.now();
             if (sessionTimerInterval) clearInterval(sessionTimerInterval);
             document.getElementById('session-timer').textContent = '00:00:00';
@@ -3066,9 +3072,11 @@
             if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
             document.getElementById('game-player').classList.remove('active');
             setTimeout(() => { document.getElementById('player-frame').src = ''; }, 400);
-            // Closing the player mid-multiplayer-session leaves the lobby
-            // (v1 lobbies are one-shot — no rematch flow).
-            if (mpLobby) mpCleanup();
+            // Always tear down any multiplayer session — the socket/token are
+            // opened for every multiplayer game at launch, before a lobby exists,
+            // so gating cleanup on `mpLobby` would leak an authenticated socket
+            // and a stale token into the next game. Idempotent no-op otherwise.
+            mpCleanup();
         }
 
         /* ============ Multiplayer Lobby (#29) ============ */
@@ -3079,12 +3087,10 @@
         let mpLobby = null;         // latest lobby State from the server
         let mpLaunched = false;     // game running with the bridge active
 
-        let mpPendingCreate = null; // game id to create once the socket opens
-        let mpPendingJoin = null;   // lobby code to join once the socket opens
+        let mpPending = [];         // lobby-control commands queued until the socket is OPEN
         let mpGameToken = null;     // pm_gs_ token for the current game (passed to iframe + WS)
         let mpRtcConfig = null;     // WebRTC ICE servers from /rtc-config
         let mpCurrentGameId = null; // game ID for the current multiplayer session
-        let mpMatchmaking = false;  // currently in matchmaking queue
 
         async function mpMintToken(gameId) {
             try {
@@ -3105,8 +3111,9 @@
             if (mpGameToken) wsUrl += '?token=' + encodeURIComponent(mpGameToken);
             mpSocket = new WebSocket(wsUrl);
             mpSocket.onopen = () => {
-                if (mpPendingCreate) { mpSend({ type: 'create', game_id: mpPendingCreate }); mpPendingCreate = null; }
-                else if (mpPendingJoin) { mpSend({ type: 'join', code: mpPendingJoin }); mpPendingJoin = null; }
+                // Flush lobby-control commands queued while connecting.
+                const q = mpPending; mpPending = [];
+                q.forEach(obj => mpSend(obj));
             };
             mpSocket.onmessage = (ev) => {
                 let m; try { m = JSON.parse(ev.data); } catch { return; }
@@ -3116,9 +3123,14 @@
                 mpSocket = null;
                 mpGameToken = null;
                 mpRtcConfig = null;
+                mpPending = [];   // stale — don't replay onto a future socket
                 if (mpLobby) {
                     mpLobby = null;
-                    if (mpLaunched) { mpNotifyGame({ playmore: 'closed' }); mpLaunched = false; }
+                    // Keep the bridge armed (mpLaunched stays true): the game
+                    // iframe is still running and can re-enter a lobby — the
+                    // server supports rejoin — by calling createLobby/joinLobby
+                    // again, which re-mints a token and reconnects (mpEnsureSocket).
+                    if (mpLaunched) mpNotifyGame({ playmore: 'closed', reason: 'disconnected' });
                     toast('Lobby connection lost.', 'error');
                 }
             };
@@ -3128,32 +3140,46 @@
             if (mpSocket && mpSocket.readyState === WebSocket.OPEN) mpSocket.send(JSON.stringify(obj));
         }
 
-        async function mpHandle(m) {
+        // Ensure the lobby socket is connecting/open, re-minting a token first
+        // if a previous connection dropped, so a game can recover after a blip.
+        // mpMinting guards the async token window so two quick commands can't
+        // each kick off a mint and open duplicate sockets.
+        let mpMinting = false;
+        function mpEnsureSocket() {
+            if (mpSocket && (mpSocket.readyState === WebSocket.CONNECTING || mpSocket.readyState === WebSocket.OPEN)) return;
+            if (mpMinting || !mpCurrentGameId) return;
+            if (mpGameToken) { mpConnect(); }
+            else {
+                mpMinting = true;
+                mpMintToken(mpCurrentGameId).then(() => { mpMinting = false; mpConnect(); })
+                                            .catch(() => { mpMinting = false; });
+            }
+        }
+
+        // Send a lobby-control command now, or queue it and (re)connect if the
+        // socket isn't open yet. Prevents create/join/matchmake issued during
+        // the handshake — or after a drop — from being silently lost.
+        function mpSendOrQueue(obj) {
+            if (mpSocket && mpSocket.readyState === WebSocket.OPEN) {
+                mpSocket.send(JSON.stringify(obj));
+            } else {
+                mpPending.push(obj);
+                mpEnsureSocket();
+            }
+        }
+
+        function mpHandle(m) {
+            // The game is always already loaded when a lobby message arrives
+            // (the bridge is armed at launch, before any lobby exists), so every
+            // case simply relays server state into the running game's iframe.
             switch (m.type) {
                 case 'lobby':
                     mpLobby = m.lobby;
-                    // Link-join flow: once the server tells us which game the
-                    // lobby belongs to, land on that game's page.
-                    if (!mpLaunched && (!currentGameData || currentGameData.id !== mpLobby.game_id)) {
-                        await showGameDetail(mpLobby.game_id);
-                    }
-                    // Forward lobby state to the game (for game-managed lobby UI).
                     if (mpLaunched) mpNotifyGame({ playmore: 'lobby_state', lobby: mpLobby });
                     break;
                 case 'launch':
                     mpLobby = m.lobby;
-                    if (mpMatchmaking) mpMatchmaking = false;
-                    if (!currentGameData || currentGameData.id !== mpLobby.game_id) {
-                        await showGameDetail(mpLobby.game_id);
-                    }
-                    if (mpLaunched) {
-                        // Game already loaded — forward launch to game.
-                        mpNotifyGame({ playmore: 'launch', lobby: mpLobby });
-                    } else {
-                        // SPA-managed flow — launch the game now.
-                        mpLaunched = true;
-                        launchGame(mpLobby.game_id, (currentGameData && currentGameData.entry_file) || 'index.html');
-                    }
+                    if (mpLaunched) mpNotifyGame({ playmore: 'launch', lobby: mpLobby });
                     break;
                 case 'msg':
                     if (mpLaunched) mpNotifyGame({ playmore: 'msg', from: m.from, data: m.data });
@@ -3169,10 +3195,6 @@
                     break;
                 case 'matchmaking':
                     if (mpLaunched) mpNotifyGame({ playmore: 'matchmaking', queue_size: m.queue_size, target_count: m.target_count });
-                    if (mpMatchmaking) {
-                        const el = document.getElementById('mp-queue-status');
-                        if (el) el.textContent = 'Searching... ' + m.queue_size + '/' + m.target_count + ' players found';
-                    }
                     break;
             }
         }
@@ -3180,9 +3202,9 @@
         // Clean up multiplayer state when the player closes the game.
         // The server handles lobby leave automatically when the WS disconnects.
         function mpCleanup() {
-            mpPendingCreate = null; mpPendingJoin = null;
+            mpPending = []; mpMinting = false;
             mpGameToken = null; mpRtcConfig = null; mpCurrentGameId = null;
-            mpLobby = null; mpLaunched = false; mpMatchmaking = false;
+            mpLobby = null; mpLaunched = false;
             if (mpSocket) {
                 const s = mpSocket;
                 mpSocket = null;
@@ -3244,24 +3266,21 @@
                 case 'set_metadata':
                     mpSend({ type: 'set_metadata', metadata: d.metadata });
                     break;
-                // Lobby control — game manages its own lobby UI.
+                // Lobby control — game manages its own lobby UI. Lobby-entry
+                // commands queue until the socket is open (and reconnect after a
+                // drop); game-supplied fields are coerced here, at the trust
+                // boundary, since the iframe is untrusted.
                 case 'create_lobby':
-                    if (mpSocket && mpSocket.readyState === WebSocket.OPEN) {
-                        mpSend({ type: 'create', game_id: mpCurrentGameId, public: d.public || false });
-                    }
+                    mpSendOrQueue({ type: 'create', game_id: mpCurrentGameId, public: !!d.public });
                     break;
                 case 'join_lobby':
-                    if (mpSocket && mpSocket.readyState === WebSocket.OPEN) {
-                        mpSend({ type: 'join', code: d.code });
-                    }
+                    mpSendOrQueue({ type: 'join', code: String(d.code || '').trim().toUpperCase() });
                     break;
                 case 'quick_play':
-                    if (mpSocket && mpSocket.readyState === WebSocket.OPEN) {
-                        mpSend({ type: 'matchmake', game_id: mpCurrentGameId, player_count: d.player_count || 2 });
-                    }
+                    mpSendOrQueue({ type: 'matchmake', game_id: mpCurrentGameId, player_count: d.player_count || 2 });
                     break;
                 case 'ready_up':
-                    mpSend({ type: 'ready', ready: d.ready });
+                    mpSend({ type: 'ready', ready: !!d.ready });
                     break;
                 case 'start_game':
                     mpSend({ type: 'start' });

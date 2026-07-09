@@ -3,6 +3,7 @@ package lobby
 import (
 	"crypto/rand"
 	"errors"
+	"strings"
 	"sync"
 	"time"
 )
@@ -675,6 +676,7 @@ func (h *Hub) newCodeLocked() (string, error) {
 }
 
 func normalizeCode(code string) string {
+	code = strings.TrimSpace(code)
 	up := make([]byte, 0, len(code))
 	for i := 0; i < len(code); i++ {
 		c := code[i]

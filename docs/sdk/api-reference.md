@@ -33,6 +33,9 @@ platform at `/playmore-mp.js` and is also embedded in the binary.
   - [`PlayMore.onMessage(callback)`](#playmoreonmessagecallback)
   - [`PlayMore.onPlayers(callback)`](#playmoreonplayerscallback)
   - [`PlayMore.onClosed(callback)`](#playmoreonclosedcallback)
+  - [`PlayMore.onLobbyState(callback)`](#playmoreonlobbystatecallback)
+  - [`PlayMore.onMatchmaking(callback)`](#playmoreonmatchmakingcallback)
+  - [`PlayMore.onLaunch(callback)`](#playmoreonlaunchcallback)
   - [`PlayMore.onTransportChange(callback)`](#playmoreontransportchangecallback)
   - [`PlayMore.onPingChange(callback)`](#playmoreonpingchangecallback)
 - [Sending data](#sending-data)
@@ -51,6 +54,8 @@ platform at `/playmore-mp.js` and is also embedded in the binary.
 - [Topology and lobby metadata](#topology-and-lobby-metadata)
   - [`PlayMore.setTopology(t)`](#playmoresettopologyt)
   - [`PlayMore.setMetadata(obj)`](#playmoresetmetadataobj)
+- [Lobby control (game-managed lobby UI)](#lobby-control-game-managed-lobby-ui)
+  - [`PlayMore.createLobby / joinLobby / quickPlay / readyUp / startGame / leaveLobby / cancelMatchmake`](#lobby-control-game-managed-lobby-ui)
 - [Transport and stats](#transport-and-stats)
   - [`PlayMore.transport(peerId)`](#playmoretransportpeerid)
   - [`PlayMore.stats()`](#playmorestats)
@@ -65,11 +70,16 @@ platform at `/playmore-mp.js` and is also embedded in the binary.
 
 ### `PlayMore.onReady(callback)`
 
-Register a callback fired exactly once when the lobby context is
-delivered to the game. This is the entry point: the lobby code, the
-player list, the host flag, and the session token all become available
-here. WebRTC mesh initiation begins immediately after `onReady` fires
-(the SDK connects to every other player with a 200 ms stagger).
+Register a callback fired once when the platform delivers the `init`
+frame — **before any lobby exists**. This is the entry point for your
+**lobby menu**: `ctx.you` and the session token are available, but
+`ctx.code` is `''` and `ctx.players` is empty until the player creates,
+joins, or matches into a lobby (via [`createLobby`](#playmorecreatelobbyopts) /
+[`joinLobby`](#playmorejoinlobbycode) / [`quickPlay`](#playmorequickplayplayercount)).
+Do not start your match loop here — start it in
+[`onLaunch`](#playmoreonlaunchcallback). WebRTC mesh initiation happens
+at launch, not at `onReady` (unless the game loaded into an
+already-started lobby, e.g. an iframe reload mid-match).
 
 **Signature**
 
@@ -867,6 +877,50 @@ if (PlayMore.isHost()) {
   PlayMore.setMetadata({ map: 'de_dust', mode: 'ctf', maxScore: 5 });
 }
 ```
+
+---
+
+## Lobby control (game-managed lobby UI)
+
+Since the game owns its own lobby menu, these methods let it create,
+join, and start lobbies programmatically. All return `PlayMore` for
+chaining and are safe to call from your menu buttons; their results
+arrive asynchronously via the callbacks below. Lobby-*entry* commands
+(`createLobby` / `joinLobby` / `quickPlay`) are queued if the socket is
+still connecting and replay when it opens, so calling them straight out
+of `onReady` is safe.
+
+| Method | Description | Result callback |
+|--------|-------------|-----------------|
+| `PlayMore.createLobby(opts?)` | Create a lobby; caller becomes host. `opts.public` lists it in the public browser. | `onLobbyState` |
+| `PlayMore.joinLobby(code)` | Join by 6-char code (case-insensitive, whitespace-trimmed). | `onLobbyState` (or `onError`/`error` frame if not found) |
+| `PlayMore.quickPlay(playerCount?)` | Auto-match with random players (default 2, clamped 2–8). | `onMatchmaking` then `onLaunch` |
+| `PlayMore.readyUp(ready)` | Toggle your ready state (non-host). | `onLobbyState` |
+| `PlayMore.startGame()` | Start the match (host only, once everyone is ready). | `onLaunch` for all members |
+| `PlayMore.leaveLobby()` | Leave the current lobby. | `onClosed` |
+| `PlayMore.cancelMatchmake()` | Leave the Quick Play queue. | — |
+
+### `PlayMore.onLobbyState(callback)`
+
+Fires whenever the lobby changes before launch — created, joined,
+player joined/left, ready toggled, host migrated, or metadata updated.
+The callback receives the full lobby snapshot
+`{ code, game_id, host_id, started, players: [...], metadata }`. Use it
+to (re)draw your lobby roster and enable/disable the host's Start
+button. `onPlayers` still fires alongside it for membership-only logic.
+
+### `PlayMore.onMatchmaking(callback)`
+
+Fires while `quickPlay` searches. The callback receives
+`{ queueSize, targetCount }` — show a "X/Y players" status.
+
+### `PlayMore.onLaunch(callback)`
+
+Fires when the match actually starts (host pressed start, or a Quick
+Play queue filled). The callback receives the launched lobby snapshot.
+**This is where you begin play** — hide your menu and start your game
+loop. WebRTC connections to peers are initiated at this point. Contrast
+with `onReady`, which fires pre-lobby for the menu.
 
 ---
 

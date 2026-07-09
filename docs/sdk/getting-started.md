@@ -5,8 +5,8 @@ This guide takes a game developer from zero to a working multiplayer game in a h
 ## Prerequisites
 
 - **Your game is uploaded to PlayMore.** If you haven't uploaded yet, use the web UI or the `playmore-deploy` CLI (see [../DEVELOPER.md](../DEVELOPER.md)).
-- **The multiplayer flag is checked.** When uploading or editing the game, enable **"Online multiplayer"** (API: set `multiplayer: true` on game create/update). The game page then shows a Multiplayer box with a live online-player count and lets players create/share lobby codes.
-- **The game runs in the PlayMore iframe.** The SDK talks to the PlayMore page (its parent) over `window.postMessage`, so it only works when the game is launched through a PlayMore lobby. Outside a lobby the script loads safely but stays idle.
+- **The multiplayer flag is checked.** When uploading or editing the game, enable **"Online multiplayer"** (API: set `multiplayer: true` on game create/update). Clicking Play then launches your game directly and **your game draws its own lobby menu** (Quick Play / Create / Join) using the API below.
+- **The game runs in the PlayMore iframe.** The SDK talks to the PlayMore page (its parent) over `window.postMessage`. When the game launches, the platform hands it a session token and connects the lobby socket, so the game can create/join lobbies programmatically. Loaded outside PlayMore, the script stays idle.
 
 ## Step 1: Include the script tag
 
@@ -20,35 +20,60 @@ This exposes a global `window.PlayMore`. The shim is idempotent — including it
 
 ## Step 2: Register callbacks
 
-The SDK is callback-driven. Register handlers for the four lifecycle events. Each registration returns the `PlayMore` object so you can chain, and you can register multiple handlers per event.
+The SDK is callback-driven. Each registration returns the `PlayMore` object so you can chain, and you can register multiple handlers per event.
 
 ```js
-// Fires once when the lobby has launched and you're connected.
-// ctx is your snapshot of the lobby (see Step 4).
+// Fires PRE-LOBBY, right after the game loads (ctx.code is '').
+// This is where you show your lobby menu — NOT where you start playing.
 PlayMore.onReady(function (ctx) {
-  console.log("Lobby " + ctx.code + " started; I am " + ctx.you.username);
+  showMenu();   // draw Quick Play / Create / Join buttons
+});
+
+// Fires when the lobby state changes (created, joined, ready toggled,
+// host migrated). Use it to redraw your menu / lobby roster.
+PlayMore.onLobbyState(function (lobby) {
+  renderLobby(lobby);   // { code, players, host_id, started, ... }
+});
+
+// Fires while Quick Play searches. { queueSize, targetCount }.
+PlayMore.onMatchmaking(function (m) {
+  showStatus(m.queueSize + "/" + m.targetCount + " players");
+});
+
+// Fires when the match actually STARTS — hide the menu, begin play.
+PlayMore.onLaunch(function (lobby) {
+  startGame(lobby);
 });
 
 // Fires for every message received from a peer.
-//   from = sender player id (string)
-//   data = whatever JSON the sender passed to PlayMore.send()
 PlayMore.onMessage(function (from, data) {
   console.log("Got", data, "from", from);
 });
 
 // Fires when membership changes mid-game (someone joined or left).
-//   players = current [{ id, username, avatar_url, ready, host }]
 PlayMore.onPlayers(function (players) {
   console.log(players.length + " players now in the lobby");
 });
 
-// Fires when the lobby is gone (host left / connection lost).
+// Fires when the lobby is gone (host left / disconnected) — show the menu again.
 PlayMore.onClosed(function () {
-  console.log("Lobby closed.");
+  showMenu();
 });
 ```
 
-> Register callbacks **before** you expect events. The shim emits `ready` as soon as the platform sends the `init` frame, which can be near-instant after the game loads.
+Then wire your menu buttons to the lobby-control calls:
+
+```js
+PlayMore.quickPlay(2);          // auto-match with random players
+PlayMore.createLobby();         // create a lobby, become host
+PlayMore.joinLobby(codeInput);  // join by 6-char code
+PlayMore.readyUp(true);         // toggle ready (non-host)
+PlayMore.startGame();           // host-only, once everyone is ready
+PlayMore.leaveLobby();
+PlayMore.cancelMatchmake();
+```
+
+> Register callbacks **before** you expect events. The shim emits `ready` as soon as the platform sends the `init` frame, which is near-instant after the game loads — so `onReady` (your menu) fires almost immediately, while `onLaunch` (play starts) only fires once a lobby launches.
 
 ## Step 3: Send messages
 
@@ -185,15 +210,15 @@ Upload this as your game's `index.html`, check the multiplayer flag, create a lo
 
 ## Quick Play (auto-matchmaking)
 
-Besides manually creating a lobby and sharing a code, the game page offers a **Quick Play** button that matches a player with random opponents automatically. The flow is entirely platform-side; your game code does nothing different.
+Besides manually creating a lobby and sharing a code, your menu can offer a **Quick Play** button that matches a player with random opponents automatically. Call `PlayMore.quickPlay(playerCount)` from the button.
 
-1. **The player clicks "Quick Play"** on the PlayMore game page.
-2. **The server queues them** and searches for other players waiting on the same game. Queued players see a live "X/Y players found" status.
-3. **When enough players are found**, a lobby is auto-created, everyone is joined, readied up, and the game **launches immediately** — no manual ready-up or host start.
-4. **If no match is found within 60 seconds**, the search is cancelled and the player is offered the manual **Create Lobby** fallback.
-5. **Your game just receives `onReady(ctx)` like normal** — the lobby context, players, host flag, and session token arrive exactly as they do for a hand-created lobby. There is no matchmaking code for you to write.
+1. **Your menu calls `PlayMore.quickPlay(2)`.**
+2. **The server queues the player** and searches for others waiting on the same game. Your `onMatchmaking(m)` handler fires with `{ queueSize, targetCount }` — show a live "X/Y players found" status.
+3. **When enough players are found**, a lobby is auto-created, everyone is joined and readied, and the match **launches immediately** — your `onLaunch(lobby)` fires. There is no host-start step.
+4. **To bail out**, call `PlayMore.cancelMatchmake()` (e.g. behind a Cancel button or your own timeout).
+5. **No special-casing needed** — a Quick Play match delivers `onLaunch` exactly like a hand-created lobby, so the same start-of-play code handles both.
 
-In short, Quick Play is a drop-in discovery path that uses the same WebSocket and the same lobby lifecycle your game already handles. It works best for games with an active player base; for niche or new games, players should fall back to Create Lobby and share the code directly.
+Quick Play is a discovery path over the same lobby lifecycle your menu already drives. It works best for games with an active player base; for niche or new games, offer Create Lobby + code sharing alongside it.
 
 ## Next steps
 
