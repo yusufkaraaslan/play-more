@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/yusufkaraaslan/play-more/internal/middleware"
 	"github.com/yusufkaraaslan/play-more/internal/models"
+	"github.com/yusufkaraaslan/play-more/internal/storage"
 )
 
 // OpenPlaySessionHandler handles POST /api/v1/games/:id/play-sessions.
@@ -45,6 +46,17 @@ func HeartbeatPlaySessionHandler(c *gin.Context) {
 	}
 	sessionID := c.Param("sid")
 
+	// If authenticated via pm_gs_ token, verify the session belongs to
+	// the token's game (L3: prevent cross-game session manipulation).
+	if tok := middleware.GetGameSessionToken(c); tok != nil {
+		var gameID string
+		storage.DB.QueryRow(`SELECT game_id FROM play_sessions WHERE session_id = ? AND user_id = ?`, sessionID, user.ID).Scan(&gameID)
+		if gameID != tok.GameID {
+			c.JSON(http.StatusForbidden, gin.H{"error": "token not valid for this session"})
+			return
+		}
+	}
+
 	if err := models.HeartbeatPlaySession(sessionID, user.ID); err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "session not found or ended"})
 		return
@@ -61,6 +73,16 @@ func EndPlaySessionHandler(c *gin.Context) {
 		return
 	}
 	sessionID := c.Param("sid")
+
+	// Same game-scoping check as heartbeat (L3).
+	if tok := middleware.GetGameSessionToken(c); tok != nil {
+		var gameID string
+		storage.DB.QueryRow(`SELECT game_id FROM play_sessions WHERE session_id = ? AND user_id = ?`, sessionID, user.ID).Scan(&gameID)
+		if gameID != tok.GameID {
+			c.JSON(http.StatusForbidden, gin.H{"error": "token not valid for this session"})
+			return
+		}
+	}
 
 	_ = models.EndPlaySession(sessionID, user.ID)
 	c.JSON(http.StatusOK, gin.H{"status": "ended"})

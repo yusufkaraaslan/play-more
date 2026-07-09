@@ -113,7 +113,7 @@ func main() {
 	post("/api/v1/play-sessions/"+psID+"/end", `{}`, cookies)
 
 	log("RTC config")
-	fmt.Printf("  %s\n", get("/rtc-config", nil))
+	fmt.Printf("  %s\n", get("/rtc-config", cookies))
 
 	log("CORS preflight (Origin: null)")
 	preflight("/api/v1/games/" + mpID + "/play-sessions")

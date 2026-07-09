@@ -11,6 +11,7 @@ import (
 // ever needs different numbers.
 const (
 	MaxPlayers      = 8               // players per lobby
+	MaxSpectators   = 16              // spectators per lobby (don't count toward MaxPlayers)
 	MaxConnsPerUser = 4               // concurrent /ws connections per user
 	MaxLobbies      = 500             // global live-lobby cap (memory bound)
 	SendBuffer      = 64              // per-connection outbound queue; overflow = slow consumer, disconnect
@@ -187,6 +188,12 @@ func (h *Hub) Join(s *Session, code string) error {
 		return nil
 	}
 	h.leaveLocked(s)
+	// If this is a restored lobby (host == nil from RestoreLobbies),
+	// the first joiner becomes the host.
+	if l.Host == nil {
+		l.Host = s
+		s.ready = true
+	}
 	l.Members = append(l.Members, s)
 	l.LastActive = time.Now()
 	h.gameCount[l.GameID]++
@@ -207,6 +214,16 @@ func (h *Hub) JoinSpectator(s *Session, code string) error {
 	if !ok {
 		return ErrLobbyNotFound
 	}
+	// Cap spectators to prevent relay amplification DoS.
+	spectatorCount := 0
+	for _, m := range l.Members {
+		if m.spectator {
+			spectatorCount++
+		}
+	}
+	if spectatorCount >= MaxSpectators {
+		return ErrLobbyFull
+	}
 	if s.lobby == l {
 		l.broadcastState()
 		return nil
@@ -217,6 +234,7 @@ func (h *Hub) JoinSpectator(s *Session, code string) error {
 	l.LastActive = time.Now()
 	s.lobby = l
 	l.broadcastState()
+	persistLobby(l)
 	return nil
 }
 
@@ -295,7 +313,7 @@ func (h *Hub) Start(s *Session) error {
 		return ErrLobbyStarted
 	}
 	for _, m := range l.Members {
-		if m != l.Host && !m.ready {
+		if m != l.Host && !m.spectator && !m.ready {
 			return ErrNotReady
 		}
 	}
@@ -415,6 +433,7 @@ func (h *Hub) leaveLocked(s *Session) {
 	}
 	s.lobby = nil
 	s.ready = false
+	s.spectator = false // M3: clear sticky spectator flag
 
 	// Remove s from the member list.
 	for i, m := range l.Members {
@@ -429,18 +448,29 @@ func (h *Hub) leaveLocked(s *Session) {
 		l.FormerMembers[s.UserID] = true
 	}
 
-	// If s was the host, promote the next member (or close if empty).
+	// If s was the host, promote the next non-spectator member (or close if none).
 	if l.Host == s {
-		if len(l.Members) == 0 {
+		var nextHost *Session
+		for _, m := range l.Members {
+			if !m.spectator {
+				nextHost = m
+				break
+			}
+		}
+		if nextHost == nil {
+			// No non-spectator members left — close the lobby.
 			h.decGameCountLocked(l.GameID)
 			h.closeLobbyLocked(l, "host_left")
 			return
 		}
-		l.Host = l.Members[0]
+		l.Host = nextHost
 		l.Host.ready = true // host is implicitly ready
 	}
 
-	h.decGameCountLocked(l.GameID)
+	// Only decrement game count for non-spectators (spectators were never counted).
+	if !s.spectator {
+		h.decGameCountLocked(l.GameID)
+	}
 	l.LastActive = time.Now()
 	l.broadcastState()
 	persistLobby(l)
@@ -453,9 +483,13 @@ func (h *Hub) closeLobbyLocked(l *Lobby, reason string) {
 	delete(h.lobbies, l.Code)
 	deleteLobby(l.Code)
 	for _, m := range l.Members {
+		// Only decrement for non-spectators (spectators were never counted).
+		if !m.spectator {
+			h.decGameCountLocked(l.GameID)
+		}
 		m.lobby = nil
 		m.ready = false
-		h.decGameCountLocked(l.GameID)
+		m.spectator = false
 		m.trySend(ServerMsg{Type: "closed", Reason: reason})
 	}
 	l.Members = nil

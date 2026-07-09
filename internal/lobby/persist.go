@@ -2,15 +2,45 @@ package lobby
 
 import (
 	"encoding/json"
+	"log"
 	"time"
 
 	"github.com/yusufkaraaslan/play-more/internal/storage"
 )
 
-// persistLobby saves the lobby state to the DB. Called after every state
-// change (create, join, leave, start, set_metadata). Synchronous — the
-// hub mutex is held, and SQLite single-row writes are sub-millisecond.
+// persistCh is a buffered channel for async lobby persistence. The hub
+// sends lobby pointers here instead of writing to the DB synchronously,
+// so the global mutex is only held for the channel send (nanoseconds),
+// not for the DB write (which could block under disk contention).
+var persistCh = make(chan *Lobby, 256)
+
+func init() {
+	go persistWorker()
+}
+
+func persistWorker() {
+	for l := range persistCh {
+		persistLobbySync(l)
+	}
+}
+
+// persistLobby enqueues a lobby for async DB persistence. Non-blocking —
+// if the channel is full (extreme contention), the write is dropped
+// rather than blocking the hub mutex.
 func persistLobby(l *Lobby) {
+	if storage.DB == nil {
+		return
+	}
+	select {
+	case persistCh <- l:
+	default:
+		log.Printf("lobby persist channel full, dropping write for %s", l.Code)
+	}
+}
+
+// persistLobbySync writes the lobby state to the DB. Called by the
+// persist worker goroutine.
+func persistLobbySync(l *Lobby) {
 	if storage.DB == nil {
 		return
 	}
@@ -28,7 +58,7 @@ func persistLobby(l *Lobby) {
 	if l.Metadata != nil {
 		metaStr = string(l.Metadata)
 	}
-	storage.DB.Exec(
+	_, err := storage.DB.Exec(
 		`INSERT INTO lobbies (code, game_id, started, metadata, member_ids, former_member_ids, last_active)
 		 VALUES (?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(code) DO UPDATE SET
@@ -40,6 +70,9 @@ func persistLobby(l *Lobby) {
 		l.Code, l.GameID, l.Started, metaStr, string(memberJSON), string(formerJSON),
 		time.Now().UTC().Format(time.RFC3339),
 	)
+	if err != nil {
+		log.Printf("lobby persist error for %s: %v", l.Code, err)
+	}
 }
 
 // deleteLobby removes a lobby from the DB. Called when a lobby is closed.

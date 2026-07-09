@@ -19,6 +19,10 @@ type Lobby struct {
 // snapshot builds the client-facing State. Caller holds hub.mu.
 func (l *Lobby) snapshot() *State {
 	players := make([]Player, 0, len(l.Members))
+	hostID := ""
+	if l.Host != nil {
+		hostID = l.Host.UserID
+	}
 	for _, m := range l.Members {
 		players = append(players, Player{
 			ID:        m.UserID,
@@ -32,7 +36,7 @@ func (l *Lobby) snapshot() *State {
 	return &State{
 		Code:     l.Code,
 		GameID:   l.GameID,
-		HostID:   l.Host.UserID,
+		HostID:   hostID,
 		Started:  l.Started,
 		Players:  players,
 		Metadata: l.Metadata,

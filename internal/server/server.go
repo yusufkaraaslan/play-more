@@ -178,7 +178,7 @@ func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxi
 		}
 		c.JSON(200, gin.H{"status": "ready"})
 	})
-	r.GET("/rtc-config", func(c *gin.Context) {
+	r.GET("/rtc-config", middleware.AuthOptional(), middleware.AuthRequired(), func(c *gin.Context) {
 		c.JSON(200, gin.H{"iceServers": RTCIceServers})
 	})
 

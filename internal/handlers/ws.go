@@ -57,6 +57,12 @@ func GameLobbyWS(hub *lobby.Hub) gin.HandlerFunc {
 			return
 		}
 
+		// Extract game session token's game ID for scoping (M5).
+		gameSessionGameID := ""
+		if tok := middleware.GetGameSessionToken(c); tok != nil {
+			gameSessionGameID = tok.GameID
+		}
+
 		conn, err := websocket.Accept(c.Writer, c.Request, nil)
 		if err != nil {
 			// Accept has already written the HTTP error (including 403
@@ -153,7 +159,7 @@ func GameLobbyWS(hub *lobby.Hub) gin.HandlerFunc {
 					continue
 				}
 			}
-			dispatchLobbyMsg(hub, sess, user, msg)
+			dispatchLobbyMsg(hub, sess, user, msg, gameSessionGameID)
 		}
 		conn.Close(websocket.StatusNormalClosure, "")
 	}
@@ -161,10 +167,15 @@ func GameLobbyWS(hub *lobby.Hub) gin.HandlerFunc {
 
 // dispatchLobbyMsg routes one client frame to the hub. Hub errors come
 // back to the sender as an "error" frame; they never end the session.
-func dispatchLobbyMsg(hub *lobby.Hub, sess *lobby.Session, user *models.User, msg lobby.ClientMsg) {
+func dispatchLobbyMsg(hub *lobby.Hub, sess *lobby.Session, user *models.User, msg lobby.ClientMsg, gameSessionGameID string) {
 	var err error
 	switch msg.Type {
 	case "create":
+		// M5: If authenticated via pm_gs_ token, scope to the token's game.
+		if gameSessionGameID != "" && msg.GameID != gameSessionGameID {
+			sess.Send(lobby.ServerMsg{Type: "error", Error: "token not valid for this game"})
+			return
+		}
 		err = createLobby(hub, sess, user, msg.GameID, msg.Public)
 	case "join":
 		if msg.Spectator {
