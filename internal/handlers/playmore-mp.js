@@ -43,8 +43,9 @@
   var parent = window.parent;
   var parentOrigin = null;
 
-  var ctx = { code: '', gameId: '', you: null, host: false, players: [] };
+  var ctx = { code: '', gameId: '', you: null, host: false, players: [], metadata: null, spectator: false };
   var started = false;
+  var mpLobbyState = null; // latest lobby state from the server (null if no lobby)
 
   // ── WebRTC state ──────────────────────────────────────────────
   // peers[peerId] = {
@@ -83,7 +84,10 @@
     ready: [],
     message: [],
     players: [],
-    closed: []
+    closed: [],
+    lobbyState: [],
+    launch: [],
+    matchmaking: []
   };
 
   function on(kind) {
@@ -459,12 +463,17 @@
         if (d.topology) {
           topology = d.topology;
         }
-        started = true;
+        // Fire onReady so the game can show its menu.
+        // If code is empty (no lobby yet), the game is in "pre-lobby"
+        // state — it should show its menu and call createLobby/quickPlay.
+        // If code is set (SPA-managed flow), the game starts immediately.
+        if (ctx.code) {
+          started = true;
+        }
         emit('ready', ctx);
 
-        // Staggered connection initiation (Phase 3) — avoids signaling
-        // burst when 8 players all try to connect simultaneously.
-        if (ctx.you) {
+        // Only initiate WebRTC if we have peers (lobby already started).
+        if (started && ctx.you) {
           var toConnect = [];
           for (var i = 0; i < ctx.players.length; i++) {
             var pid = ctx.players[i].id;
@@ -479,8 +488,6 @@
         break;
       case 'players':
         ctx.players = d.players || [];
-        // Update host flag and metadata — host may have migrated,
-        // metadata may have changed.
         ctx.metadata = d.metadata !== undefined ? d.metadata : ctx.metadata;
         if (ctx.you) {
           for (var pi = 0; pi < ctx.players.length; pi++) {
@@ -490,7 +497,6 @@
             }
           }
         }
-        // Initiate WebRTC connections for new players (rejoin or late join).
         if (started && ctx.you) {
           for (var ni = 0; ni < ctx.players.length; ni++) {
             var npid = ctx.players[ni].id;
@@ -500,6 +506,41 @@
           }
         }
         emit('players', ctx.players);
+        break;
+      case 'lobby_state':
+        // Lobby state update (lobby created, player joined, metadata changed, etc.)
+        if (d.lobby) {
+          mpLobbyState = d.lobby;
+          ctx.code = d.lobby.code || ctx.code;
+          ctx.players = d.lobby.players || ctx.players;
+          ctx.metadata = d.lobby.metadata !== undefined ? d.lobby.metadata : ctx.metadata;
+          if (ctx.you) {
+            for (var li2 = 0; li2 < ctx.players.length; li2++) {
+              if (ctx.players[li2].id === ctx.you.id) {
+                ctx.host = !!ctx.players[li2].host;
+                break;
+              }
+            }
+          }
+          emit('lobbyState', d.lobby);
+          emit('players', ctx.players);
+        }
+        break;
+      case 'launch':
+        // Game started — lobby is launched.
+        if (d.lobby) {
+          mpLobbyState = d.lobby;
+          ctx.code = d.lobby.code || ctx.code;
+          ctx.players = d.lobby.players || ctx.players;
+          if (!started) {
+            started = true;
+            emit('ready', ctx);
+          }
+          emit('launch', d.lobby);
+        }
+        break;
+      case 'matchmaking':
+        emit('matchmaking', { queueSize: d.queue_size, targetCount: d.target_count });
         break;
       case 'msg':
         if (d.data && typeof d.data === 'object' && d.data.__pm_rtc) {
@@ -523,6 +564,9 @@
     onMessage: on('message'),
     onPlayers: on('players'),
     onClosed: on('closed'),
+    onLobbyState: on('lobbyState'),
+    onLaunch: on('launch'),
+    onMatchmaking: on('matchmaking'),
 
     send: function (data, to) {
       if (!started || parentOrigin === null) return API;
@@ -607,8 +651,61 @@
      * opaque JSON value — game settings like map, difficulty, mode.
      * Non-host callers are rejected by the server. */
     setMetadata: function (obj) {
-      if (!started || parentOrigin === null) return API;
+      if (parentOrigin === null) return API;
       post({ playmore: 'set_metadata', metadata: obj }, parentOrigin);
+      return API;
+    },
+
+    /* ── Lobby control (game-managed lobby UI) ────────────────── */
+
+    /* Create a new lobby for this game. The caller becomes the host.
+     * Results in an onLobbyState callback with the new lobby's code. */
+    createLobby: function (opts) {
+      if (parentOrigin === null) return API;
+      post({ playmore: 'create_lobby', public: opts && opts.public || false }, parentOrigin);
+      return API;
+    },
+
+    /* Join an existing lobby by code. Results in onLobbyState. */
+    joinLobby: function (code) {
+      if (parentOrigin === null) return API;
+      post({ playmore: 'join_lobby', code: code }, parentOrigin);
+      return API;
+    },
+
+    /* Quick Play — auto-match with random players. Results in
+     * onMatchmaking callbacks (queue status) and then onLaunch. */
+    quickPlay: function (playerCount) {
+      if (parentOrigin === null) return API;
+      post({ playmore: 'quick_play', player_count: playerCount || 2 }, parentOrigin);
+      return API;
+    },
+
+    /* Toggle ready state (non-host). Results in onLobbyState. */
+    readyUp: function (ready) {
+      if (parentOrigin === null) return API;
+      post({ playmore: 'ready_up', ready: ready }, parentOrigin);
+      return API;
+    },
+
+    /* Start the game (host-only). Results in onLaunch. */
+    startGame: function () {
+      if (parentOrigin === null) return API;
+      post({ playmore: 'start_game' }, parentOrigin);
+      return API;
+    },
+
+    /* Leave the current lobby. Results in onClosed. */
+    leaveLobby: function () {
+      if (parentOrigin === null) return API;
+      post({ playmore: 'leave_lobby' }, parentOrigin);
+      return API;
+    },
+
+    /* Cancel matchmaking search. */
+    cancelMatchmake: function () {
+      if (parentOrigin === null) return API;
+      post({ playmore: 'cancel_matchmake' }, parentOrigin);
       return API;
     },
 

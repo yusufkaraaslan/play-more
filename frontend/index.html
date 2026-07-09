@@ -2974,85 +2974,20 @@
                 );
                 return;
             }
-            // For multiplayer games, show the lobby flow instead of launching
-            // directly. The game iframe only receives lobby context (code,
-            // players, session token) when the SPA creates a lobby and starts
-            // it — a direct launch skips that, leaving the game with an empty
-            // ctx.code. Show a modal so the user can create or join a lobby.
+            // For multiplayer games, launch the game directly. The game's
+            // own menu handles Quick Play / Create / Join via playmore-mp.js.
+            // The SPA connects the WS and passes the session token + RTC
+            // config via init — the game creates/joins lobbies programmatically.
             if (gameData && gameData.id === gameId && gameData.multiplayer) {
                 if (!currentUser) { showAuth('login'); return; }
-                // If already in a started lobby for this game, just launch.
-                if (mpLobby && mpLobby.game_id === gameId && mpLaunched) {
+                mpCurrentGameId = gameId;
+                mpMintToken(gameId).then(() => {
+                    mpConnect();
                     launchGame(gameId, entryFile);
-                    return;
-                }
-                // Show create/join/quick-play modal.
-                showModal('Multiplayer',
-                    '<p style="margin-bottom:12px;">Play with friends or get matched with random players.</p>' +
-                    '<button class="btn-primary" style="width:100%;margin-bottom:8px;" ' + act('mpQuickPlay', gameId) + '>Quick Play — Match with Randoms</button>' +
-                    '<div style="display:flex;gap:8px;margin-bottom:8px;">' +
-                    '<button class="btn-secondary" style="flex:1;" ' + act('mpCreate', gameId) + '>Create Lobby</button>' +
-                    '</div>' +
-                    '<div style="display:flex;gap:6px;">' +
-                    '<input type="text" class="form-input" id="mp-play-join-code" placeholder="Lobby code" maxlength="6" autocomplete="off" style="flex:1;text-transform:uppercase;">' +
-                    '<button class="btn-secondary" style="padding:8px 14px;" ' + act('mpPlayJoin') + '>Join</button>' +
-                    '</div>',
-                    null, 'modal-cancel');
+                });
                 return;
             }
             launchGame(gameId, entryFile);
-        }
-
-        function mpPlayJoin() {
-            const inp = document.getElementById('mp-play-join-code');
-            if (inp) { mpJoinCode(inp.value); }
-            closeModal();
-        }
-
-        let mpMatchmaking = false;
-        function mpQuickPlay(gameId) {
-            closeModal();
-            if (!currentUser) { showAuth('login'); return; }
-            mpPendingJoin = null;
-            mpPendingCreate = null;
-            mpMatchmaking = true;
-            if (mpSocket && mpSocket.readyState === WebSocket.OPEN) {
-                mpSend({ type: 'matchmake', game_id: gameId, player_count: 2 });
-            } else {
-                mpPendingCreate = null;
-                mpConnect();
-                // The onopen handler won't send matchmake, so we need to
-                // wait for the socket to open, then send it.
-                const checkOpen = setInterval(() => {
-                    if (mpSocket && mpSocket.readyState === WebSocket.OPEN) {
-                        clearInterval(checkOpen);
-                        mpSend({ type: 'matchmake', game_id: gameId, player_count: 2 });
-                    }
-                }, 100);
-            }
-            // Show searching modal with cancel + timeout.
-            showModal('Finding Players...',
-                '<div style="text-align:center;padding:20px 0;">' +
-                '<div style="font-size:24px;margin-bottom:10px;">🔍</div>' +
-                '<p id="mp-queue-status">Searching for players...</p>' +
-                '<button class="btn-secondary" style="margin-top:16px;" ' + act('mpCancelMatchmake') + '>Cancel</button>' +
-                '</div>',
-                null, 'modal-cancel');
-            // Timeout after 60s.
-            setTimeout(() => {
-                if (mpMatchmaking) {
-                    mpSend({ type: 'cancel_matchmake' });
-                    mpMatchmaking = false;
-                    closeModal();
-                    toast('No players found. Try creating a lobby instead.', 'info');
-                }
-            }, 60000);
-        }
-
-        function mpCancelMatchmake() {
-            mpSend({ type: 'cancel_matchmake' });
-            mpMatchmaking = false;
-            closeModal();
         }
 
         function openGameNewTab() {
@@ -3092,6 +3027,7 @@
             frame.setAttribute('sandbox', sandbox.join(' '));
             frame.src = gameOrigin() + '/play/' + gameId + '/' + (entryFile || 'index.html');
             player.classList.add('active');
+            mpLaunched = true; // game iframe is loaded — accept postMessage from it
             gameSessionStart = Date.now();
             if (sessionTimerInterval) clearInterval(sessionTimerInterval);
             document.getElementById('session-timer').textContent = '00:00:00';
@@ -3156,6 +3092,8 @@
         let mpPendingJoin = null;   // lobby code to join once the socket opens
         let mpGameToken = null;     // pm_gs_ token for the current game (passed to iframe + WS)
         let mpRtcConfig = null;     // WebRTC ICE servers from /rtc-config
+        let mpCurrentGameId = null; // game ID for the current multiplayer session
+        let mpMatchmaking = false;  // currently in matchmaking queue
 
         async function mpMintToken(gameId) {
             try {
@@ -3210,32 +3148,40 @@
                         await showGameDetail(mpLobby.game_id);
                     }
                     renderMpBox();
-                    if (mpLaunched) mpNotifyGame({ playmore: 'players', players: mpLobby.players, metadata: mpLobby.metadata });
+                    // Forward lobby state to the game (for game-managed lobby UI).
+                    if (mpLaunched) mpNotifyGame({ playmore: 'lobby_state', lobby: mpLobby });
                     break;
                 case 'launch':
                     mpLobby = m.lobby;
-                    // Close matchmaking modal if open.
-                    if (mpMatchmaking) { mpMatchmaking = false; closeModal(); }
+                    if (mpMatchmaking) mpMatchmaking = false;
                     if (!currentGameData || currentGameData.id !== mpLobby.game_id) {
                         await showGameDetail(mpLobby.game_id);
                     }
                     renderMpBox();
-                    mpLaunched = true;
-                    launchGame(mpLobby.game_id, (currentGameData && currentGameData.entry_file) || 'index.html');
+                    if (mpLaunched) {
+                        // Game already loaded — forward launch to game.
+                        mpNotifyGame({ playmore: 'launch', lobby: mpLobby });
+                    } else {
+                        // SPA-managed flow — launch the game now.
+                        mpLaunched = true;
+                        launchGame(mpLobby.game_id, (currentGameData && currentGameData.entry_file) || 'index.html');
+                    }
                     break;
                 case 'msg':
                     if (mpLaunched) mpNotifyGame({ playmore: 'msg', from: m.from, data: m.data });
                     break;
                 case 'closed':
                     mpLobby = null;
-                    if (mpLaunched) { mpNotifyGame({ playmore: 'closed' }); mpLaunched = false; }
+                    if (mpLaunched) mpNotifyGame({ playmore: 'closed', reason: m.reason });
                     renderMpBox();
                     toast(m.reason === 'host_left' ? 'The host closed the lobby.' : m.reason === 'server_restarting' ? 'Server restarting — rejoin in a moment.' : 'Lobby closed.', 'error');
                     break;
                 case 'error':
                     toast(m.error || 'Lobby error', 'error');
+                    if (mpLaunched) mpNotifyGame({ playmore: 'error', error: m.error });
                     break;
                 case 'matchmaking':
+                    if (mpLaunched) mpNotifyGame({ playmore: 'matchmaking', queue_size: m.queue_size, target_count: m.target_count });
                     if (mpMatchmaking) {
                         const el = document.getElementById('mp-queue-status');
                         if (el) el.textContent = 'Searching... ' + m.queue_size + '/' + m.target_count + ' players found';
@@ -3385,27 +3331,62 @@
             if (w) { try { w.postMessage(obj, '*'); } catch {} }
         }
         window.addEventListener('message', (ev) => {
-            if (!mpLaunched || !mpLobby || !currentUser) return;
+            if (!mpLaunched || !currentUser) return;
             if (!ev.source || ev.source !== mpGameWindow()) return;
             const d = ev.data;
             if (!d || typeof d !== 'object' || !d.playmore) return;
-            if (d.playmore === 'ready') {
-                // Game announced it's loaded — hand it the lobby context + session token.
-                mpNotifyGame({
-                    playmore: 'init',
-                    code: mpLobby.code,
-                    game_id: mpLobby.game_id,
-                    you: { id: currentUser.id, username: currentUser.username },
-                    host: mpLobby.host_id === currentUser.id,
-                    players: mpLobby.players,
-                    session_token: mpGameToken,
-                    rtc_config: mpRtcConfig,
-                    metadata: mpLobby.metadata
-                });
-            } else if (d.playmore === 'send') {
-                mpSend({ type: 'msg', to: d.to || '', data: d.data });
-            } else if (d.playmore === 'set_metadata') {
-                mpSend({ type: 'set_metadata', metadata: d.metadata });
+            switch (d.playmore) {
+                case 'ready':
+                    // Game announced it's loaded — send init with whatever
+                    // we have. If no lobby exists yet, code/players are empty
+                    // but session_token + rtc_config + game_id are populated
+                    // so the game can create/join lobbies programmatically.
+                    mpNotifyGame({
+                        playmore: 'init',
+                        code: mpLobby ? mpLobby.code : '',
+                        game_id: mpCurrentGameId || (mpLobby ? mpLobby.game_id : ''),
+                        you: { id: currentUser.id, username: currentUser.username },
+                        host: mpLobby ? mpLobby.host_id === currentUser.id : false,
+                        players: mpLobby ? mpLobby.players : [],
+                        session_token: mpGameToken || '',
+                        rtc_config: mpRtcConfig,
+                        metadata: mpLobby ? mpLobby.metadata : null
+                    });
+                    break;
+                case 'send':
+                    mpSend({ type: 'msg', to: d.to || '', data: d.data });
+                    break;
+                case 'set_metadata':
+                    mpSend({ type: 'set_metadata', metadata: d.metadata });
+                    break;
+                // Lobby control — game manages its own lobby UI.
+                case 'create_lobby':
+                    if (mpSocket && mpSocket.readyState === WebSocket.OPEN) {
+                        mpSend({ type: 'create', game_id: mpCurrentGameId, public: d.public || false });
+                    }
+                    break;
+                case 'join_lobby':
+                    if (mpSocket && mpSocket.readyState === WebSocket.OPEN) {
+                        mpSend({ type: 'join', code: d.code });
+                    }
+                    break;
+                case 'quick_play':
+                    if (mpSocket && mpSocket.readyState === WebSocket.OPEN) {
+                        mpSend({ type: 'matchmake', game_id: mpCurrentGameId, player_count: d.player_count || 2 });
+                    }
+                    break;
+                case 'ready_up':
+                    mpSend({ type: 'ready', ready: d.ready });
+                    break;
+                case 'start_game':
+                    mpSend({ type: 'start' });
+                    break;
+                case 'leave_lobby':
+                    mpSend({ type: 'leave' });
+                    break;
+                case 'cancel_matchmake':
+                    mpSend({ type: 'cancel_matchmake' });
+                    break;
             }
         });
 
