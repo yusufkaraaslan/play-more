@@ -2974,24 +2974,38 @@
                 );
                 return;
             }
-            // For multiplayer games, route through the lobby flow instead
-            // of launching directly. The game iframe only receives lobby
-            // context (code, players, session token) when the SPA creates
-            // a lobby and starts it — a direct launch skips that, leaving
-            // the game with an empty ctx.code.
+            // For multiplayer games, show the lobby flow instead of launching
+            // directly. The game iframe only receives lobby context (code,
+            // players, session token) when the SPA creates a lobby and starts
+            // it — a direct launch skips that, leaving the game with an empty
+            // ctx.code. Show a modal so the user can create or join a lobby.
             if (gameData && gameData.id === gameId && gameData.multiplayer) {
                 if (!currentUser) { showAuth('login'); return; }
-                if (mpLobby && mpLobby.game_id === gameId) {
-                    // Already in a lobby for this game — just launch.
+                // If already in a started lobby for this game, just launch.
+                if (mpLobby && mpLobby.game_id === gameId && mpLaunched) {
                     launchGame(gameId, entryFile);
-                } else {
-                    // Create a lobby — the game launches automatically when
-                    // the host clicks Start (or solo-starts if alone).
-                    mpCreate(gameId);
+                    return;
                 }
+                // Show create/join modal.
+                showModal('Multiplayer',
+                    '<p style="margin-bottom:12px;">Create a new lobby and share the code with your friends, or join an existing lobby with a code.</p>' +
+                    '<div style="display:flex;gap:8px;">' +
+                    '<button class="btn-primary" style="flex:1;" ' + act('mpCreate', gameId) + '>Create Lobby</button>' +
+                    '</div>' +
+                    '<div style="display:flex;gap:6px;margin-top:10px;">' +
+                    '<input type="text" class="form-input" id="mp-play-join-code" placeholder="Lobby code" maxlength="6" autocomplete="off" style="flex:1;text-transform:uppercase;">' +
+                    '<button class="btn-secondary" style="padding:8px 14px;" ' + act('mpPlayJoin') + '>Join</button>' +
+                    '</div>',
+                    null, 'modal-cancel');
                 return;
             }
             launchGame(gameId, entryFile);
+        }
+
+        function mpPlayJoin() {
+            const inp = document.getElementById('mp-play-join-code');
+            if (inp) { mpJoinCode(inp.value); }
+            closeModal();
         }
 
         function openGameNewTab() {
