@@ -37,6 +37,8 @@ PlayMore.send(state, somePlayerId);         // send to one player only
 
 That's it. The shim handles WebRTC negotiation, relay fallback, keepalive, reconnection, and bandwidth accounting — you write game logic.
 
+On the game page, players can also hit **Quick Play** to be auto-matched with random opponents instead of creating a lobby and sharing a code — the platform handles the whole flow, and your game code is unchanged. See [getting-started.md](getting-started.md#quick-play-auto-matchmaking).
+
 ## What's new
 
 Beyond the core lobby + relay + WebRTC mesh, the SDK now supports:
@@ -50,6 +52,7 @@ Beyond the core lobby + relay + WebRTC mesh, the SDK now supports:
 - **Unreliable channel** — `PlayMore.sendUnreliable()` drops stale in-flight frames instead of retransmitting; ideal for position sync. ([api-reference.md](api-reference.md#playmoresendunreliabledata-to))
 - **Connection quality** — `ping()`, `onPingChange()`, and `recommendedThrottle()` let games adapt their update rate to RTT. ([api-reference.md](api-reference.md#connection-quality))
 - **Lobby metadata** — host-authored JSON for game settings (map, mode), read via `metadata()` / `ctx.metadata`, updated with `setMetadata()`. ([api-reference.md](api-reference.md#topology-and-lobby-metadata))
+- **Quick Play (matchmaking)** — players click "Quick Play" on the game page to be auto-matched with randoms; the server queues them, finds opponents, auto-creates a lobby, and launches the game. No game code required — `onReady(ctx)` fires as usual. ([getting-started.md](getting-started.md#quick-play-auto-matchmaking))
 
 ## Documentation
 

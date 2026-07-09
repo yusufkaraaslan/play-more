@@ -101,6 +101,16 @@ The shim is a no-op if `window.PlayMore` already exists (`if (window.PlayMore) r
 
 ---
 
+## Quick Play says "No players found"
+
+**Symptom:** A player clicks Quick Play, waits, and after 60 seconds sees "No players found. Try creating a lobby instead."
+
+**Cause:** Not enough players were online and queued for that game within the 60-second matchmaking window. Quick Play matches from a per-game queue, so it only succeeds when other players are searching at the same time. New or niche games with small player bases will time out frequently.
+
+**Solution:** This isn't a bug — there simply weren't enough opponents. Have the player use **Create Lobby** and share the code with friends instead. Quick Play works best for popular games with active player bases; for a small audience, direct lobby codes are the reliable path.
+
+---
+
 ## Messages arrive out of order
 
 **Symptom:** Game state updates from a peer arrive in the wrong sequence.

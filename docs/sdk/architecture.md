@@ -326,6 +326,40 @@ and off by default — private code-only lobbies are never listed.
 The browser is per-game, so each game's page shows only its own open
 lobbies. Rate-limited to 30 reads/minute per IP to prevent scraping.
 
+## Matchmaking
+
+Quick Play is server-side matchmaking layered on the existing lobby
+hub — no new endpoints, no new transport. When a player clicks
+"Quick Play", the SPA sends a `matchmake` frame over the same `/ws`
+WebSocket used for lobbies.
+
+- **Per-game queue.** The hub keeps a `matchQueues` map keyed by game
+  ID; each entry is an ordered slice of queued sessions. The desired
+  match size (`player_count`) defaults to 2 and is clamped to the lobby
+  player cap. Joining the queue first leaves any existing queue or
+  lobby, so retries and reconnects self-heal.
+- **Queue status broadcasts.** Every membership change in a queue
+  (join, cancel, or disconnect) re-broadcasts a `matchmaking` frame to
+  all remaining queued players carrying `queue_size` and `target_count`,
+  so the SPA can show "X/Y players found."
+- **Auto-create + auto-start.** When a queue reaches `player_count`, the
+  first N players are popped off. The hub creates a lobby with the first
+  queued player as host, auto-readies the rest (host is implicitly
+  ready), marks the lobby `Started`, persists it, and sends a `launch`
+  frame to every member. Any surplus players stay queued for the next
+  match. From here the lobby behaves exactly like a hand-created one —
+  host migration, rejoin, relay, and WebRTC all apply unchanged.
+- **Queue cleanup on disconnect.** `Unregister` (called when a
+  WebSocket closes) runs `removeFromQueueLocked`, so a queued player who
+  disconnects is dropped from every queue and the remaining players get
+  an updated count. Cancellation is the same path, triggered by a
+  `cancel_matchmake` frame or the SPA's 60-second client-side timeout.
+
+The matchmaking timeout itself is client-side: after 60 seconds with no
+match, the SPA sends `cancel_matchmake` and offers the Create Lobby
+fallback. The server is stateless about the deadline — it only knows
+whether a session is currently queued.
+
 ## Graceful shutdown
 
 On `SIGTERM`/`SIGINT` the server calls `Hub.Shutdown()` before exiting:

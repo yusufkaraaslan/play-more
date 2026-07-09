@@ -183,6 +183,18 @@ A minimal multiplayer game: each player moves a colored dot, and every other pla
 
 Upload this as your game's `index.html`, check the multiplayer flag, create a lobby, share the code, open it in a second browser, and the dots will follow each other.
 
+## Quick Play (auto-matchmaking)
+
+Besides manually creating a lobby and sharing a code, the game page offers a **Quick Play** button that matches a player with random opponents automatically. The flow is entirely platform-side; your game code does nothing different.
+
+1. **The player clicks "Quick Play"** on the PlayMore game page.
+2. **The server queues them** and searches for other players waiting on the same game. Queued players see a live "X/Y players found" status.
+3. **When enough players are found**, a lobby is auto-created, everyone is joined, readied up, and the game **launches immediately** — no manual ready-up or host start.
+4. **If no match is found within 60 seconds**, the search is cancelled and the player is offered the manual **Create Lobby** fallback.
+5. **Your game just receives `onReady(ctx)` like normal** — the lobby context, players, host flag, and session token arrive exactly as they do for a hand-created lobby. There is no matchmaking code for you to write.
+
+In short, Quick Play is a drop-in discovery path that uses the same WebSocket and the same lobby lifecycle your game already handles. It works best for games with an active player base; for niche or new games, players should fall back to Create Lobby and share the code directly.
+
 ## Next steps
 
 - **[api-reference.md](api-reference.md)** — every method, callback, and field, with exact signatures and return types.
