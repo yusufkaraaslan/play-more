@@ -78,9 +78,11 @@ The `ctx` object passed to your `onReady` handler is your authoritative snapshot
 | `code` | `string` | The 6-character lobby code players shared. |
 | `gameId` | `string` | The PlayMore game id this lobby belongs to. |
 | `you` | `{ id, username }` | This player. `id` is the stable peer id used as `from`/`to` in messages. |
-| `host` | `boolean` | `true` if this player is the lobby host. Use it to decide who drives authoritative state. |
+| `host` | `boolean` | `true` if this player is the lobby host. Use it to decide who drives authoritative state. Updates live on host migration. |
 | `players` | `array` | Initial roster: `[{ id, username, avatar_url, ready, host }]`. Use `onPlayers` for subsequent changes. |
 | `sessionToken` | `string` | Platform session token for this play session (prefixed `pm_gs_`). Store/echo it if your game records play sessions. |
+| `metadata` | `object \| null` | Host-authored lobby settings (map, difficulty, mode). May be `null`; updates live as the host changes it. |
+| `spectator` | `boolean` | `true` if this connection joined as a read-only spectator (can receive but not send). |
 
 The same values are available as accessor methods so you can read them from anywhere without capturing `ctx` in a closure:
 
@@ -92,6 +94,8 @@ PlayMore.isHost();       // true / false
 PlayMore.players();      // current roster (live; reflects onPlayers updates)
 PlayMore.sessionToken(); // "pm_gs_..."
 PlayMore.isActive();     // true between onReady and onClosed
+PlayMore.metadata();     // host-authored settings object, or null
+PlayMore.isSpectator();  // true if joined as read-only spectator
 ```
 
 A common pattern: treat the host as the source of truth. Non-hosts send *input* to the host; the host broadcasts *resolved state* back.
@@ -183,7 +187,7 @@ Upload this as your game's `index.html`, check the multiplayer flag, create a lo
 
 - **[api-reference.md](api-reference.md)** — every method, callback, and field, with exact signatures and return types.
 - **[architecture.md](architecture.md)** — how P2P is negotiated, relay fallback, keepalive/reconnect, the transport lifecycle, and the sandbox model.
-- **[webrtc.md](webrtc.md)** — mesh topology, ICE servers, keepalive, reconnection, transport() and stats().
+- **[webrtc.md](webrtc.md)** — mesh & star topology, unreliable channel, keepalive, reconnection, host migration, rejoin, connection quality, transport() and stats().
 - **[authentication.md](authentication.md)** — pm_gs_ tokens, CORS, and how the game iframe gets credentials.
 - **[play-sessions.md](play-sessions.md)** — track active game sessions for the online_players metric.
 - **[limits.md](limits.md)** — every cap and rate limit (lobby size, message rate, frame size, token TTL) and what happens when you exceed each.

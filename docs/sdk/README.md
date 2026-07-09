@@ -37,14 +37,28 @@ PlayMore.send(state, somePlayerId);         // send to one player only
 
 That's it. The shim handles WebRTC negotiation, relay fallback, keepalive, reconnection, and bandwidth accounting — you write game logic.
 
+## What's new
+
+Beyond the core lobby + relay + WebRTC mesh, the SDK now supports:
+
+- **Host migration** — if the host leaves a started lobby, the next non-spectator member is promoted and the lobby continues. `isHost()` updates automatically. ([webrtc.md](webrtc.md#host-migration))
+- **Rejoin after disconnect** — former members can rejoin a started lobby with the same code; WebRTC connections re-initiate automatically. ([webrtc.md](webrtc.md#rejoin-after-disconnect))
+- **Lobby persistence** — lobbies are saved to SQLite and restored on server restart, so a restart is recoverable instead of fatal. ([architecture.md](architecture.md#lobby-persistence))
+- **Spectator mode** — join as a read-only observer (bypasses the player cap; separate 16-spectator cap). Check with `isSpectator()`. ([api-reference.md](api-reference.md#playmoreisspectator))
+- **Public lobby browser** — hosts can mark a lobby public; `GET /api/v1/games/:id/lobbies` lists open games. ([architecture.md](architecture.md#public-lobby-browser))
+- **Star topology** — `PlayMore.setTopology('star')` makes the host authoritative with N−1 connections instead of a full mesh. ([webrtc.md](webrtc.md#star-topology))
+- **Unreliable channel** — `PlayMore.sendUnreliable()` drops stale in-flight frames instead of retransmitting; ideal for position sync. ([api-reference.md](api-reference.md#playmoresendunreliabledata-to))
+- **Connection quality** — `ping()`, `onPingChange()`, and `recommendedThrottle()` let games adapt their update rate to RTT. ([api-reference.md](api-reference.md#connection-quality))
+- **Lobby metadata** — host-authored JSON for game settings (map, mode), read via `metadata()` / `ctx.metadata`, updated with `setMetadata()`. ([api-reference.md](api-reference.md#topology-and-lobby-metadata))
+
 ## Documentation
 
 | Doc | What's in it |
 |-----|--------------|
 | [getting-started.md](getting-started.md) | Step-by-step: include the script, wire callbacks, send messages, use the lobby context. Ends with a complete copy-paste multiplayer game. |
 | [api-reference.md](api-reference.md) | Every method, callback, and field on the `PlayMore` global, with signatures and return values. |
-| [architecture.md](architecture.md) | How P2P transport is negotiated, when relay fallback kicks in, keepalive/reconnect behavior, the sandbox model, and why transparent fallback matters. |
-| [webrtc.md](webrtc.md) | Mesh topology, signaling, ICE servers, keepalive, reconnection, transport() and stats(). |
+| [architecture.md](architecture.md) | How P2P transport is negotiated, when relay fallback kicks in, keepalive/reconnect behavior, the sandbox model, lobby persistence, host migration, rejoin, spectator mode, the public lobby browser, graceful shutdown, and why transparent fallback matters. |
+| [webrtc.md](webrtc.md) | Mesh & star topology, unreliable channel, signaling, ICE servers, keepalive, reconnection, host migration, rejoin, connection quality, transport() and stats(). |
 | [authentication.md](authentication.md) | pm_gs_ session tokens, pm_gk_ SDK keys, CORS, and the iframe auth flow. |
 | [play-sessions.md](play-sessions.md) | Track active game sessions: open, heartbeat, end, and the online_players metric. |
 | [examples.md](examples.md) | Reference implementations: minimal synced-dot game, Co-op Canvas, MP Test Arena — plus the recurring patterns (throttle, normalize, local-first, stable colors). |

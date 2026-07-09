@@ -146,11 +146,11 @@ SDK staggers each `initPeer` call by 200 ms.
 
 | Concern | Owned by | Notes |
 |---------|----------|-------|
-| Lobby creation, join, ready state | Server (hub) | In-memory, no DB. Codes are 6 chars from an ambiguity-free alphabet. |
+| Lobby creation, join, ready state | Server (hub) | In-memory for live state; persisted to SQLite (async) for restart survival. Codes are 6 chars from an ambiguity-free alphabet. |
 | Host authority, start gating | Server | Only the host can start; all others must be ready. |
 | Authentication | Server | Session cookie, API key, or `pm_gs_` token. Origin-checked WebSocket. |
 | Relay (signaling + fallback data) | Server | Opaque payload, forwarded verbatim. 8 KiB frame cap, 30 msg/s per player. |
-| Lobby lifecycle, idle reaping | Server | Lobbies die with their host (no migration); idle lobbies reaped after 2 h. |
+| Lobby lifecycle, idle reaping, host migration | Server | Host leaves → next non-spectator promoted, lobby continues; idle lobbies reaped after 2 h; persisted lobbies restored on restart. |
 | WebRTC negotiation | Client (SDK) | Offer/answer/ICE exchanged via the relay as signaling. |
 | Data channel management | Client (SDK) | Full mesh; ordered data channels; keepalive pings. |
 | Transport selection, fallback | Client (SDK) | Tries P2P first, falls back to relay per-peer. |
@@ -223,3 +223,124 @@ The practical result: a game built on `playmore-mp.js` works for
 every player who can load the game page, not just those on
 WebRTC-friendly networks. The relay is the floor; WebRTC is the
 ceiling.
+
+## Lobby persistence
+
+Lobbies are not purely in-memory: every membership, ready, metadata,
+and start/leave transition is written to the `lobbies` SQLite table
+asynchronously (via a buffered persistence worker, so the hub mutex is
+never held on a DB write). Persistence is best-effort — under extreme
+disk contention a write can be dropped, but the next state change
+re-syncs.
+
+On server startup, `RestoreLobbies` loads every lobby whose
+`last_active` is within the 2-hour idle TTL. Their member sessions are
+gone (the WebSockets died with the old process), so a restored lobby
+starts with no live members; all previous member IDs are seeded into
+`FormerMembers` so those players can rejoin the started lobby using the
+same code. The first joiner of a restored lobby becomes the new host.
+
+The practical effect: a server restart no longer kills in-progress
+lobbies. Players see a `closed` frame with reason `server_restarting`,
+then rejoin with the same code and resume. State continuity is the
+game's responsibility — re-derive from peer snapshots on rejoin rather
+than assuming the server kept game state (it never does; payloads are
+opaque).
+
+## Host migration
+
+When the host of a started lobby leaves, the server promotes the next
+non-spectator member (by join order) to host and the lobby continues —
+it does not close. The new host's `ready` flag is set to `true`, and
+the next state broadcast tells every client who the new host is;
+`PlayMore.isHost()` flips automatically (the SDK reads the host flag
+from the players list on every `onPlayers` event).
+
+If no non-spectator member remains to take over, the lobby closes and
+members get a `closed` frame with reason `host_left`. Spectators are
+never promoted — they're read-only by design.
+
+This makes authoritative-host games resilient: if the host's
+connection drops, the lobby survives and the new host can keep the
+simulation going. Games should be written so host authority can
+transfer cleanly — the new host re-derives state from the latest peer
+snapshots rather than assuming it inherited a coherent world.
+
+## Rejoin after disconnect
+
+Started lobbies normally reject new joins with `ErrLobbyStarted` —
+once a game is running, strangers can't drop in. The exception is
+**former members**: the server tracks every user ID that leaves a
+started lobby in a `FormerMembers` set, and a `join` from one of them
+is allowed through. Anyone who was never in the lobby is still
+rejected.
+
+On rejoin, the server removes the user from `FormerMembers`, re-adds
+them as a member, and broadcasts the new roster. The SDK sees the
+returning player and auto-initiates a WebRTC connection to them (mesh:
+everyone; star: the host and the rejoined peer). The rejoined player
+gets a fresh `init` frame and `onReady` fires for them as if they'd
+just launched.
+
+Rejoin fails only if the lobby is gone — reaped after the 2-hour idle
+TTL, or closed because no non-spectator member was left to host. In
+those cases the code no longer resolves and the player gets
+`ErrLobbyNotFound`; treat it as a closed lobby.
+
+## Spectator mode
+
+A player can join a lobby as a read-only **spectator**
+(`JoinSpectator`). Spectators bypass both the started check and the
+8-player cap, so they can observe a running game without disturbing
+it. They count toward a separate 16-per-lobby spectator cap instead.
+The client learns it's a spectator via `ctx.spectator` /
+`PlayMore.isSpectator()`.
+
+Spectators receive every relayed game message — they see the full game
+state as it's broadcast — but the server rejects their
+`send`/`sendUnreliable` calls with `ErrSpectator`. They're meant for
+observation (casting, late-join viewing, moderation), not
+participation. Games should check `isSpectator()` to render the world
+without enabling input.
+
+Because spectators aren't counted in the player cap and are never
+promoted to host, they're invisible to the authority flow: a lobby
+full of spectators plus one player still has that one player as host,
+and if that host leaves with only spectators remaining, the lobby
+closes.
+
+## Public lobby browser
+
+A host can mark their lobby **public** (host-only `SetPublic` toggle).
+Public, non-started lobbies for a game are listed by
+`GET /api/v1/games/:id/lobbies`, which returns each lobby's code,
+non-spectator player count, started flag, and host name. The SPA
+renders this as a joinable list so players can find open games
+without sharing codes.
+
+Once a lobby starts, it drops out of the browser (you can't join a
+running game except as a former member rejoining). Spectators aren't
+counted in the listed player count. Making a lobby public is optional
+and off by default — private code-only lobbies are never listed.
+
+The browser is per-game, so each game's page shows only its own open
+lobbies. Rate-limited to 30 reads/minute per IP to prevent scraping.
+
+## Graceful shutdown
+
+On `SIGTERM`/`SIGINT` the server calls `Hub.Shutdown()` before exiting:
+it broadcasts a `closed` frame with reason `server_restarting` to
+every member of every live lobby, then tears them all down. Clients see
+the reason and know to reconnect rather than treat it as a hard error.
+
+Because lobbies are persisted, a restart is recoverable: after the new
+process comes up, `RestoreLobbies` reloads the still-active lobbies
+(within the idle TTL) with `FormerMembers` seeded from the previous
+members, so players rejoin the same code and resume. The
+`server_restarting` reason is distinct from `host_left`/`expired` so
+games can show "server restarting, rejoining…" rather than "lobby
+closed".
+
+This is graceful, not instantaneous — a `kill -9` skips it. For
+production, deploy via `SIGTERM` and give the process a moment to
+drain.

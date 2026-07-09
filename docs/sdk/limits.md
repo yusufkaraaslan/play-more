@@ -6,7 +6,8 @@ Every cap, rate limit, and size bound in the PlayMore multiplayer system. When a
 
 | Limit | Value | Source | What happens when exceeded |
 |-------|-------|--------|----------------------------|
-| Max players per lobby | 8 | `lobby.MaxPlayers` | Join returns `ErrLobbyFull` ("lobby is full"). The connection stays open — the player can try another lobby. |
+| Max players per lobby | 8 | `lobby.MaxPlayers` | Join returns `ErrLobbyFull` ("lobby is full"). The connection stays open — the player can try another lobby. Spectators don't count toward this cap (separate `MaxSpectators=16` cap). |
+| Max spectators per lobby | 16 | `lobby.MaxSpectators` | `JoinSpectator` returns `ErrLobbyFull`. Spectators bypass the player cap and the started check but can't send game messages. |
 | Max lobbies per server | 500 | `lobby.MaxLobbies` | Create returns `ErrTooManyLobbies` ("server is at capacity, try again later"). Existing lobbies are unaffected. |
 | Max connections per user | 4 | `lobby.MaxConnsPerUser` | The 5th WebSocket upgrade is rejected with `StatusPolicyViolation` ("too many connections"). Older connections are not kicked — close one to open another. |
 | Lobby code length | 6 chars | `lobby.codeLen` | Codes are generated at exactly 6 characters from an ambiguous-character-free alphabet (`ABCDEFGHJKLMNPQRSTUVWXYZ23456789`). Matching is case-insensitive; a code of any other length simply won't resolve. |

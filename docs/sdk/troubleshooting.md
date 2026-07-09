@@ -85,9 +85,9 @@ The shim is a no-op if `window.PlayMore` already exists (`if (window.PlayMore) r
 
 **Symptom:** The WebSocket connection drops unexpectedly. `onClosed` fires.
 
-**Cause:** Several possibilities: exceeding the 30 messages/second rate limit (connection is closed), a ping timeout (the server didn't receive a pong within 10s of a 30s ping — mobile networks, sleeping laptops), a server restart (lobbies are in-memory and don't survive a restart), or the outbound queue overflowing (64 frames backed up — the client wasn't reading).
+**Cause:** Several possibilities: exceeding the 30 messages/second rate limit (connection is closed), a ping timeout (the server didn't receive a pong within 10s of a 30s ping — mobile networks, sleeping laptops), a server restart (the server broadcasts a `server_restarting` closed frame before shutdown; lobbies are persisted and rejoinable), or the outbound queue overflowing (64 frames backed up — the client wasn't reading).
 
-**Solution:** Check the error frame if one arrived before disconnect — "message rate limit exceeded" tells you to batch state updates. For ping timeouts, ensure the game keeps the WebSocket alive (the shim does this automatically; if you're using a raw client, handle pings). Server restarts are unrecoverable for in-progress lobbies — design your game to tolerate a mid-session disconnect (show a "connection lost" screen, allow rejoining).
+**Solution:** Check the error frame if one arrived before disconnect — "message rate limit exceeded" tells you to batch state updates. For ping timeouts, ensure the game keeps the WebSocket alive (the shim does this automatically; if you're using a raw client, handle pings). Server restarts are now recoverable: the server broadcasts `server_restarting` before shutting down, and persisted lobbies are restored on startup so former members can rejoin with the same code. Still design your game to tolerate a mid-session disconnect (show a "reconnecting" screen, allow rejoining).
 
 ---
 
@@ -108,3 +108,43 @@ The shim is a no-op if `window.PlayMore` already exists (`if (window.PlayMore) r
 **Cause:** WebRTC data channels are created with `ordered: true`, so messages on a single open channel arrive in order. However, when a channel fails and the shim reconnects (or falls back to relay), a **new** channel is created. Messages sent on the old channel before failure may arrive after messages on the new channel, or be lost entirely.
 
 **Solution:** Include a sequence number or timestamp in every game message and reorder/discard on receipt. Treat reconnection as a state-sync boundary — when `onTransportChange` fires for a peer, request a full state snapshot from that peer. The `ordered: true` guarantee only holds within a single channel's lifetime; don't rely on it across reconnects.
+
+---
+
+## Spectator can't send messages
+
+**Symptom:** A spectator's `PlayMore.send()` / `sendUnreliable()` calls never reach other players; the server rejects them.
+
+**Cause:** Expected behavior. Spectators join via `JoinSpectator` and are read-only observers — the server returns `ErrSpectator` ("spectators cannot send game messages") for any `msg` frame they send. Spectators can still receive all relayed game messages.
+
+**Solution:** This is by design (casting, late-join viewing, moderation). Gate your input UI on `PlayMore.isSpectator()` and render the world without enabling controls for spectators. If the player needs to participate, they must join the lobby as a regular member (before start, or via rejoin if they were a former member).
+
+---
+
+## Host left but lobby continued
+
+**Symptom:** The host disconnected mid-game, but `onClosed` did **not** fire and the lobby kept running with a different host.
+
+**Cause:** Host migration is working correctly. When the host leaves a started lobby, the server promotes the next non-spectator member (by join order) to host. `PlayMore.isHost()` updates automatically — the new host now sees `true`, everyone else `false` — via the `onPlayers` broadcast.
+
+**Solution:** Nothing to fix; this is the intended behavior. If your game uses an authoritative host, hand off authority to the promoted host and have it re-derive state from the latest peer snapshots. The lobby only closes (firing `onClosed` with reason `host_left`) when no non-spectator member remains to take over.
+
+---
+
+## Can't rejoin after disconnect
+
+**Symptom:** A player who dropped out tries to rejoin with the same lobby code and gets "lobby not found" or "game already started".
+
+**Cause:** Former members of a started lobby can rejoin (the server tracks them in `FormerMembers`), but only if the lobby still exists. A lobby is gone if it was idle-reaped after the 2-hour TTL, if it closed because no non-spectator member was left to host, or if the code is simply wrong. A player who was **never** a member of a started lobby is rejected with `ErrLobbyStarted`.
+
+**Solution:** Verify the lobby code is correct (6 chars, case-insensitive). If the disconnect was long ago, the lobby was likely reaped after 2 hours of inactivity — it's gone for good; start a new one. If the lobby is still active, make sure the player rejoins as the **same user** they were before (same session/account) — `FormerMembers` is keyed by user ID, so a different account won't match.
+
+---
+
+## Connection quality is poor
+
+**Symptom:** Movement is janky/laggy; the relay is getting backed up; players see stale state.
+
+**Cause:** High RTT between peers (often because WebRTC fell back to the relay, which routes through the server). Polling `PlayMore.ping(peerId)` returns the per-peer RTT; values above ~150 ms or `-1` (relay) indicate a poor path. Sending at a fixed high rate over a slow path queues frames faster than they drain, so updates arrive late or out of order.
+
+**Solution:** Adapt to the connection. Switch high-frequency state (position, velocity) to `PlayMore.sendUnreliable()` so stale in-flight frames are dropped instead of retransmitted and queued. Throttle your send rate using `PlayMore.recommendedThrottle()` — it returns 33/66/100 ms based on average RTT, backing off automatically on poor links. Reserve the reliable `send()` for discrete events that must arrive. Watch `onPingChange` to react to degradation in real time.
