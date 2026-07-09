@@ -1145,7 +1145,6 @@
 			if (tab !== 'gamedetail') currentGameData = null;
 			// Leaving the lobby's game page abandons the lobby (unless the
 			// game player overlay is up — that stays on the gamedetail tab).
-			if (tab !== 'gamedetail' && mpLobby && !mpLaunched) mpLeave(true);
             detachMediaKeyNav();
             document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
             document.querySelectorAll('.nav-tab').forEach(t => { t.classList.remove('active'); t.removeAttribute('aria-current'); });
@@ -1179,8 +1178,6 @@
                 showDeveloper(hash.slice(10));
             } else if (hash.startsWith('list/')) {
                 showList(hash.slice(5));
-            } else if (hash.startsWith('lobby/')) {
-                mpJoinFromLink(hash.slice(6));
             } else if (hash.startsWith('verify/')) {
                 verifyEmail(hash.slice(7));
             } else if (hash.startsWith('reset/')) {
@@ -2121,10 +2118,7 @@
             try {
                 const data = await api('/games/' + gameId);
                 const game = data.game; currentGameData = game; const fileSize = data.file_size || 0;
-                // Viewing a different game's page abandons the current lobby
-                // (mid-game the player overlay is up and this never fires).
-                if (mpLobby && mpLobby.game_id !== game.id && !mpLaunched) mpLeave(true);
-                mpOnlineCount = data.online_players || 0;
+
                 const reviews = await api('/games/' + gameId + '/reviews');
                 const coverSrc = playAsset(game.cover_path) || '';
                 const allReviews = reviews.reviews || [];
@@ -2294,10 +2288,7 @@
                 }
                 html += '</div>';
 
-                // Multiplayer lobby box (games that opted in via the multiplayer flag)
-                if (game.multiplayer) {
-                    html += '<div class="info-box" id="mp-box">' + mpBoxHTML() + '</div>';
-                }
+                if (game.multiplayer) html += '<div class="info-row"><span class="info-label">Multiplayer</span><span class="info-value" style="color:var(--success);">Online Lobby</span></div>';
 
                 // Compact review summary
                 if (allReviews.length > 0) {
@@ -3077,7 +3068,7 @@
             setTimeout(() => { document.getElementById('player-frame').src = ''; }, 400);
             // Closing the player mid-multiplayer-session leaves the lobby
             // (v1 lobbies are one-shot — no rematch flow).
-            if (mpLobby) mpLeave(true);
+            if (mpLobby) mpCleanup();
         }
 
         /* ============ Multiplayer Lobby (#29) ============ */
@@ -3087,7 +3078,7 @@
         let mpSocket = null;        // WebSocket (null when disconnected)
         let mpLobby = null;         // latest lobby State from the server
         let mpLaunched = false;     // game running with the bridge active
-        let mpOnlineCount = 0;      // online-player count from the game payload
+
         let mpPendingCreate = null; // game id to create once the socket opens
         let mpPendingJoin = null;   // lobby code to join once the socket opens
         let mpGameToken = null;     // pm_gs_ token for the current game (passed to iframe + WS)
@@ -3128,7 +3119,6 @@
                 if (mpLobby) {
                     mpLobby = null;
                     if (mpLaunched) { mpNotifyGame({ playmore: 'closed' }); mpLaunched = false; }
-                    renderMpBox();
                     toast('Lobby connection lost.', 'error');
                 }
             };
@@ -3147,7 +3137,6 @@
                     if (!mpLaunched && (!currentGameData || currentGameData.id !== mpLobby.game_id)) {
                         await showGameDetail(mpLobby.game_id);
                     }
-                    renderMpBox();
                     // Forward lobby state to the game (for game-managed lobby UI).
                     if (mpLaunched) mpNotifyGame({ playmore: 'lobby_state', lobby: mpLobby });
                     break;
@@ -3157,7 +3146,6 @@
                     if (!currentGameData || currentGameData.id !== mpLobby.game_id) {
                         await showGameDetail(mpLobby.game_id);
                     }
-                    renderMpBox();
                     if (mpLaunched) {
                         // Game already loaded — forward launch to game.
                         mpNotifyGame({ playmore: 'launch', lobby: mpLobby });
@@ -3173,7 +3161,6 @@
                 case 'closed':
                     mpLobby = null;
                     if (mpLaunched) mpNotifyGame({ playmore: 'closed', reason: m.reason });
-                    renderMpBox();
                     toast(m.reason === 'host_left' ? 'The host closed the lobby.' : m.reason === 'server_restarting' ? 'Server restarting — rejoin in a moment.' : 'Lobby closed.', 'error');
                     break;
                 case 'error':
@@ -3190,121 +3177,19 @@
             }
         }
 
-        async function mpCreate(gameId) {
-            if (!currentUser) { showAuth('login'); return; }
-            mpPendingJoin = null;
-            await mpMintToken(gameId);
-            if (mpSocket && mpSocket.readyState === WebSocket.OPEN) {
-                mpSend({ type: 'create', game_id: gameId });
-            } else {
-                mpPendingCreate = gameId;
-                mpConnect();
-            }
-        }
-
-        async function mpJoinCode(code) {
-            if (!currentUser) { showAuth('login'); return; }
-            code = String(code || '').trim().toUpperCase();
-            if (code.length < 4) { toast('Enter a lobby code.', 'error'); return; }
-            mpPendingCreate = null;
-            if (currentGameData) await mpMintToken(currentGameData.id);
-            if (mpSocket && mpSocket.readyState === WebSocket.OPEN) {
-                mpSend({ type: 'join', code: code });
-            } else {
-                mpPendingJoin = code;
-                mpConnect();
-            }
-        }
-
-        function mpJoinFromInput() {
-            const inp = document.getElementById('mp-join-code');
-            mpJoinCode(inp ? inp.value : '');
-        }
-
-        function mpJoinFromLink(code) {
-            if (!currentUser) {
-                toast('Log in first, then open the lobby link again.', 'error');
-                showAuth('login');
-                return;
-            }
-            mpJoinCode(code);
-        }
-
-        function mpToggleReady() {
-            if (!mpLobby || !currentUser) return;
-            const me = mpLobby.players.find(p => p.id === currentUser.id);
-            mpSend({ type: 'ready', ready: !(me && me.ready) });
-        }
-
-        function mpStart() { mpSend({ type: 'start' }); }
-
-        function mpLeave(silent) {
-            mpPendingCreate = null; mpPendingJoin = null; mpGameToken = null; mpRtcConfig = null;
-            const hadLobby = !!mpLobby;
-            mpLobby = null; mpLaunched = false;
+        // Clean up multiplayer state when the player closes the game.
+        // The server handles lobby leave automatically when the WS disconnects.
+        function mpCleanup() {
+            mpPendingCreate = null; mpPendingJoin = null;
+            mpGameToken = null; mpRtcConfig = null; mpCurrentGameId = null;
+            mpLobby = null; mpLaunched = false; mpMatchmaking = false;
             if (mpSocket) {
                 const s = mpSocket;
-                mpSocket = null;         // detach first so onclose doesn't toast
+                mpSocket = null;
                 s.onclose = null;
                 try { s.send(JSON.stringify({ type: 'leave' })); } catch {}
                 try { s.close(); } catch {}
             }
-            renderMpBox();
-            if (hadLobby && !silent) toast('Left the lobby.', 'success');
-        }
-
-        function mpCopyLink() {
-            if (!mpLobby) return;
-            navigator.clipboard.writeText(location.origin + '/#lobby/' + mpLobby.code);
-            toast('Lobby link copied!', 'success');
-        }
-
-        function renderMpBox() {
-            const el = document.getElementById('mp-box');
-            if (el) el.innerHTML = mpBoxHTML();
-        }
-
-        function mpBoxHTML() {
-            const game = currentGameData;
-            if (!game || !game.multiplayer) return '';
-            let h = '<h3 style="font-size:12px;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;color:var(--text-secondary);">Multiplayer</h3>';
-            if (!currentUser) {
-                return h + '<button class="btn-secondary" style="width:100%;" ' + act('showAuth', 'login') + '>Log in to play online</button>';
-            }
-            if (!mpLobby || mpLobby.game_id !== game.id) {
-                if (mpOnlineCount > 0) h += '<p style="font-size:12px;color:var(--success);margin-bottom:10px;">● ' + mpOnlineCount + ' player' + (mpOnlineCount === 1 ? '' : 's') + ' online now</p>';
-                h += '<button class="btn-primary" style="width:100%;margin-bottom:8px;" ' + act('mpCreate', game.id) + '>Create Lobby</button>';
-                h += '<div style="display:flex;gap:6px;">';
-                h += '<input type="text" class="form-input" id="mp-join-code" placeholder="Lobby code" maxlength="6" autocomplete="off" style="flex:1;text-transform:uppercase;">';
-                h += '<button class="btn-secondary" style="padding:8px 14px;" ' + act('mpJoinFromInput') + '>Join</button>';
-                h += '</div>';
-                return h;
-            }
-            const isHost = mpLobby.host_id === currentUser.id;
-            const me = mpLobby.players.find(p => p.id === currentUser.id) || {};
-            h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">';
-            h += '<span style="font-family:monospace;font-size:18px;letter-spacing:3px;">' + escapeHtml(mpLobby.code) + '</span>';
-            h += '<button class="btn-secondary" style="padding:4px 10px;font-size:11px;" ' + act('mpCopyLink') + '>Copy Link</button></div>';
-            mpLobby.players.forEach(p => {
-                h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:13px;">';
-                h += '<img src="' + esc(avatarUrl(p)) + '" style="width:22px;height:22px;border-radius:3px;" alt="">';
-                h += '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(p.username) + '</span>';
-                h += p.host
-                    ? '<span style="font-size:10px;color:var(--accent);font-weight:bold;">HOST</span>'
-                    : '<span style="font-size:11px;color:' + (p.ready ? 'var(--success)' : 'var(--text-secondary)') + ';">' + (p.ready ? '✔ Ready' : 'waiting…') + '</span>';
-                h += '</div>';
-            });
-            if (mpLobby.started) {
-                h += '<p style="font-size:12px;color:var(--success);margin:10px 0 0;">Game in progress</p>';
-            } else if (isHost) {
-                const allReady = mpLobby.players.every(p => p.host || p.ready);
-                h += '<button class="btn-primary" style="width:100%;margin-top:10px;"' + (allReady ? '' : ' disabled') + ' ' + act('mpStart') + '>▶ Start Game</button>';
-                if (!allReady) h += '<p style="font-size:11px;color:var(--text-secondary);margin-top:5px;">Waiting for everyone to ready up…</p>';
-            } else {
-                h += '<button class="' + (me.ready ? 'btn-secondary' : 'btn-primary') + '" style="width:100%;margin-top:10px;" ' + act('mpToggleReady') + '>' + (me.ready ? 'Not Ready' : 'Ready Up') + '</button>';
-            }
-            h += '<button class="btn-secondary" style="width:100%;margin-top:8px;font-size:12px;" ' + act('mpLeave') + '>Leave Lobby</button>';
-            return h;
         }
 
         // ── postMessage bridge (SPA ⇄ game iframe) ────────────────────────────
