@@ -2974,6 +2974,23 @@
                 );
                 return;
             }
+            // For multiplayer games, route through the lobby flow instead
+            // of launching directly. The game iframe only receives lobby
+            // context (code, players, session token) when the SPA creates
+            // a lobby and starts it — a direct launch skips that, leaving
+            // the game with an empty ctx.code.
+            if (gameData && gameData.id === gameId && gameData.multiplayer) {
+                if (!currentUser) { showAuth('login'); return; }
+                if (mpLobby && mpLobby.game_id === gameId) {
+                    // Already in a lobby for this game — just launch.
+                    launchGame(gameId, entryFile);
+                } else {
+                    // Create a lobby — the game launches automatically when
+                    // the host clicks Start (or solo-starts if alone).
+                    mpCreate(gameId);
+                }
+                return;
+            }
             launchGame(gameId, entryFile);
         }
 
