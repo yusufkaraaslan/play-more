@@ -80,10 +80,11 @@ func (s *Session) trySend(msg ServerMsg) {
 // touch the database. A single mutex guards everything — operations
 // are tiny map/slice updates, and contention is bounded by MaxLobbies.
 type Hub struct {
-	mu        sync.Mutex
-	lobbies   map[string]*Lobby // code → lobby
-	userConns map[string]int    // user ID → live /ws connection count
-	gameCount map[string]int    // game ID → players currently in a lobby
+	mu          sync.Mutex
+	lobbies     map[string]*Lobby // code → lobby
+	userConns   map[string]int    // user ID → live /ws connection count
+	gameCount   map[string]int    // game ID → players currently in a lobby
+	matchQueues map[string][]*Session // game ID → queued sessions (for matchmaking)
 }
 
 // Default is the process-wide hub used by the HTTP handlers.
@@ -91,9 +92,10 @@ var Default = NewHub()
 
 func NewHub() *Hub {
 	return &Hub{
-		lobbies:   make(map[string]*Lobby),
-		userConns: make(map[string]int),
-		gameCount: make(map[string]int),
+		lobbies:     make(map[string]*Lobby),
+		userConns:   make(map[string]int),
+		gameCount:   make(map[string]int),
+		matchQueues: make(map[string][]*Session),
 	}
 }
 
@@ -121,6 +123,7 @@ func (h *Hub) Register(userID, username, avatarURL string) (*Session, error) {
 func (h *Hub) Unregister(s *Session) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	h.removeFromQueueLocked(s)
 	h.leaveLocked(s)
 	if h.userConns[s.UserID] <= 1 {
 		delete(h.userConns, s.UserID)
@@ -294,6 +297,103 @@ func (h *Hub) SetPublic(s *Session, public bool) error {
 	l.LastActive = time.Now()
 	persistLobby(l)
 	return nil
+}
+
+// Matchmake adds s to the matchmaking queue for gameID. When the queue
+// reaches playerCount, a lobby is auto-created, all queued players are
+// joined, and the game is launched immediately. Players receive
+// "matchmaking" messages with queue status updates.
+func (h *Hub) Matchmake(s *Session, gameID string, playerCount int) {
+	if playerCount < 2 || playerCount > MaxPlayers {
+		playerCount = 2
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	// Remove from any existing queue or lobby.
+	h.removeFromQueueLocked(s)
+	h.leaveLocked(s)
+
+	// Add to queue.
+	queue := h.matchQueues[gameID]
+	queue = append(queue, s)
+	h.matchQueues[gameID] = queue
+	s.lobby = nil // not in a lobby yet, just queued
+
+	// Notify all queued players of the count.
+	for _, q := range queue {
+		q.trySend(ServerMsg{
+			Type:       "matchmaking",
+			QueueSize:  len(queue),
+			TargetCount: playerCount,
+		})
+	}
+
+	// If enough players, create lobby + launch.
+	if len(queue) >= playerCount {
+		matched := queue[:playerCount]
+		h.matchQueues[gameID] = queue[playerCount:]
+
+		// Create lobby with first player as host.
+		code, err := h.newCodeLocked()
+		if err != nil {
+			for _, m := range matched {
+				m.trySend(ServerMsg{Type: "error", Error: "matchmaking failed, try again"})
+			}
+			return
+		}
+		l := &Lobby{
+			Code:          code,
+			GameID:        gameID,
+			Host:          matched[0],
+			Members:       matched,
+			FormerMembers: make(map[string]bool),
+			LastActive:    time.Now(),
+		}
+		h.lobbies[code] = l
+		h.gameCount[gameID] += len(matched)
+		for i, m := range matched {
+			m.lobby = l
+			m.spectator = false
+			m.ready = i != 0 // host is implicitly ready, others auto-ready
+		}
+
+		// Start immediately.
+		l.Started = true
+		state := l.snapshot()
+		persistLobby(l)
+		for _, m := range l.Members {
+			m.trySend(ServerMsg{Type: "launch", Lobby: state})
+		}
+	}
+}
+
+// CancelMatchmake removes s from the matchmaking queue.
+func (h *Hub) CancelMatchmake(s *Session) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.removeFromQueueLocked(s)
+}
+
+// removeFromQueueLocked removes s from all match queues. Callers hold h.mu.
+func (h *Hub) removeFromQueueLocked(s *Session) {
+	for gameID, queue := range h.matchQueues {
+		for i, q := range queue {
+			if q == s {
+				queue = append(queue[:i], queue[i+1:]...)
+				if len(queue) == 0 {
+					delete(h.matchQueues, gameID)
+				} else {
+					h.matchQueues[gameID] = queue
+					// Notify remaining players of updated count.
+					for _, rq := range queue {
+						rq.trySend(ServerMsg{Type: "matchmaking", QueueSize: len(queue)})
+					}
+				}
+				return
+			}
+		}
+	}
 }
 
 // Start launches the lobby's game. Host only; every other member must

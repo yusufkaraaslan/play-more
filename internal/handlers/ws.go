@@ -193,6 +193,10 @@ func dispatchLobbyMsg(hub *lobby.Hub, sess *lobby.Session, user *models.User, ms
 		err = hub.Relay(sess, msg.To, msg.Data)
 	case "set_metadata":
 		err = hub.SetMetadata(sess, msg.Metadata)
+	case "matchmake":
+		hub.Matchmake(sess, msg.GameID, msg.PlayerCount)
+	case "cancel_matchmake":
+		hub.CancelMatchmake(sess)
 	default:
 		sess.Send(lobby.ServerMsg{Type: "error", Error: "unknown message type"})
 		return

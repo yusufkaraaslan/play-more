@@ -2986,13 +2986,14 @@
                     launchGame(gameId, entryFile);
                     return;
                 }
-                // Show create/join modal.
+                // Show create/join/quick-play modal.
                 showModal('Multiplayer',
-                    '<p style="margin-bottom:12px;">Create a new lobby and share the code with your friends, or join an existing lobby with a code.</p>' +
-                    '<div style="display:flex;gap:8px;">' +
-                    '<button class="btn-primary" style="flex:1;" ' + act('mpCreate', gameId) + '>Create Lobby</button>' +
+                    '<p style="margin-bottom:12px;">Play with friends or get matched with random players.</p>' +
+                    '<button class="btn-primary" style="width:100%;margin-bottom:8px;" ' + act('mpQuickPlay', gameId) + '>Quick Play — Match with Randoms</button>' +
+                    '<div style="display:flex;gap:8px;margin-bottom:8px;">' +
+                    '<button class="btn-secondary" style="flex:1;" ' + act('mpCreate', gameId) + '>Create Lobby</button>' +
                     '</div>' +
-                    '<div style="display:flex;gap:6px;margin-top:10px;">' +
+                    '<div style="display:flex;gap:6px;">' +
                     '<input type="text" class="form-input" id="mp-play-join-code" placeholder="Lobby code" maxlength="6" autocomplete="off" style="flex:1;text-transform:uppercase;">' +
                     '<button class="btn-secondary" style="padding:8px 14px;" ' + act('mpPlayJoin') + '>Join</button>' +
                     '</div>',
@@ -3005,6 +3006,52 @@
         function mpPlayJoin() {
             const inp = document.getElementById('mp-play-join-code');
             if (inp) { mpJoinCode(inp.value); }
+            closeModal();
+        }
+
+        let mpMatchmaking = false;
+        function mpQuickPlay(gameId) {
+            closeModal();
+            if (!currentUser) { showAuth('login'); return; }
+            mpPendingJoin = null;
+            mpPendingCreate = null;
+            mpMatchmaking = true;
+            if (mpSocket && mpSocket.readyState === WebSocket.OPEN) {
+                mpSend({ type: 'matchmake', game_id: gameId, player_count: 2 });
+            } else {
+                mpPendingCreate = null;
+                mpConnect();
+                // The onopen handler won't send matchmake, so we need to
+                // wait for the socket to open, then send it.
+                const checkOpen = setInterval(() => {
+                    if (mpSocket && mpSocket.readyState === WebSocket.OPEN) {
+                        clearInterval(checkOpen);
+                        mpSend({ type: 'matchmake', game_id: gameId, player_count: 2 });
+                    }
+                }, 100);
+            }
+            // Show searching modal with cancel + timeout.
+            showModal('Finding Players...',
+                '<div style="text-align:center;padding:20px 0;">' +
+                '<div style="font-size:24px;margin-bottom:10px;">🔍</div>' +
+                '<p id="mp-queue-status">Searching for players...</p>' +
+                '<button class="btn-secondary" style="margin-top:16px;" ' + act('mpCancelMatchmake') + '>Cancel</button>' +
+                '</div>',
+                null, 'modal-cancel');
+            // Timeout after 60s.
+            setTimeout(() => {
+                if (mpMatchmaking) {
+                    mpSend({ type: 'cancel_matchmake' });
+                    mpMatchmaking = false;
+                    closeModal();
+                    toast('No players found. Try creating a lobby instead.', 'info');
+                }
+            }, 60000);
+        }
+
+        function mpCancelMatchmake() {
+            mpSend({ type: 'cancel_matchmake' });
+            mpMatchmaking = false;
             closeModal();
         }
 
@@ -3167,6 +3214,8 @@
                     break;
                 case 'launch':
                     mpLobby = m.lobby;
+                    // Close matchmaking modal if open.
+                    if (mpMatchmaking) { mpMatchmaking = false; closeModal(); }
                     if (!currentGameData || currentGameData.id !== mpLobby.game_id) {
                         await showGameDetail(mpLobby.game_id);
                     }
@@ -3185,6 +3234,12 @@
                     break;
                 case 'error':
                     toast(m.error || 'Lobby error', 'error');
+                    break;
+                case 'matchmaking':
+                    if (mpMatchmaking) {
+                        const el = document.getElementById('mp-queue-status');
+                        if (el) el.textContent = 'Searching... ' + m.queue_size + '/' + m.target_count + ' players found';
+                    }
                     break;
             }
         }
