@@ -249,6 +249,19 @@ func migrationsAll() []string {
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			last_active DATETIME DEFAULT CURRENT_TIMESTAMP)`,
 		`CREATE INDEX IF NOT EXISTS idx_lobbies_last_active ON lobbies(last_active)`,
+		// Cloud saves — per-user-per-game key-value storage for games.
+		// Sandboxed game iframes run at an opaque origin (no
+		// localStorage/IndexedDB), so this is their only durable
+		// storage. Value is a raw JSON document ≤ 64 KiB, opaque to
+		// the server; caps enforced in models/gamesave.go.
+		`CREATE TABLE IF NOT EXISTS game_saves (
+			user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			game_id TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+			key TEXT NOT NULL,
+			value TEXT NOT NULL,
+			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (user_id, game_id, key))`,
+		`CREATE INDEX IF NOT EXISTS idx_game_saves_game ON game_saves(game_id)`,
 	}
 }
 
@@ -618,4 +631,14 @@ CREATE TABLE IF NOT EXISTS lobbies (
     last_active      DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_lobbies_last_active ON lobbies(last_active);
+
+CREATE TABLE IF NOT EXISTS game_saves (
+    user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    game_id     TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+    key         TEXT NOT NULL,
+    value       TEXT NOT NULL,
+    updated_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, game_id, key)
+);
+CREATE INDEX IF NOT EXISTS idx_game_saves_game ON game_saves(game_id);
 `
