@@ -62,6 +62,7 @@ platform at `/playmore-mp.js` and is also embedded in the binary.
 - [Connection quality](#connection-quality)
   - [`PlayMore.ping(peerId)`](#playmorepingpeerid)
   - [`PlayMore.recommendedThrottle()`](#playmorerecommendedthrottle)
+- [Cloud Saves](#cloud-saves)
 - [The `ctx` object](#the-ctx-object)
 
 ---
@@ -1114,6 +1115,76 @@ function gameLoop() {
 }
 requestAnimationFrame(gameLoop);
 ```
+
+---
+
+## Cloud Saves
+
+Game iframes run at an **opaque origin**, so `localStorage` and
+IndexedDB are unavailable — anything you store there is gone on the
+next load. Cloud Saves are the durable replacement: a per-player,
+per-game key-value store on the PlayMore server. Use it for anything
+that should survive a reload — vehicle designs, progress, settings.
+
+The SDK does not wrap these endpoints; call the REST API directly with
+the `pm_gs_` session token from
+[`PlayMore.sessionToken()`](#playmoresessiontoken). The token is
+short-lived (5 min, refreshed by the platform), so read it fresh on
+every request — never cache it.
+
+**Endpoints** (all require `Authorization: Bearer <pm_gs_ token>`; the
+token's game must match the `:id` in the path):
+
+| Method & path | Description | Rate limit |
+|---------------|-------------|------------|
+| `PUT /api/v1/games/:id/saves/:key` | Store a value (upsert). Body is the raw JSON value. | 60 / min |
+| `GET /api/v1/games/:id/saves/:key` | Fetch a value. `{ key, value, updated_at }`; 404 if absent. | 120 / min |
+| `GET /api/v1/games/:id/saves` | List your keys. `{ saves: [{ key, size, updated_at }] }` — no values. | 60 / min |
+| `DELETE /api/v1/games/:id/saves/:key` | Delete a key. 204; idempotent. | 60 / min |
+
+**Constraints**
+
+- Keys: 1–64 chars of `a-z A-Z 0-9 . _ -` (400 otherwise).
+- Values: any valid JSON, max **64 KiB** (413 if larger).
+- Max **32 keys** per player per game — a new key beyond that is a
+  **409**; overwriting an existing key always succeeds. Batch state
+  into one document per slot rather than one key per field.
+- Saves are scoped to the (player, game) pair: a player only ever sees
+  their own saves, and a token minted for another game gets a 403.
+
+**Code example**
+
+```js
+function saveKey(key) {
+  return '/api/v1/games/' + PlayMore.gameId() + '/saves/' + key;
+}
+
+// Store the player's current design.
+function saveDesign(design) {
+  return fetch(saveKey('vehicle.main'), {
+    method: 'PUT',
+    headers: {
+      'Authorization': 'Bearer ' + PlayMore.sessionToken(),
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(design)
+  });
+}
+
+// Load it back on the next session.
+function loadDesign() {
+  return fetch(saveKey('vehicle.main'), {
+    headers: { 'Authorization': 'Bearer ' + PlayMore.sessionToken() }
+  }).then(function (r) {
+    if (r.status === 404) return null;   // no save yet
+    return r.json().then(function (save) { return save.value; });
+  });
+}
+```
+
+Writes go to the server, so debounce them — save on explicit user
+action (e.g. "Save design") or at checkpoints, not every frame. The
+60/min PUT rate limit returns 429 when exceeded.
 
 ---
 

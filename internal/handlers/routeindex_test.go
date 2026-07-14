@@ -202,6 +202,12 @@ func mountDriftFixture(r *gin.Engine) {
 	r.POST("/api/v1/play-sessions/:sid/heartbeat", func(c *gin.Context) {})
 	r.POST("/api/v1/play-sessions/:sid/end", func(c *gin.Context) {})
 
+	// Cloud Saves
+	r.GET("/api/v1/games/:id/saves", func(c *gin.Context) {})
+	r.GET("/api/v1/games/:id/saves/:key", func(c *gin.Context) {})
+	r.PUT("/api/v1/games/:id/saves/:key", func(c *gin.Context) {})
+	r.DELETE("/api/v1/games/:id/saves/:key", func(c *gin.Context) {})
+
 	// Lobby Browser
 	r.GET("/api/v1/games/:id/lobbies", func(c *gin.Context) {})
 }

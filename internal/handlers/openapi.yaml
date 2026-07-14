@@ -63,6 +63,8 @@ tags:
     description: Outbound event subscriptions (HMAC-SHA256 signed)
   - name: Builds
     description: Per-game build channels (internal/beta/stable) with promote/rollback
+  - name: Cloud Saves
+    description: Per-user-per-game key-value storage for game state
   - name: Admin
     description: Site administration (admin only)
 
@@ -1752,6 +1754,129 @@ paths:
                 properties:
                   status: { type: string }
 
+  # ===== Cloud Saves =====
+  /games/{id}/saves:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+        description: Game ID
+    get:
+      tags: [Cloud Saves]
+      summary: List the authenticated user's save keys for a game
+      description: |
+        Returns key, size (bytes), and updated_at for every save the
+        user holds for the game — never the values. Accepts session
+        auth or pm_gs_ game session tokens (the token's game must
+        match the game in the path).
+      security:
+        - session: []
+        - apiKey: []
+      responses:
+        "200":
+          description: Save slots (no values)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  saves:
+                    type: array
+                    items: { $ref: "#/components/schemas/GameSaveMeta" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /games/{id}/saves/{key}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+        description: Game ID
+      - in: path
+        name: key
+        required: true
+        schema: { type: string, pattern: "^[a-zA-Z0-9._-]{1,64}$" }
+        description: Save key (1-64 chars of a-z A-Z 0-9 . _ -)
+    put:
+      tags: [Cloud Saves]
+      summary: Store a save value (upsert)
+      description: |
+        The request body is the raw JSON value to store, verbatim and
+        opaque to the server. Max 64 KiB per value; max 32 keys per
+        user per game (the 33rd NEW key is rejected with 409 —
+        overwriting an existing key always succeeds). Accepts session
+        auth or pm_gs_ game session tokens (the token's game must
+        match the game in the path).
+      security:
+        - session: []
+        - apiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              description: Any JSON value ≤ 64 KiB — stored verbatim.
+      responses:
+        "200":
+          description: Save stored
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  key: { type: string }
+                  size: { type: integer, description: "Stored value size in bytes" }
+                  updated_at: { type: string, format: date-time }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Save key limit reached (max 32 keys per user per game)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "413":
+          description: Value exceeds 64 KiB
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+    get:
+      tags: [Cloud Saves]
+      summary: Fetch a save value
+      security:
+        - session: []
+        - apiKey: []
+      responses:
+        "200":
+          description: The stored save
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GameSave" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+    delete:
+      tags: [Cloud Saves]
+      summary: Delete a save
+      description: Idempotent — deleting a key that doesn't exist still returns 204.
+      security:
+        - session: []
+        - apiKey: []
+      responses:
+        "204": { description: Save deleted }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
   # ===== Webhooks =====
   /webhooks:
     get:
@@ -2320,3 +2445,15 @@ components:
         started_at: { type: string, format: date-time }
         last_heartbeat: { type: string, format: date-time }
         ended_at: { type: string, format: date-time, nullable: true }
+    GameSave:
+      type: object
+      properties:
+        key: { type: string, description: "Save key (1-64 chars of a-z A-Z 0-9 . _ -)" }
+        value: { description: "The stored JSON value, returned verbatim. Any JSON type." }
+        updated_at: { type: string, format: date-time }
+    GameSaveMeta:
+      type: object
+      properties:
+        key: { type: string }
+        size: { type: integer, description: "Stored value size in bytes" }
+        updated_at: { type: string, format: date-time }

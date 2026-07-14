@@ -63,6 +63,7 @@ Every cap, rate limit, and size bound in the PlayMore multiplayer system. When a
 | Upload size limit | 500 MiB | `storage.MaxFileSize` | The request body is capped (upload cap = 500 MiB + multipart overhead). Oversized uploads are rejected by `http.MaxBytesReader`. Extracted ZIP entries exceeding 500 MiB are also rejected at the file level. |
 | Image upload limit | 5 MiB | cover route body cap | Cover image uploads are capped at 5 MiB (+1 MiB overhead). Oversized requests fail with a body-read error. |
 | JSON body limit | 1 MiB | `server.go` | Any `application/json` request body is capped at 1 MiB. Oversized JSON fails with a body-read error. |
+| Cloud save value | 64 KiB | `models.MaxGameSaveValueBytes` | PUT returns 413 ("save value too large"). Also max 32 keys per user per game (`models.MaxGameSaveKeysPerUserGame`) — a 33rd NEW key returns 409; overwriting an existing key always succeeds. |
 | Chunked upload chunk size | 8 MiB | `chunkPutCap` | Each PUT chunk is capped at 8 MiB (+1 MiB headroom). Larger chunks fail the body-read. |
 
 ## HTTP rate limits

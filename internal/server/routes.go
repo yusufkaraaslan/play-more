@@ -203,6 +203,18 @@ func mountAPIRoutes(g *gin.RouterGroup, cfg apiConfig) {
 	g.POST("/play-sessions/:sid/heartbeat", middleware.AuthRequiredOrGameSession(), middleware.RateLimit(12, 60), handlers.HeartbeatPlaySessionHandler)
 	g.POST("/play-sessions/:sid/end", middleware.AuthRequiredOrGameSession(), middleware.RateLimit(10, 60), handlers.EndPlaySessionHandler)
 
+	// Cloud saves — per-user-per-game key-value storage. Game iframes
+	// run at an opaque origin (no localStorage/IndexedDB), so this is
+	// their durable storage: session auth (SPA/tools) or pm_gs_ tokens
+	// (game iframe via CORS). Values are raw JSON ≤ 64 KiB (enforced in
+	// the handler); the PUT body cap adds 1 KiB headroom so a just-over
+	// value gets a clean 413 instead of a socket error. Max 32 keys per
+	// (user, game) — the 33rd new key is a 409.
+	g.GET("/games/:id/saves", middleware.AuthRequiredOrGameSession(), middleware.RateLimit(60, 60), handlers.ListGameSavesHandler)
+	g.GET("/games/:id/saves/:key", middleware.AuthRequiredOrGameSession(), middleware.RateLimit(120, 60), handlers.GetGameSaveHandler)
+	g.PUT("/games/:id/saves/:key", middleware.AuthRequiredOrGameSession(), middleware.RateLimit(60, 60), bodyLimit((64<<10)+(1<<10)), handlers.PutGameSaveHandler)
+	g.DELETE("/games/:id/saves/:key", middleware.AuthRequiredOrGameSession(), middleware.RateLimit(60, 60), handlers.DeleteGameSaveHandler)
+
 	// Public lobby browser — list open, public, non-started lobbies.
 	g.GET("/games/:id/lobbies", middleware.RateLimit(30, 60), handlers.ListPublicLobbiesHandler)
 }
