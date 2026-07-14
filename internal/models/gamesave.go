@@ -125,7 +125,7 @@ func GetGameSave(userID, gameID, key string) (*GameSave, error) {
 // are not returned — a 32-key listing could otherwise weigh 2 MiB.
 func ListGameSaves(userID, gameID string) ([]GameSaveMeta, error) {
 	rows, err := storage.DB.Query(
-		`SELECT key, LENGTH(value), updated_at FROM game_saves WHERE user_id = ? AND game_id = ? ORDER BY key`,
+		`SELECT key, LENGTH(CAST(value AS BLOB)), updated_at FROM game_saves WHERE user_id = ? AND game_id = ? ORDER BY key`,
 		userID, gameID,
 	)
 	if err != nil {

@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/yusufkaraaslan/play-more/internal/handlers"
 	"github.com/yusufkaraaslan/play-more/internal/middleware"
+	"github.com/yusufkaraaslan/play-more/internal/models"
 )
 
 // apiConfig holds the per-request body byte caps used by the API routes.
@@ -212,7 +213,7 @@ func mountAPIRoutes(g *gin.RouterGroup, cfg apiConfig) {
 	// (user, game) — the 33rd new key is a 409.
 	g.GET("/games/:id/saves", middleware.AuthRequiredOrGameSession(), middleware.RateLimit(60, 60), handlers.ListGameSavesHandler)
 	g.GET("/games/:id/saves/:key", middleware.AuthRequiredOrGameSession(), middleware.RateLimit(120, 60), handlers.GetGameSaveHandler)
-	g.PUT("/games/:id/saves/:key", middleware.AuthRequiredOrGameSession(), middleware.RateLimit(60, 60), bodyLimit((64<<10)+(1<<10)), handlers.PutGameSaveHandler)
+	g.PUT("/games/:id/saves/:key", middleware.AuthRequiredOrGameSession(), middleware.RateLimit(60, 60), bodyLimit(models.MaxGameSaveValueBytes+(1<<10)), handlers.PutGameSaveHandler)
 	g.DELETE("/games/:id/saves/:key", middleware.AuthRequiredOrGameSession(), middleware.RateLimit(60, 60), handlers.DeleteGameSaveHandler)
 
 	// Public lobby browser — list open, public, non-started lobbies.

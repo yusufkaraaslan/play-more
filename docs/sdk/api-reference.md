@@ -1186,6 +1186,11 @@ Writes go to the server, so debounce them — save on explicit user
 action (e.g. "Save design") or at checkpoints, not every frame. The
 60/min PUT rate limit returns 429 when exceeded.
 
+One subtlety: a stored literal `null` is indistinguishable from "no
+save yet" in the `loadDesign()` example above (both yield `null`). If
+`null` is a meaningful value in your game, branch on the 404 status
+instead of the decoded value.
+
 ---
 
 ## The `ctx` object

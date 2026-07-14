@@ -275,6 +275,45 @@ func TestGameSaves_ListShowsKeysWithoutValues(t *testing.T) {
 	}
 }
 
+// Sizes must be BYTES everywhere. SQLite LENGTH() on TEXT counts code
+// points, which silently diverges from Go's len() the moment a value
+// holds non-ASCII (player names, emoji design labels) — so pin it.
+func TestGameSaves_ListSizeCountsBytesNotRunes(t *testing.T) {
+	ts, user, gameID := newSavesTest(t)
+
+	value := `{"label":"méch 🤖 araç"}`
+	w, body := ts.Do(t, "PUT", "/api/v1/games/"+gameID+"/saves/utf8", value, testutil.WithAuth(user))
+	if w.Code != http.StatusOK {
+		t.Fatalf("put: %d %s", w.Code, body)
+	}
+	var putResp struct {
+		Size int `json:"size"`
+	}
+	testutil.DecodeJSON(t, body, &putResp)
+	if putResp.Size != len(value) {
+		t.Fatalf("put size = %d, want byte length %d", putResp.Size, len(value))
+	}
+
+	w, body = ts.Do(t, "GET", "/api/v1/games/"+gameID+"/saves", nil, testutil.WithAuth(user))
+	if w.Code != http.StatusOK {
+		t.Fatalf("list: %d %s", w.Code, body)
+	}
+	var listResp struct {
+		Saves []struct {
+			Key  string `json:"key"`
+			Size int    `json:"size"`
+		} `json:"saves"`
+	}
+	testutil.DecodeJSON(t, body, &listResp)
+	if len(listResp.Saves) != 1 {
+		t.Fatalf("list has %d entries, want 1: %s", len(listResp.Saves), body)
+	}
+	if listResp.Saves[0].Size != len(value) {
+		t.Errorf("list size = %d, want byte length %d (LENGTH must cast to BLOB)",
+			listResp.Saves[0].Size, len(value))
+	}
+}
+
 func TestGameSaves_ScopedPerUser(t *testing.T) {
 	ts, user, gameID := newSavesTest(t)
 	other := testutil.SeedUser(t, nil, testutil.SeedUserOpts{EmailVerified: true})

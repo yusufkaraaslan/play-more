@@ -141,9 +141,10 @@ func AuthRequiredOrGameSession() gin.HandlerFunc {
 			c.Abort()
 			return
 		}
-		// pm_gk_ keys are for server-side logic only, not browser WS.
+		// pm_gk_ keys are for server-side logic only — not browser-facing
+		// surfaces (WebSocket, cloud saves).
 		if IsGameAPIKeyAuth(c) {
-			c.JSON(http.StatusForbidden, gin.H{"error": "game API keys cannot connect to WebSocket"})
+			c.JSON(http.StatusForbidden, gin.H{"error": "game API keys are not accepted here"})
 			c.Abort()
 			return
 		}

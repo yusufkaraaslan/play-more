@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 
@@ -119,7 +120,7 @@ func GetGameSaveHandler(c *gin.Context) {
 	}
 
 	save, err := models.GetGameSave(user.ID, gameID, key)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "save not found"})
 		return
 	}
