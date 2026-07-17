@@ -3023,6 +3023,15 @@
             const sandbox = ['allow-scripts', 'allow-pointer-lock', 'allow-popups'];
             if (hasSeparateOrigin) sandbox.push('allow-same-origin');
             frame.setAttribute('sandbox', sandbox.join(' '));
+            // Multiplayer games need the SPA's postMessage bridge (lobby
+            // commands + pm_gs_ session token) — a top-level tab has no
+            // parent to bridge to, so the game's online menu would be dead
+            // there. Hide the New Tab escape hatch for multiplayer sessions.
+            const ntBtn = document.getElementById('open-newtab-btn');
+            if (ntBtn) {
+                const isMp = !!(currentGameData && currentGameData.id === gameId && currentGameData.multiplayer);
+                ntBtn.style.display = isMp ? 'none' : '';
+            }
             frame.src = gameOrigin() + '/play/' + gameId + '/' + (entryFile || 'index.html');
             player.classList.add('active');
             gameSessionStart = Date.now();
