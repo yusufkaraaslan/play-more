@@ -66,8 +66,31 @@ func (s *Session) Send(msg ServerMsg) { s.trySend(msg) }
 
 // trySend queues a frame without blocking. A full queue means the
 // client isn't draining (dead network, or a peer flooding a game whose
-// player tabbed out) — disconnect it rather than block the hub.
+// player tabbed out). For relayed "msg" frames (game state, superseded
+// by the next frame), drop the oldest queued frame rather than kick the
+// player mid-match — a backgrounded tab recovers and gets fresh state.
+// For control frames (lobby, launch, closed, …) loss would desync
+// membership state, so force-close the session on overflow as before.
 func (s *Session) trySend(msg ServerMsg) {
+	if msg.Type == "msg" {
+		select {
+		case s.send <- msg:
+		case <-s.done:
+		default:
+			// Buffer full — evict the oldest frame to make room.
+			select {
+			case <-s.send:
+			default:
+			}
+			select {
+			case s.send <- msg:
+			case <-s.done:
+			default:
+				// Still full (writer hasn't drained): drop this frame.
+			}
+		}
+		return
+	}
 	select {
 	case s.send <- msg:
 	case <-s.done:

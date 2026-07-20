@@ -335,22 +335,65 @@ func TestConnCapPerUser(t *testing.T) {
 }
 
 func TestSlowConsumerDisconnected(t *testing.T) {
+	// Control frames (lobby snapshots) overflow → force-close.
 	h := NewHub()
 	a := register(t, h, "a")
 	b := register(t, h, "b")
 	h.Create(a, "game1", MaxPlayers)
 	code := last(drain(a), "lobby").Lobby.Code
 	h.Join(b, code)
-	// b never drains: overflow its buffer.
-	payload := json.RawMessage(`1`)
+	drain(b) // b receives its join snapshot, now stops draining
+
+	// Flood with lobby snapshots (control frames that can't be dropped).
 	for i := 0; i < SendBuffer+2; i++ {
-		h.Relay(a, "", payload)
+		h.SetMetadata(a, json.RawMessage(`{"i":1}`))
+		drain(a) // prevent a's own buffer from overflowing
 	}
+
 	select {
 	case <-b.Done():
 		// force-closed as expected
 	case <-time.After(time.Second):
-		t.Fatal("slow consumer was not force-closed")
+		t.Fatal("slow consumer was not force-closed on control-frame overflow")
+	}
+}
+
+func TestSlowConsumerDropsStaleRelayFrames(t *testing.T) {
+	// Relay (msg) frames overflow → drop-oldest, NOT force-close.
+	h := NewHub()
+	a := register(t, h, "a")
+	b := register(t, h, "b")
+	h.Create(a, "game1", MaxPlayers)
+	code := last(drain(a), "lobby").Lobby.Code
+	h.Join(b, code)
+	drain(a)
+	drain(b) // b receives its join snapshot, then stops draining
+
+	// Flood with more than SendBuffer relay frames.
+	payload := json.RawMessage(`{"tick":1}`)
+	for i := 0; i < SendBuffer*4; i++ {
+		h.Relay(a, "", payload)
+	}
+
+	// b must NOT be force-closed — stale frames were dropped instead.
+	select {
+	case <-b.Done():
+		t.Fatal("session was force-closed on relay overflow; should drop frames instead")
+	case <-time.After(200 * time.Millisecond):
+		// still connected — good
+	}
+
+	// Drain: b should receive at most SendBuffer frames (the most recent),
+	// not all of them. Every received frame must be the relay payload.
+	frames := drain(b)
+	relayCount := 0
+	for _, f := range frames {
+		if f.Type == "msg" {
+			relayCount++
+		}
+	}
+	if relayCount > SendBuffer {
+		t.Fatalf("received %d relay frames, want ≤ %d (buffer size)", relayCount, SendBuffer)
 	}
 }
 
