@@ -25,7 +25,7 @@ func TrackView(c *gin.Context) {
 	// any client can pollute game_views with arbitrary IDs, inflating
 	// analytics or creating phantom rows that survive in the table forever.
 	var exists int
-	storage.DB.QueryRow(`SELECT 1 FROM games WHERE id = ? LIMIT 1`, gameID).Scan(&exists)
+	storage.DB.QueryRow(`SELECT 1 FROM games WHERE id = ? AND published = 1 LIMIT 1`, gameID).Scan(&exists)
 	if exists != 1 {
 		// 404 not 200 — matches the SPA's expectation that bad game IDs
 		// don't quietly succeed.

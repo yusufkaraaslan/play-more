@@ -945,6 +945,12 @@ func ServeGameFiles(spaOrigin, gamesDomain string) gin.HandlerFunc {
 		}
 		// nosniff stops the browser from second-guessing our Content-Type.
 		c.Header("X-Content-Type-Options", "nosniff")
+		// Block directory listings — ServeFile generates an index for
+		// subdirectories without an index.html.
+		if fi, err := os.Stat(fullPath); err != nil || fi.IsDir() {
+			c.String(http.StatusNotFound, "not found")
+			return
+		}
 		http.ServeFile(c.Writer, c.Request, fullPath)
 	}
 }

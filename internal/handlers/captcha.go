@@ -44,7 +44,11 @@ var (
 
 // IssueCaptcha — GET /api/auth/captcha
 func IssueCaptcha(c *gin.Context) {
-	challenge := newCaptchaChallenge()
+	challenge, err := newCaptchaChallenge()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate captcha"})
+		return
+	}
 
 	captchaMu.Lock()
 	defer captchaMu.Unlock()
@@ -110,10 +114,12 @@ func VerifyCaptcha(challenge, nonce string) error {
 	return nil
 }
 
-func newCaptchaChallenge() string {
+func newCaptchaChallenge() (string, error) {
 	b := make([]byte, 16)
-	rand.Read(b)
-	return hex.EncodeToString(b)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
 }
 
 // verifyPoW checks that SHA-256(challenge + ":" + nonce) has at least

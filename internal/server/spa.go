@@ -92,9 +92,7 @@ func securityHeaders(goatCounterURL string) gin.HandlerFunc {
 		c.Set("goatcounter_url", goatCounterURL)
 		c.Header("Content-Security-Policy", "default-src 'self'; object-src 'none'")
 		if c.Request.Header.Get("X-Forwarded-Proto") == "https" || c.Request.TLS != nil {
-			// `preload` is intentionally omitted — submit the domain to
-			// hstspreload.org first, then add it back.
-			c.Header("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
+			c.Header("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload")
 		}
 		c.Header("Permissions-Policy", "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()")
 		c.Next()

@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 
 	"github.com/gin-gonic/gin"
+	"github.com/yusufkaraaslan/play-more/internal/middleware"
 	"github.com/yusufkaraaslan/play-more/internal/models"
 	"github.com/yusufkaraaslan/play-more/internal/storage"
 )
@@ -36,7 +37,12 @@ type seedGame struct {
 }
 
 func SeedData(c *gin.Context) {
-	// Seed is admin-only. To seed a fresh install, register first, then call this endpoint.
+	// Seed is admin-only and session-only (API keys rejected, matching
+	// every other admin endpoint).
+	if middleware.IsAPIKeyAuth(c) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Not found"})
+		return
+	}
 	if !isAdmin(c) {
 		// Match admin endpoint convention — 404 hides admin/seed existence
 		c.JSON(http.StatusNotFound, gin.H{"error": "Not found"})

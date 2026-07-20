@@ -28,7 +28,7 @@ var (
 	// CSS sanitisation — block data-exfiltration and XSS vectors.
 	cssImportRe      = regexp.MustCompile(`(?i)@import\b[^;]*;?`)
 	cssFontFaceRe    = regexp.MustCompile(`(?i)@font-face\b[^{]*\{[^}]*\}`)
-	cssExternalURLRe = regexp.MustCompile(`(?i)url\s*\(\s*['"]?\s*https?://[^)]+['"]?\s*\)`)
+	cssExternalURLRe = regexp.MustCompile(`(?i)url\s*\(\s*['"]?\s*(?:https?:)?//[^)]+['"]?\s*\)`)
 	cssExpressionRe  = regexp.MustCompile(`(?i)expression\s*\(`)
 	cssBehaviorRe    = regexp.MustCompile(`(?i)behavior\s*:`)
 	cssMozBindingRe  = regexp.MustCompile(`(?i)-moz-binding\s*:`)

@@ -81,6 +81,17 @@ func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxi
 	// Global middleware
 	// =========================================================================
 
+	// Resolve real client IP before the logger runs so the access log
+	// uses the uns spoofable RealClientIP instead of Gin's default
+	// c.ClientIP() (which returns the left-most XFF element, spoofable
+	// when no trusted proxies are configured).
+	r.Use(func(c *gin.Context) {
+		if ip := middleware.RealClientIP(c); ip != "" {
+			c.Request.RemoteAddr = ip
+		}
+		c.Next()
+	})
+
 	// Custom logger — strips query strings so tokens don't land in logs.
 	r.Use(gin.LoggerWithFormatter(func(p gin.LogFormatterParams) string {
 		path := strings.ReplaceAll(p.Path, "\n", "")
@@ -159,7 +170,7 @@ func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxi
 
 	// Gzip (skip game file serving; skip /ws — the upgrade needs the raw
 	// http.Hijacker, not a compressing writer wrapper)
-	r.Use(gzip.Gzip(gzip.DefaultCompression, gzip.WithExcludedPaths([]string{"/play/", "/ws"})))
+	r.Use(gzip.Gzip(gzip.DefaultCompression, gzip.WithExcludedPaths([]string{"/play/", "/ws"}), gzip.WithMinLength(2048)))
 
 	// Site analytics
 	r.Use(middleware.TrackPageView())

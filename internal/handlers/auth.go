@@ -140,7 +140,11 @@ func Register(c *gin.Context) {
 		// return the SAME neutral response as the email-already-exists branch
 		// above, so new vs. existing addresses are indistinguishable. The user
 		// verifies (or simply signs in — login doesn't require verification).
-		vToken := generateToken()
+		vToken, err := generateToken()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate token"})
+			return
+		}
 		models.CreateEmailToken(hashToken(vToken), user.ID, "verify", time.Now().Add(24*time.Hour))
 		go email.SendVerification(input.Email, input.Username, vToken)
 		c.JSON(http.StatusOK, gin.H{"message": verificationPendingMsg, "email_pending": true})
@@ -246,10 +250,12 @@ func Me(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"user": user, "stats": stats})
 }
 
-func generateToken() string {
+func generateToken() (string, error) {
 	b := make([]byte, 32)
-	rand.Read(b)
-	return hex.EncodeToString(b)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
 }
 
 // hashToken returns a stable hex-encoded SHA-256 hash for storing email tokens
@@ -313,7 +319,11 @@ func ResendVerification(c *gin.Context) {
 		return
 	}
 	models.DeleteEmailTokens(user.ID, "verify")
-	token := generateToken()
+	token, err := generateToken()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate token"})
+		return
+	}
 	models.CreateEmailToken(hashToken(token), user.ID, "verify", time.Now().Add(24*time.Hour))
 	if err := email.SendVerification(user.Email, user.Username, token); err != nil {
 		log.Printf("[EMAIL] resend verification failed for user=%s: %v", user.ID, err)
@@ -397,7 +407,11 @@ func ForgotPassword(c *gin.Context) {
 	}
 	// Delete old reset tokens for this user
 	models.DeleteEmailTokens(user.ID, "reset")
-	token := generateToken()
+	token, err := generateToken()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate token"})
+		return
+	}
 	models.CreateEmailToken(hashToken(token), user.ID, "reset", time.Now().Add(1*time.Hour))
 	if err := email.SendPasswordReset(user.Email, user.Username, token); err != nil {
 		// Log the SMTP failure but keep the response identical to the unknown-

@@ -25,8 +25,13 @@ func IsSecure(c *gin.Context) bool {
 	if c.Request.TLS != nil {
 		return true
 	}
-	// X-Forwarded-Proto is only set by Gin into c.Request when proxy is trusted
-	return c.Request.Header.Get("X-Forwarded-Proto") == "https"
+	// X-Forwarded-Proto is only trustworthy from a trusted proxy. Without
+	// this gate, a direct client can set the header and force Secure cookies
+	// even when the connection is plaintext.
+	if len(trustedProxyList) > 0 && c.Request.Header.Get("X-Forwarded-Proto") == "https" {
+		return true
+	}
+	return false
 }
 
 // AuthRequired rejects unauthenticated requests. Game-scoped credentials

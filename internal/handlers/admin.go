@@ -50,7 +50,7 @@ func isAdmin(c *gin.Context) bool {
 	}
 	// First registered user is admin
 	var firstID string
-	storage.DB.QueryRow(`SELECT id FROM users ORDER BY created_at ASC LIMIT 1`).Scan(&firstID)
+	storage.DB.QueryRow(`SELECT id FROM users ORDER BY created_at ASC, rowid ASC LIMIT 1`).Scan(&firstID)
 	return user.ID == firstID
 }
 
