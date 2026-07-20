@@ -427,6 +427,45 @@
     post({ playmore: 'send', to: to || '', data: data }, parentOrigin);
   }
 
+  function peerIsP2P(peerId) {
+    var p = peers[peerId];
+    return p && p.dc && p.state === 'open';
+  }
+
+  // broadcastSend sends data to every peer except the sender. If all peers
+  // are P2P-connected, it sends direct over data channels. If ANY peer
+  // needs relay, it sends a single server-side broadcast (to: "") instead
+  // of per-peer relay frames — otherwise a 6-player game at 20 Hz would
+  // send 5 × 20 = 100 msg/s, blowing the 30 msg/s cap in ws.go. P2P
+  // peers also receive via relay, avoiding duplicates from direct + relay.
+  function broadcastSend(data, unreliable) {
+    var relayNeeded = false;
+    for (var i = 0; i < ctx.players.length; i++) {
+      var pid = ctx.players[i].id;
+      if (pid && pid !== (ctx.you ? ctx.you.id : '') && !peerIsP2P(pid)) {
+        relayNeeded = true;
+        break;
+      }
+    }
+    if (relayNeeded) {
+      sendViaRelay('', data);
+      return;
+    }
+    // All peers are P2P — send direct to each.
+    for (var j = 0; j < ctx.players.length; j++) {
+      var pid2 = ctx.players[j].id;
+      if (pid2 && pid2 !== (ctx.you ? ctx.you.id : '')) {
+        if (unreliable) {
+          if (!sendViaDataChannelUnreliable(pid2, data)) {
+            sendViaDataChannel(pid2, data);
+          }
+        } else {
+          sendViaDataChannel(pid2, data);
+        }
+      }
+    }
+  }
+
   function sendRawDataChannel(peerId, data) {
     var p = peers[peerId];
     if (p && p.dc && p.state === 'open') {
@@ -576,14 +615,7 @@
           sendViaRelay(to, data);
         }
       } else {
-        for (var i = 0; i < ctx.players.length; i++) {
-          var pid = ctx.players[i].id;
-          if (pid && pid !== (ctx.you ? ctx.you.id : '')) {
-            if (!sendViaDataChannel(pid, data)) {
-              sendViaRelay(pid, data);
-            }
-          }
-        }
+        broadcastSend(data, false);
       }
       return API;
     },
@@ -600,14 +632,7 @@
           if (!sendViaDataChannel(to, data)) sendViaRelay(to, data);
         }
       } else {
-        for (var i = 0; i < ctx.players.length; i++) {
-          var pid = ctx.players[i].id;
-          if (pid && pid !== (ctx.you ? ctx.you.id : '')) {
-            if (!sendViaDataChannelUnreliable(pid, data)) {
-              if (!sendViaDataChannel(pid, data)) sendViaRelay(pid, data);
-            }
-          }
-        }
+        broadcastSend(data, true);
       }
       return API;
     },
@@ -661,7 +686,7 @@
     /* Create a new lobby for this game. The caller becomes the host.
      * Results in an onLobbyState callback with the new lobby's code. */
     createLobby: cmd(function (opts) {
-      return { playmore: 'create_lobby', public: !!(opts && opts.public) };
+      return { playmore: 'create_lobby', public: !!(opts && opts.public), max_players: (opts && opts.maxPlayers) || 0 };
     }),
 
     /* Join an existing lobby by code. Results in onLobbyState. */
