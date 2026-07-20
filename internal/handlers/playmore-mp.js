@@ -74,10 +74,18 @@
   var RECONNECT_DELAY = 5000;      // 5s before reconnection attempt
   var RECONNECT_MAX_ATTEMPTS = 3;  // give up after 3 tries
   var STAGGER_DELAY = 200;         // 200ms between initiating each peer connection
+  var STATS_REPORT_INTERVAL = 60000; // 60s transport stats report to SPA
 
   // ── Global bandwidth stats ────────────────────────────────────
   var totalBytesSent = 0;
   var totalBytesReceived = 0;
+
+  // ── Transport stats reporter ──────────────────────────────────
+  // Every 60s, report per-peer transport (webrtc/relay) + RTT to the
+  // SPA via postMessage. The SPA forwards it to the server via the
+  // play-session heartbeat so the admin dashboard can show P2P vs
+  // relay ratio and average RTT.
+  var statsReportTimer = null;
 
   var handlers = {
     ready: [],
@@ -395,6 +403,28 @@
     peers = {};
   }
 
+  // ── Transport stats reporter ──────────────────────────────────
+
+  function collectTransportStats() {
+    var out = {};
+    for (var id in peers) {
+      out[id] = { transport: transportFor(id), rtt_ms: peers[id].rtt };
+    }
+    return out;
+  }
+
+  function startStatsReporter() {
+    stopStatsReporter();
+    statsReportTimer = setInterval(function () {
+      if (!started || parentOrigin === null) return;
+      post({ playmore: 'report_mp_stats', stats: collectTransportStats() }, parentOrigin);
+    }, STATS_REPORT_INTERVAL);
+  }
+
+  function stopStatsReporter() {
+    if (statsReportTimer) { clearInterval(statsReportTimer); statsReportTimer = null; }
+  }
+
   // ── Inbound signaling ─────────────────────────────────────────
 
   function handleSignal(from, signal) {
@@ -553,7 +583,10 @@
           started = true;
         }
         emit('ready', ctx);
-        if (started) initPeersNow(true);
+        if (started) {
+          initPeersNow(true);
+          startStatsReporter();
+        }
         break;
       case 'lobby_state':
         // Lobby state update (lobby created, player joined/left, ready toggled,
@@ -575,6 +608,7 @@
           applyLobbyState(d.lobby);
           started = true;
           initPeersNow(true);
+          startStatsReporter();
           emit('launch', d.lobby);
         }
         break;
@@ -590,6 +624,7 @@
         break;
       case 'closed':
         started = false;
+        stopStatsReporter();
         closeAllPeers();
         emit('closed');
         break;

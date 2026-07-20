@@ -152,6 +152,7 @@ func mountAPIRoutes(g *gin.RouterGroup, cfg apiConfig) {
 	admin.GET("/featured", middleware.RateLimit(120, 3600), handlers.AdminGetFeatured)
 	admin.PUT("/featured", middleware.RateLimit(60, 3600), handlers.AdminSetFeatured)
 	admin.GET("/analytics", middleware.RateLimit(120, 3600), handlers.AdminSiteAnalytics)
+	admin.GET("/multiplayer-stats", middleware.RateLimit(120, 3600), handlers.AdminMultiplayerStats)
 
 	// Image uploads
 	g.POST("/upload/image", middleware.AuthRequired(), middleware.RateLimit(20, 3600), bodyLimit(cfg.imageCap), handlers.UploadImage)

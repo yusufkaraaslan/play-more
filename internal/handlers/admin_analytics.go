@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/yusufkaraaslan/play-more/internal/lobby"
 	"github.com/yusufkaraaslan/play-more/internal/models"
 	"github.com/yusufkaraaslan/play-more/internal/storage"
 )
@@ -189,4 +190,12 @@ func queryNameCounts(query string) []NameCount {
 		result = []NameCount{}
 	}
 	return result
+}
+
+// AdminMultiplayerStats handles GET /api/v1/admin/multiplayer-stats.
+// Returns live lobby data + aggregated client-reported transport stats
+// (P2P vs relay ratio, average RTT) for the admin dashboard.
+func AdminMultiplayerStats(c *gin.Context) {
+	snap := lobby.Default.MultiplayerStats()
+	c.JSON(http.StatusOK, gin.H{"stats": snap})
 }

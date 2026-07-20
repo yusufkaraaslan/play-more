@@ -107,6 +107,37 @@ type matchKey struct {
 	playerCount int
 }
 
+// PeerTransportStats is one peer's transport info as reported by the
+// client SDK via the play-session heartbeat.
+type PeerTransportStats struct {
+	Transport string `json:"transport"` // "webrtc" or "relay"
+	RTT       int    `json:"rtt_ms"`    // -1 if unknown
+}
+
+// SessionTransportStats is the per-session snapshot reported by a
+// game client. The Hub keeps the latest report per session ID for
+// the admin multiplayer stats dashboard.
+type SessionTransportStats struct {
+	GameID     string
+	UserID     string
+	Peers      map[string]PeerTransportStats
+	ReportedAt time.Time
+}
+
+// MultiplayerStatsSnapshot is the admin-facing aggregate of live lobby
+// data and client-reported transport stats.
+type MultiplayerStatsSnapshot struct {
+	ActiveLobbies        int     `json:"active_lobbies"`
+	PlayersInLobbies    int     `json:"players_in_lobbies"`
+	PeerConnections     int     `json:"peer_connections"`
+	P2PConnections      int     `json:"p2p_connections"`
+	RelayConnections    int     `json:"relay_connections"`
+	P2PRatio            float64 `json:"p2p_ratio"`       // 0–100
+	RelayRatio          float64 `json:"relay_ratio"`     // 0–100
+	AvgRTT              int     `json:"avg_rtt_ms"`      // 0 if no data
+	ReportingSessions   int     `json:"reporting_sessions"`
+}
+
 // Hub is the in-memory lobby registry. One global instance (Default)
 // lives for the process lifetime; lobbies are ephemeral and never
 // touch the database. A single mutex guards everything — operations
@@ -117,6 +148,7 @@ type Hub struct {
 	userConns   map[string]int    // user ID → live /ws connection count
 	gameCount   map[string]int    // game ID → players currently in a lobby
 	matchQueues map[matchKey][]*Session // (game, player_count) → queued sessions
+	mpStats     map[string]*SessionTransportStats // sessionID → latest transport stats
 }
 
 // Default is the process-wide hub used by the HTTP handlers.
@@ -128,6 +160,7 @@ func NewHub() *Hub {
 		userConns:   make(map[string]int),
 		gameCount:   make(map[string]int),
 		matchQueues: make(map[matchKey][]*Session),
+		mpStats:     make(map[string]*SessionTransportStats),
 	}
 }
 
@@ -557,6 +590,65 @@ func (h *Hub) OnlineCount(gameID string) int {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	return h.gameCount[gameID]
+}
+
+// ReportTransportStats stores the latest client-reported transport stats
+// for a play session. Called from the play-session heartbeat handler.
+// Stale entries (>5 min, matching the active-session window) are pruned
+// on read by MultiplayerStats.
+func (h *Hub) ReportTransportStats(sessionID, userID, gameID string, peers map[string]PeerTransportStats) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.mpStats[sessionID] = &SessionTransportStats{
+		GameID:     gameID,
+		UserID:     userID,
+		Peers:      peers,
+		ReportedAt: time.Now(),
+	}
+}
+
+// MultiplayerStats returns a snapshot of live lobby data + aggregated
+// client-reported transport stats for the admin dashboard.
+func (h *Hub) MultiplayerStats() MultiplayerStatsSnapshot {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	var snap MultiplayerStatsSnapshot
+	snap.ActiveLobbies = len(h.lobbies)
+	for _, cnt := range h.gameCount {
+		snap.PlayersInLobbies += cnt
+	}
+
+	// Aggregate transport stats, pruning stale entries.
+	cutoff := time.Now().Add(-5 * time.Minute)
+	rttCount := 0
+	for sid, st := range h.mpStats {
+		if st.ReportedAt.Before(cutoff) {
+			delete(h.mpStats, sid)
+			continue
+		}
+		snap.ReportingSessions++
+		for _, p := range st.Peers {
+			snap.PeerConnections++
+			if p.Transport == "webrtc" {
+				snap.P2PConnections++
+			} else {
+				snap.RelayConnections++
+			}
+			if p.RTT > 0 {
+				snap.AvgRTT += p.RTT
+				rttCount++
+			}
+		}
+	}
+	if snap.PeerConnections > 0 {
+		snap.P2PRatio = float64(snap.P2PConnections) / float64(snap.PeerConnections) * 100
+		snap.RelayRatio = float64(snap.RelayConnections) / float64(snap.PeerConnections) * 100
+	}
+	if rttCount > 0 {
+		snap.AvgRTT /= rttCount
+	}
+	return snap
 }
 
 // CloseGameLobbies tears down every live lobby for a game and tells its

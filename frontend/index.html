@@ -826,6 +826,7 @@
         let sessionTimerInterval = null;
         let playSessionId = null;
         let playSessionHeartbeat = null;
+        let mpTransportStats = null; // per-peer transport stats from SDK (for admin dashboard)
         let storePage = 1;
         const STORE_LIMIT = 12;
 
@@ -3052,8 +3053,11 @@
                     if (data.session_id) {
                         playSessionId = data.session_id;
                         playSessionHeartbeat = setInterval(() => {
+                            const body = mpTransportStats ? JSON.stringify({ transport_stats: mpTransportStats }) : '';
                             fetch('/api/v1/play-sessions/' + playSessionId + '/heartbeat', {
-                                method: 'POST', credentials: 'include'
+                                method: 'POST', credentials: 'include',
+                                headers: body ? { 'Content-Type': 'application/json' } : {},
+                                body: body || undefined
                             }).catch(() => {});
                         }, 30000);
                     }
@@ -3065,6 +3069,7 @@
             if (sessionTimerInterval) { clearInterval(sessionTimerInterval); sessionTimerInterval = null; }
             // End play session
             if (playSessionHeartbeat) { clearInterval(playSessionHeartbeat); playSessionHeartbeat = null; }
+            mpTransportStats = null;
             if (playSessionId) {
                 fetch('/api/v1/play-sessions/' + playSessionId + '/end', {
                     method: 'POST', credentials: 'include'
@@ -3299,6 +3304,12 @@
                     break;
                 case 'cancel_matchmake':
                     mpSend({ type: 'cancel_matchmake' });
+                    break;
+                case 'report_mp_stats':
+                    // SDK reports per-peer transport (webrtc/relay) + RTT.
+                    // Forwarded to the server via the play-session heartbeat
+                    // so the admin dashboard can show P2P vs relay ratio.
+                    if (d.stats) mpTransportStats = d.stats;
                     break;
             }
         });
@@ -4325,6 +4336,8 @@
 
         async function renderAdminAnalytics() {
             const d = (await api('/admin/analytics')).analytics;
+            let mp = null;
+            try { mp = (await api('/admin/multiplayer-stats')).stats; } catch {}
             let html = '';
 
             // Real-time + growth
@@ -4415,6 +4428,26 @@
                 html += barChart(d.most_played_games, 0, () => 'var(--success)');
             }
             html += '</div></div>';
+
+            // Multiplayer stats
+            if (mp) {
+                html += '<div class="card-box" style="margin-bottom:0;"><h3 style="font-size:14px;margin-bottom:12px;">Multiplayer</h3>';
+                html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px;">';
+                html += '<div style="text-align:center;"><div style="font-size:20px;font-weight:bold;color:var(--accent);">' + mp.active_lobbies + '</div><div style="font-size:10px;color:var(--text-secondary);">Active Lobbies</div></div>';
+                html += '<div style="text-align:center;"><div style="font-size:20px;font-weight:bold;color:var(--accent);">' + mp.players_in_lobbies + '</div><div style="font-size:10px;color:var(--text-secondary);">In Lobbies</div></div>';
+                html += '<div style="text-align:center;"><div style="font-size:20px;font-weight:bold;color:var(--success);">' + (mp.peer_connections > 0 ? mp.p2p_ratio.toFixed(0) + '%' : '—') + '</div><div style="font-size:10px;color:var(--text-secondary);">P2P Ratio</div></div>';
+                html += '<div style="text-align:center;"><div style="font-size:20px;font-weight:bold;color:var(--accent);">' + (mp.avg_rtt_ms > 0 ? mp.avg_rtt_ms + 'ms' : '—') + '</div><div style="font-size:10px;color:var(--text-secondary);">Avg RTT</div></div>';
+                html += '</div>';
+                if (mp.peer_connections > 0) {
+                    html += '<div style="display:flex;height:12px;border-radius:6px;overflow:hidden;margin-bottom:8px;">';
+                    html += '<div style="width:' + mp.p2p_ratio + '%;background:var(--success);" title="P2P: ' + mp.p2p_connections + '"></div>';
+                    html += '<div style="width:' + mp.relay_ratio + '%;background:var(--warning);" title="Relay: ' + mp.relay_connections + '"></div></div>';
+                    html += '<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-secondary);"><span>P2P: ' + mp.p2p_connections + '</span><span>Relay: ' + mp.relay_connections + '</span></div>';
+                } else {
+                    html += '<div style="font-size:11px;color:var(--text-secondary);">No active peer connections</div>';
+                }
+                html += '</div>';
+            }
 
             return html;
         }

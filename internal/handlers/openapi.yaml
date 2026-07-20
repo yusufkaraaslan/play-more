@@ -2115,6 +2115,16 @@ paths:
         "200":
           description: Analytics summary
 
+  /admin/multiplayer-stats:
+    get:
+      tags: [Admin]
+      summary: Live multiplayer lobby + transport stats
+      security:
+        - session: []
+      responses:
+        "200":
+          description: Multiplayer stats snapshot (active lobbies, players, P2P vs relay ratio, avg RTT)
+
 components:
   securitySchemes:
     session:

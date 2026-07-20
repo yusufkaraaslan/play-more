@@ -174,6 +174,7 @@ func mountDriftFixture(r *gin.Engine) {
 	r.GET("/api/v1/admin/featured", func(c *gin.Context) {})
 	r.PUT("/api/v1/admin/featured", func(c *gin.Context) {})
 	r.GET("/api/v1/admin/analytics", func(c *gin.Context) {})
+	r.GET("/api/v1/admin/multiplayer-stats", func(c *gin.Context) {})
 
 	// Webhooks
 	r.GET("/api/v1/webhooks", func(c *gin.Context) {})
