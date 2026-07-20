@@ -548,9 +548,10 @@ func (h *Hub) leaveLocked(s *Session) {
 	if l == nil {
 		return
 	}
+	wasSpectator := s.spectator
 	s.lobby = nil
 	s.ready = false
-	s.spectator = false // M3: clear sticky spectator flag
+	s.spectator = false
 
 	// Remove s from the member list.
 	for i, m := range l.Members {
@@ -585,7 +586,7 @@ func (h *Hub) leaveLocked(s *Session) {
 	}
 
 	// Only decrement game count for non-spectators (spectators were never counted).
-	if !s.spectator {
+	if !wasSpectator {
 		h.decGameCountLocked(l.GameID)
 	}
 	l.LastActive = time.Now()

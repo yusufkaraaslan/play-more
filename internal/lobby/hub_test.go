@@ -534,3 +534,35 @@ func TestRejoinAfterDisconnect(t *testing.T) {
 		t.Fatal("rejoined player doesn't see started=true")
 	}
 }
+
+func TestSpectatorDepartureDoesNotDecrementGameCount(t *testing.T) {
+	h := NewHub()
+	host := register(t, h, "alice")
+	spec := register(t, h, "bobby")
+
+	h.Create(host, "game1", MaxPlayers)
+	code := last(drain(host), "lobby").Lobby.Code
+
+	// Join as spectator — must not bump OnlineCount.
+	if err := h.JoinSpectator(spec, code); err != nil {
+		t.Fatalf("spectator join: %v", err)
+	}
+	drain(host) // host sees the spectator
+	drain(spec)
+	if got := h.OnlineCount("game1"); got != 1 {
+		t.Fatalf("OnlineCount after spectator join = %d, want 1 (spectators excluded)", got)
+	}
+
+	// Spectator leaves — OnlineCount must stay 1, not drop to 0.
+	h.Leave(spec)
+	drain(host)
+	if got := h.OnlineCount("game1"); got != 1 {
+		t.Fatalf("OnlineCount after spectator leave = %d, want 1 (spectator never counted)", got)
+	}
+
+	// Now the real player leaves — OnlineCount drops to 0.
+	h.Leave(host)
+	if got := h.OnlineCount("game1"); got != 0 {
+		t.Fatalf("OnlineCount after host leave = %d, want 0", got)
+	}
+}
