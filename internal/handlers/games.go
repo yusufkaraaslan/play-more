@@ -870,6 +870,29 @@ func ServeGameFiles(spaOrigin, gamesDomain string) gin.HandlerFunc {
 			}
 		}
 
+		// ?channel= lets the game's developer preview beta/internal builds
+		// without swapping the active stable build. Only the owner can use
+		// non-stable channels; everyone else gets a 404 (don't leak existence).
+		channel := c.Query("channel")
+		if channel != "" && channel != "stable" {
+			if !models.IsValidBuildChannel(channel) {
+				c.String(http.StatusBadRequest, "invalid channel")
+				return
+			}
+			user := middleware.GetUser(c)
+			if user == nil || user.ID != game.DeveloperID {
+				c.String(http.StatusNotFound, "game not found")
+				return
+			}
+			build, err := models.ActiveBuild(game.ID, channel)
+			if err != nil || build == nil {
+				c.String(http.StatusNotFound, "no active build for channel")
+				return
+			}
+			game.FilePath = build.FilePath
+			game.EntryFile = build.EntryFile
+		}
+
 		filePath := c.Param("filepath")
 		if filePath == "" || filePath == "/" {
 			filePath = "/" + game.EntryFile
