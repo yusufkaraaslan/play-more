@@ -139,9 +139,14 @@ func (h *Hub) Unregister(s *Session) {
 // reconnect/retry flows self-healing). The caller (handler) is
 // responsible for validating the game itself — existence, published,
 // multiplayer flag — so the hub stays free of DB imports.
-func (h *Hub) Create(s *Session, gameID string) error {
+// maxPlayers is the optional per-lobby cap (clamped [2, MaxPlayers]).
+// Values ≤ 0 or > MaxPlayers silently become MaxPlayers.
+func (h *Hub) Create(s *Session, gameID string, maxPlayers int) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	if maxPlayers < 2 || maxPlayers > MaxPlayers {
+		maxPlayers = MaxPlayers
+	}
 	if len(h.lobbies) >= MaxLobbies {
 		return ErrTooManyLobbies
 	}
@@ -155,6 +160,7 @@ func (h *Hub) Create(s *Session, gameID string) error {
 		GameID:        gameID,
 		Host:          s,
 		Members:       []*Session{s},
+		MaxPlayers:    maxPlayers,
 		FormerMembers: make(map[string]bool),
 		LastActive:    time.Now(),
 	}
@@ -184,7 +190,14 @@ func (h *Hub) Join(s *Session, code string) error {
 		// Rejoin: remove from former members, fall through to add.
 		delete(l.FormerMembers, s.UserID)
 	}
-	if len(l.Members) >= MaxPlayers {
+	// Count non-spectator members (spectators don't take a player slot).
+	playerCount := 0
+	for _, m := range l.Members {
+		if !m.spectator {
+			playerCount++
+		}
+	}
+	if playerCount >= l.MaxPlayers {
 		return ErrLobbyFull
 	}
 	if s.lobby == l {
@@ -348,6 +361,7 @@ func (h *Hub) Matchmake(s *Session, gameID string, playerCount int) {
 			GameID:        gameID,
 			Host:          matched[0],
 			Members:       matched,
+			MaxPlayers:    playerCount,
 			FormerMembers: make(map[string]bool),
 			LastActive:    time.Now(),
 		}
@@ -459,6 +473,7 @@ func (h *Hub) Relay(s *Session, to string, data []byte) error {
 type PublicLobbyInfo struct {
 	Code        string `json:"code"`
 	PlayerCount int    `json:"player_count"`
+	MaxPlayers  int    `json:"max_players"`
 	Started     bool   `json:"started"`
 	HostName    string `json:"host_name"`
 }
@@ -486,6 +501,7 @@ func (h *Hub) ListPublicLobbies(gameID string) []PublicLobbyInfo {
 		out = append(out, PublicLobbyInfo{
 			Code:        l.Code,
 			PlayerCount: players,
+			MaxPlayers:  l.MaxPlayers,
 			Started:     l.Started,
 			HostName:    hostName,
 		})

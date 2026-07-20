@@ -893,7 +893,7 @@ of `onReady` is safe.
 
 | Method | Description | Result callback |
 |--------|-------------|-----------------|
-| `PlayMore.createLobby(opts?)` | Create a lobby; caller becomes host. `opts.public` lists it in the public browser. | `onLobbyState` |
+| `PlayMore.createLobby(opts?)` | Create a lobby; caller becomes host. `opts.public` lists it in the public browser, `opts.maxPlayers` caps the lobby at 2–8 players (default 8). | `onLobbyState` |
 | `PlayMore.joinLobby(code)` | Join by 6-char code (case-insensitive, whitespace-trimmed). | `onLobbyState` (or `onError`/`error` frame if not found) |
 | `PlayMore.quickPlay(playerCount?)` | Auto-match with random players (default 2, clamped 2–8). | `onMatchmaking` then `onLaunch` |
 | `PlayMore.readyUp(ready)` | Toggle your ready state (non-host). | `onLobbyState` |
@@ -906,7 +906,7 @@ of `onReady` is safe.
 Fires whenever the lobby changes before launch — created, joined,
 player joined/left, ready toggled, host migrated, or metadata updated.
 The callback receives the full lobby snapshot
-`{ code, game_id, host_id, started, players: [...], metadata }`. Use it
+`{ code, game_id, host_id, started, max_players, players: [...], metadata }`. Use it
 to (re)draw your lobby roster and enable/disable the host's Start
 button. `onPlayers` still fires alongside it for membership-only logic.
 

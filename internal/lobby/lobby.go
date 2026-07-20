@@ -9,6 +9,7 @@ type Lobby struct {
 	GameID        string
 	Host          *Session
 	Members       []*Session // includes Host, in join order
+	MaxPlayers    int        // per-lobby cap (2–8), default MaxPlayers
 	Started       bool
 	Metadata      []byte // opaque JSON — game settings (map, difficulty, etc.)
 	FormerMembers map[string]bool // user IDs that left a started lobby — can rejoin
@@ -34,12 +35,13 @@ func (l *Lobby) snapshot() *State {
 		})
 	}
 	return &State{
-		Code:     l.Code,
-		GameID:   l.GameID,
-		HostID:   hostID,
-		Started:  l.Started,
-		Players:  players,
-		Metadata: l.Metadata,
+		Code:       l.Code,
+		GameID:     l.GameID,
+		HostID:     hostID,
+		Started:    l.Started,
+		Players:    players,
+		MaxPlayers: l.MaxPlayers,
+		Metadata:   l.Metadata,
 	}
 }
 

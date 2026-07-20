@@ -3280,7 +3280,7 @@
                 // drop); game-supplied fields are coerced here, at the trust
                 // boundary, since the iframe is untrusted.
                 case 'create_lobby':
-                    mpSendOrQueue({ type: 'create', game_id: mpCurrentGameId, public: !!d.public });
+                    mpSendOrQueue({ type: 'create', game_id: mpCurrentGameId, public: !!d.public, max_players: d.max_players || 0 });
                     break;
                 case 'join_lobby':
                     mpSendOrQueue({ type: 'join', code: String(d.code || '').trim().toUpperCase() });

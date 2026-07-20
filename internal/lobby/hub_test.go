@@ -43,7 +43,7 @@ func TestCreateJoinReadyStartFlow(t *testing.T) {
 	host := register(t, h, "alice")
 	guest := register(t, h, "bob")
 
-	if err := h.Create(host, "game1"); err != nil {
+	if err := h.Create(host, "game1", MaxPlayers); err != nil {
 		t.Fatalf("create: %v", err)
 	}
 	state := last(drain(host), "lobby")
@@ -105,7 +105,7 @@ func TestHostLeaveMigratesHost(t *testing.T) {
 	host := register(t, h, "alice")
 	guest := register(t, h, "bob")
 
-	if err := h.Create(host, "game1"); err != nil {
+	if err := h.Create(host, "game1", MaxPlayers); err != nil {
 		t.Fatal(err)
 	}
 	code := last(drain(host), "lobby").Lobby.Code
@@ -152,7 +152,7 @@ func TestHostLeaveLastMemberClosesLobby(t *testing.T) {
 	h := NewHub()
 	host := register(t, h, "alice")
 
-	if err := h.Create(host, "game1"); err != nil {
+	if err := h.Create(host, "game1", MaxPlayers); err != nil {
 		t.Fatal(err)
 	}
 	code := last(drain(host), "lobby").Lobby.Code
@@ -172,7 +172,7 @@ func TestHostMigrationDuringStartedGame(t *testing.T) {
 	host := register(t, h, "alice")
 	guest := register(t, h, "bob")
 
-	h.Create(host, "game1")
+	h.Create(host, "game1", MaxPlayers)
 	code := last(drain(host), "lobby").Lobby.Code
 	h.Join(guest, code)
 	drain(host)
@@ -210,7 +210,7 @@ func TestMemberLeaveBroadcasts(t *testing.T) {
 	host := register(t, h, "alice")
 	guest := register(t, h, "bob")
 
-	h.Create(host, "game1")
+	h.Create(host, "game1", MaxPlayers)
 	code := last(drain(host), "lobby").Lobby.Code
 	h.Join(guest, code)
 	drain(host)
@@ -228,7 +228,7 @@ func TestMemberLeaveBroadcasts(t *testing.T) {
 func TestLobbyFull(t *testing.T) {
 	h := NewHub()
 	host := register(t, h, "host")
-	h.Create(host, "game1")
+	h.Create(host, "game1", MaxPlayers)
 	code := last(drain(host), "lobby").Lobby.Code
 	for i := 1; i < MaxPlayers; i++ {
 		s := register(t, h, string(rune('a'+i)))
@@ -248,7 +248,7 @@ func TestRelayBroadcastAndTargeted(t *testing.T) {
 	b := register(t, h, "b")
 	c := register(t, h, "c")
 
-	h.Create(a, "game1")
+	h.Create(a, "game1", MaxPlayers)
 	code := last(drain(a), "lobby").Lobby.Code
 	h.Join(b, code)
 	h.Join(c, code)
@@ -296,11 +296,11 @@ func TestAutoLeaveOnCreateAndJoin(t *testing.T) {
 	a := register(t, h, "a")
 	b := register(t, h, "b")
 
-	h.Create(a, "game1")
+	h.Create(a, "game1", MaxPlayers)
 	firstCode := last(drain(a), "lobby").Lobby.Code
 
 	// Creating a second lobby closes the first (a hosted it).
-	if err := h.Create(a, "game2"); err != nil {
+	if err := h.Create(a, "game2", MaxPlayers); err != nil {
 		t.Fatal(err)
 	}
 	if _, alive := h.lobbies[firstCode]; alive {
@@ -313,7 +313,7 @@ func TestAutoLeaveOnCreateAndJoin(t *testing.T) {
 	// b joins a's lobby, then creates its own — must leave a's lobby.
 	secondCode := last(drain(a), "lobby").Lobby.Code
 	h.Join(b, secondCode)
-	if err := h.Create(b, "game3"); err != nil {
+	if err := h.Create(b, "game3", MaxPlayers); err != nil {
 		t.Fatal(err)
 	}
 	drain(a)
@@ -338,7 +338,7 @@ func TestSlowConsumerDisconnected(t *testing.T) {
 	h := NewHub()
 	a := register(t, h, "a")
 	b := register(t, h, "b")
-	h.Create(a, "game1")
+	h.Create(a, "game1", MaxPlayers)
 	code := last(drain(a), "lobby").Lobby.Code
 	h.Join(b, code)
 	// b never drains: overflow its buffer.
@@ -357,7 +357,7 @@ func TestSlowConsumerDisconnected(t *testing.T) {
 func TestReapIdle(t *testing.T) {
 	h := NewHub()
 	a := register(t, h, "a")
-	h.Create(a, "game1")
+	h.Create(a, "game1", MaxPlayers)
 	code := last(drain(a), "lobby").Lobby.Code
 
 	h.mu.Lock()
@@ -381,9 +381,9 @@ func TestCloseGameLobbies(t *testing.T) {
 	a := register(t, h, "a")
 	b := register(t, h, "b")
 	c := register(t, h, "c")
-	h.Create(a, "game1")
-	h.Create(b, "game1")
-	h.Create(c, "game2")
+	h.Create(a, "game1", MaxPlayers)
+	h.Create(b, "game1", MaxPlayers)
+	h.Create(c, "game2", MaxPlayers)
 	drain(a)
 	drain(b)
 	drain(c)
@@ -439,7 +439,7 @@ func TestSetMetadata(t *testing.T) {
 	host := register(t, h, "alice")
 	guest := register(t, h, "bob")
 
-	h.Create(host, "game1")
+	h.Create(host, "game1", MaxPlayers)
 	code := last(drain(host), "lobby").Lobby.Code
 	h.Join(guest, code)
 	drain(host) // host gets join broadcast
@@ -478,7 +478,7 @@ func TestRejoinAfterDisconnect(t *testing.T) {
 	host := register(t, h, "alice")
 	guest := register(t, h, "bob")
 
-	h.Create(host, "game1")
+	h.Create(host, "game1", MaxPlayers)
 	code := last(drain(host), "lobby").Lobby.Code
 	h.Join(guest, code)
 	drain(host)

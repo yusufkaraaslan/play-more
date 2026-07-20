@@ -262,6 +262,7 @@ func migrationsAll() []string {
 			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			PRIMARY KEY (user_id, game_id, key))`,
 		`CREATE INDEX IF NOT EXISTS idx_game_saves_game ON game_saves(game_id)`,
+		`ALTER TABLE lobbies ADD COLUMN max_players INTEGER DEFAULT 8`,
 	}
 }
 
@@ -623,6 +624,7 @@ CREATE INDEX IF NOT EXISTS idx_play_sessions_user_game ON play_sessions(user_id,
 CREATE TABLE IF NOT EXISTS lobbies (
     code             TEXT PRIMARY KEY,
     game_id          TEXT NOT NULL,
+    max_players      INTEGER DEFAULT 8,
     started          INTEGER DEFAULT 0,
     metadata         TEXT,
     member_ids       TEXT DEFAULT '[]',

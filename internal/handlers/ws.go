@@ -176,7 +176,7 @@ func dispatchLobbyMsg(hub *lobby.Hub, sess *lobby.Session, user *models.User, ms
 			sess.Send(lobby.ServerMsg{Type: "error", Error: "token not valid for this game"})
 			return
 		}
-		err = createLobby(hub, sess, user, msg.GameID, msg.Public)
+		err = createLobby(hub, sess, user, msg.GameID, msg.Public, msg.MaxPlayers)
 	case "join":
 		if msg.Spectator {
 			err = hub.JoinSpectator(sess, msg.Code)
@@ -237,12 +237,12 @@ func validateLobbyGame(user *models.User, gameID string) (*models.Game, error) {
 }
 
 // createLobby validates the game, then opens a lobby for it.
-func createLobby(hub *lobby.Hub, sess *lobby.Session, user *models.User, gameID string, public bool) error {
+func createLobby(hub *lobby.Hub, sess *lobby.Session, user *models.User, gameID string, public bool, maxPlayers int) error {
 	game, err := validateLobbyGame(user, gameID)
 	if err != nil {
 		return err
 	}
-	if err := hub.Create(sess, game.ID); err != nil {
+	if err := hub.Create(sess, game.ID, maxPlayers); err != nil {
 		return err
 	}
 	if public {

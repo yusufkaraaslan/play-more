@@ -33,6 +33,9 @@ type ClientMsg struct {
 	Public bool `json:"public,omitempty"`
 	// PlayerCount — for matchmake: desired players per match (default 2).
 	PlayerCount int `json:"player_count,omitempty"`
+	// MaxPlayers — for create: optional per-lobby player cap (2–MaxPlayers).
+	// Defaults to MaxPlayers (8) when unset. Clamped server-side.
+	MaxPlayers int `json:"max_players,omitempty"`
 }
 
 // ServerMsg is a server → client frame.
@@ -67,10 +70,11 @@ type Player struct {
 
 // State is a full lobby snapshot as sent to clients.
 type State struct {
-	Code     string          `json:"code"`
-	GameID   string          `json:"game_id"`
-	HostID   string          `json:"host_id"`
-	Started  bool            `json:"started"`
-	Players  []Player        `json:"players"`
-	Metadata json.RawMessage `json:"metadata,omitempty"`
+	Code       string          `json:"code"`
+	GameID     string          `json:"game_id"`
+	HostID     string          `json:"host_id"`
+	Started    bool            `json:"started"`
+	Players    []Player        `json:"players"`
+	MaxPlayers int             `json:"max_players"`
+	Metadata   json.RawMessage `json:"metadata,omitempty"`
 }

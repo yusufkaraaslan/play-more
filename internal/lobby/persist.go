@@ -59,15 +59,16 @@ func persistLobbySync(l *Lobby) {
 		metaStr = string(l.Metadata)
 	}
 	_, err := storage.DB.Exec(
-		`INSERT INTO lobbies (code, game_id, started, metadata, member_ids, former_member_ids, last_active)
-		 VALUES (?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO lobbies (code, game_id, max_players, started, metadata, member_ids, former_member_ids, last_active)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(code) DO UPDATE SET
+		   max_players = excluded.max_players,
 		   started = excluded.started,
 		   metadata = excluded.metadata,
 		   member_ids = excluded.member_ids,
 		   former_member_ids = excluded.former_member_ids,
 		   last_active = excluded.last_active`,
-		l.Code, l.GameID, l.Started, metaStr, string(memberJSON), string(formerJSON),
+		l.Code, l.GameID, l.MaxPlayers, l.Started, metaStr, string(memberJSON), string(formerJSON),
 		time.Now().UTC().Format(time.RFC3339),
 	)
 	if err != nil {
@@ -95,7 +96,7 @@ func (h *Hub) RestoreLobbies() {
 	defer h.mu.Unlock()
 	cutoff := time.Now().Add(-IdleTTL).UTC().Format(time.RFC3339)
 	rows, err := storage.DB.Query(
-		`SELECT code, game_id, started, metadata, member_ids, former_member_ids FROM lobbies WHERE last_active > ?`,
+		`SELECT code, game_id, max_players, started, metadata, member_ids, former_member_ids FROM lobbies WHERE last_active > ?`,
 		cutoff,
 	)
 	if err != nil {
@@ -104,9 +105,12 @@ func (h *Hub) RestoreLobbies() {
 	defer rows.Close()
 	for rows.Next() {
 		var code, gameID, metaStr, memberJSON, formerJSON string
-		var started int
-		if err := rows.Scan(&code, &gameID, &started, &metaStr, &memberJSON, &formerJSON); err != nil {
+		var started, maxPlayers int
+		if err := rows.Scan(&code, &gameID, &maxPlayers, &started, &metaStr, &memberJSON, &formerJSON); err != nil {
 			continue
+		}
+		if maxPlayers < 2 || maxPlayers > MaxPlayers {
+			maxPlayers = MaxPlayers
 		}
 		var memberIDs, formerIDs []string
 		json.Unmarshal([]byte(memberJSON), &memberIDs)
@@ -115,6 +119,7 @@ func (h *Hub) RestoreLobbies() {
 		l := &Lobby{
 			Code:          code,
 			GameID:        gameID,
+			MaxPlayers:    maxPlayers,
 			Started:       started == 1,
 			Metadata:      []byte(metaStr),
 			Members:       nil, // no sessions — players must reconnect
