@@ -149,6 +149,7 @@
     ctx.code = l.code || ctx.code;
     ctx.players = l.players || ctx.players;
     ctx.metadata = l.metadata !== undefined ? l.metadata : ctx.metadata;
+    ctx.slots = l.slots || ctx.slots;
     if (ctx.you) {
       for (var i = 0; i < ctx.players.length; i++) {
         if (ctx.players[i].id === ctx.you.id) { ctx.host = !!ctx.players[i].host; break; }
@@ -566,6 +567,7 @@
           players: d.players || [],
           sessionToken: d.session_token || '',
           metadata: d.metadata || null,
+          slots: d.slots || [],
           spectator: !!d.spectator
         };
         if (d.rtc_config && d.rtc_config.iceServers) {
@@ -754,6 +756,23 @@
     cancelMatchmake: cmd(function () {
       return { playmore: 'cancel_matchmake' };
     }),
+
+    /* Define the slot layout for the lobby (host-only). Each slot has
+     * {id, team, role}. Player assignments are cleared on set.
+     * Results in onLobbyState. */
+    setSlots: cmd(function (slots) {
+      return { playmore: 'set_slots', slots: slots || [] };
+    }),
+
+    /* Claim a slot by ID. Releases any previously held slot.
+     * Results in onLobbyState (or onError if taken/not found). */
+    claimSlot: cmd(function (slotId) {
+      return { playmore: 'claim_slot', slot_id: slotId };
+    }),
+
+    /* Return the current slot layout from the lobby state. Each slot:
+     * {id, team, role, player_id, filled}. */
+    slots: function () { return ctx.slots ? ctx.slots.slice() : []; },
 
     transport: function (peerId) {
       return transportFor(peerId);

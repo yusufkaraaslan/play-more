@@ -657,3 +657,92 @@ func TestMatchmakeSeparatesByPlayerCount(t *testing.T) {
 		}
 	}
 }
+
+func TestSlots(t *testing.T) {
+	h := NewHub()
+	host := register(t, h, "alice")
+	guest := register(t, h, "bob")
+
+	h.Create(host, "game1", MaxPlayers)
+	code := last(drain(host), "lobby").Lobby.Code
+
+	// Host defines a 4-slot layout (2 teams of 2).
+	slots := []Slot{
+		{ID: "slot1", Team: "red", Role: "tank"},
+		{ID: "slot2", Team: "red", Role: "dps"},
+		{ID: "slot3", Team: "blue", Role: "tank"},
+		{ID: "slot4", Team: "blue", Role: "dps"},
+	}
+	if err := h.SetSlots(host, slots); err != nil {
+		t.Fatalf("SetSlots: %v", err)
+	}
+	state := last(drain(host), "lobby")
+	if state == nil || len(state.Lobby.Slots) != 4 {
+		t.Fatalf("expected 4 slots in state, got %+v", state)
+	}
+
+	// Guest joins the lobby.
+	h.Join(guest, code)
+	drain(host)
+	drain(guest)
+
+	// Non-host can't set slots.
+	if err := h.SetSlots(guest, slots); err != ErrNotHost {
+		t.Fatalf("non-host SetSlots: %v, want ErrNotHost", err)
+	}
+
+	// Guest claims slot2.
+	if err := h.ClaimSlot(guest, "slot2"); err != nil {
+		t.Fatalf("ClaimSlot slot2: %v", err)
+	}
+	state = last(drain(guest), "lobby")
+	if state == nil || !state.Lobby.Slots[1].Filled || state.Lobby.Slots[1].PlayerID != "bob" {
+		t.Fatalf("slot2 not claimed: %+v", state.Lobby.Slots)
+	}
+
+	// Host claims slot1.
+	if err := h.ClaimSlot(host, "slot1"); err != nil {
+		t.Fatalf("ClaimSlot slot1: %v", err)
+	}
+	drain(host)
+	drain(guest)
+
+	// Guest switches from slot2 to slot3 — slot2 should be released.
+	if err := h.ClaimSlot(guest, "slot3"); err != nil {
+		t.Fatalf("ClaimSlot slot3: %v", err)
+	}
+	state = last(drain(guest), "lobby")
+	if state == nil {
+		t.Fatal("no state after claim slot3")
+	}
+	slot2 := state.Lobby.Slots[1]
+	slot3 := state.Lobby.Slots[2]
+	if slot2.Filled {
+		t.Error("slot2 should be released after switching to slot3")
+	}
+	if !slot3.Filled || slot3.PlayerID != "bob" {
+		t.Errorf("slot3 not claimed: %+v", slot3)
+	}
+
+	// Host claims slot3 — already taken by guest → ErrSlotTaken.
+	if err := h.ClaimSlot(host, "slot3"); err != ErrSlotTaken {
+		t.Fatalf("claim taken slot: %v, want ErrSlotTaken", err)
+	}
+
+	// Claiming a nonexistent slot → ErrSlotNotFound.
+	if err := h.ClaimSlot(host, "nope"); err != ErrSlotNotFound {
+		t.Fatalf("claim missing slot: %v, want ErrSlotNotFound", err)
+	}
+
+	// Guest leaves — their slot should be released.
+	h.Leave(guest)
+	state = last(drain(host), "lobby")
+	if state == nil {
+		t.Fatal("no state after guest leave")
+	}
+	for _, s := range state.Lobby.Slots {
+		if s.PlayerID == "bob" {
+			t.Errorf("guest's slot not released after leave: %+v", s)
+		}
+	}
+}

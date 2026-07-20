@@ -193,6 +193,10 @@ func dispatchLobbyMsg(hub *lobby.Hub, sess *lobby.Session, user *models.User, ms
 		err = hub.Relay(sess, msg.To, msg.Data)
 	case "set_metadata":
 		err = hub.SetMetadata(sess, msg.Metadata)
+	case "set_slots":
+		err = hub.SetSlots(sess, msg.Slots)
+	case "claim_slot":
+		err = hub.ClaimSlot(sess, msg.SlotID)
 	case "matchmake":
 		// M5: scope to the pm_gs_ token's game, then apply the same
 		// existence/published/multiplayer checks as "create" — Matchmake

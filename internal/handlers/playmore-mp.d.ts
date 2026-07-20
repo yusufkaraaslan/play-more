@@ -27,7 +27,18 @@ export interface LobbyState {
   started: boolean;
   max_players: number;
   players: Player[];
+  slots?: Slot[];
   metadata?: unknown;
+}
+
+/** A role/team position in the lobby. The host defines the layout;
+ *  players claim slots. */
+export interface Slot {
+  id: string;
+  team?: string;
+  role?: string;
+  player_id?: string;
+  filled: boolean;
 }
 
 /** Matchmaking queue status update. */
@@ -63,6 +74,7 @@ export interface SessionContext {
   players: Player[];
   sessionToken: string;
   metadata: unknown;
+  slots: Slot[];
   spectator: boolean;
 }
 
@@ -125,6 +137,14 @@ export interface PlayMoreAPI {
 
   // ── Lobby metadata ────────────────────────────────────────
   setMetadata(obj: unknown): this;
+
+  // ── Slots / roles ─────────────────────────────────────────
+  /** Define the slot layout (host-only). Each slot: {id, team?, role?}. */
+  setSlots(slots: Slot[]): this;
+  /** Claim a slot by ID. Releases any previously held slot. */
+  claimSlot(slotId: string): this;
+  /** Return the current slot layout with assignments. */
+  slots(): Slot[];
 
   // ── State accessors ───────────────────────────────────────
   players(): Player[];

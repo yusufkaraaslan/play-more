@@ -30,6 +30,8 @@ var (
 	ErrNotHost        = errors.New("only the host can start the game")
 	ErrNotReady       = errors.New("not all players are ready")
 	ErrSpectator      = errors.New("spectators cannot send game messages")
+	ErrSlotNotFound   = errors.New("slot not found")
+	ErrSlotTaken      = errors.New("slot is already taken")
 )
 
 // Session is one connected /ws client. The HTTP handler owns the
@@ -356,6 +358,71 @@ func (h *Hub) SetMetadata(s *Session, metadata []byte) error {
 	l.LastActive = time.Now()
 	l.broadcastState()
 	persistLobby(l)
+	return nil
+}
+
+// SetSlots defines the lobby's slot layout (team/role positions).
+// Host-only. Replaces the entire slot array — the game owns the layout.
+// Player assignments from a previous layout are cleared.
+func (h *Hub) SetSlots(s *Session, slots []Slot) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	l := s.lobby
+	if l == nil {
+		return ErrNotInLobby
+	}
+	if l.Host != s {
+		return ErrNotHost
+	}
+	// Cap at MaxPlayers to prevent runaway layouts.
+	if len(slots) > MaxPlayers {
+		slots = slots[:MaxPlayers]
+	}
+	l.Slots = slots
+	l.LastActive = time.Now()
+	l.broadcastState()
+	return nil
+}
+
+// ClaimSlot lets a player claim a slot by ID. If the slot is already
+// filled by another player, the claim is rejected. A player can only
+// hold one slot at a time — claiming a new one releases the old.
+func (h *Hub) ClaimSlot(s *Session, slotID string) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	l := s.lobby
+	if l == nil {
+		return ErrNotInLobby
+	}
+	if s.spectator {
+		return ErrSpectator
+	}
+	// Find the slot.
+	idx := -1
+	for i, sl := range l.Slots {
+		if sl.ID == slotID {
+			idx = i
+			break
+		}
+	}
+	if idx == -1 {
+		return ErrSlotNotFound
+	}
+	// Release the player's current slot, if any.
+	for i := range l.Slots {
+		if l.Slots[i].PlayerID == s.UserID {
+			l.Slots[i].PlayerID = ""
+			l.Slots[i].Filled = false
+		}
+	}
+	// Claim the new slot (reject if already filled by someone else).
+	if l.Slots[idx].Filled && l.Slots[idx].PlayerID != s.UserID {
+		return ErrSlotTaken
+	}
+	l.Slots[idx].PlayerID = s.UserID
+	l.Slots[idx].Filled = true
+	l.LastActive = time.Now()
+	l.broadcastState()
 	return nil
 }
 
@@ -686,6 +753,14 @@ func (h *Hub) leaveLocked(s *Session) {
 	s.lobby = nil
 	s.ready = false
 	s.spectator = false
+
+	// Release any slot the player held.
+	for i := range l.Slots {
+		if l.Slots[i].PlayerID == s.UserID {
+			l.Slots[i].PlayerID = ""
+			l.Slots[i].Filled = false
+		}
+	}
 
 	// Remove s from the member list.
 	for i, m := range l.Members {

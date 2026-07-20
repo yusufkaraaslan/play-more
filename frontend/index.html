@@ -3271,7 +3271,8 @@
                         players: mpLobby ? mpLobby.players : [],
                         session_token: mpGameToken || '',
                         rtc_config: mpRtcConfig,
-                        metadata: mpLobby ? mpLobby.metadata : null
+                        metadata: mpLobby ? mpLobby.metadata : null,
+                        slots: mpLobby ? mpLobby.slots : []
                     });
                     break;
                 case 'send':
@@ -3304,6 +3305,12 @@
                     break;
                 case 'cancel_matchmake':
                     mpSend({ type: 'cancel_matchmake' });
+                    break;
+                case 'set_slots':
+                    mpSend({ type: 'set_slots', slots: d.slots || [] });
+                    break;
+                case 'claim_slot':
+                    mpSend({ type: 'claim_slot', slot_id: String(d.slot_id || '') });
                     break;
                 case 'report_mp_stats':
                     // SDK reports per-peer transport (webrtc/relay) + RTT.

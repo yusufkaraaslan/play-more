@@ -12,6 +12,7 @@ type Lobby struct {
 	MaxPlayers    int        // per-lobby cap (2–8), default MaxPlayers
 	Started       bool
 	Metadata      []byte // opaque JSON — game settings (map, difficulty, etc.)
+	Slots         []Slot // host-defined role/team layout
 	FormerMembers map[string]bool // user IDs that left a started lobby — can rejoin
 	Public        bool   // listed in the public lobby browser
 	LastActive    time.Time
@@ -41,6 +42,7 @@ func (l *Lobby) snapshot() *State {
 		Started:    l.Started,
 		Players:    players,
 		MaxPlayers: l.MaxPlayers,
+		Slots:      l.Slots,
 		Metadata:   l.Metadata,
 	}
 }

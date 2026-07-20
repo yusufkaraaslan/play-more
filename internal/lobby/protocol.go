@@ -10,7 +10,8 @@ import "encoding/json"
 
 // ClientMsg is a client → server frame.
 type ClientMsg struct {
-	// Type is one of: create, join, leave, ready, start, msg, set_metadata, matchmake, cancel_matchmake.
+	// Type is one of: create, join, leave, ready, start, msg, set_metadata,
+	// matchmake, cancel_matchmake, set_slots, claim_slot.
 	Type string `json:"type"`
 	// GameID — for create/matchmake: the game to play.
 	GameID string `json:"game_id,omitempty"`
@@ -36,6 +37,10 @@ type ClientMsg struct {
 	// MaxPlayers — for create: optional per-lobby player cap (2–MaxPlayers).
 	// Defaults to MaxPlayers (8) when unset. Clamped server-side.
 	MaxPlayers int `json:"max_players,omitempty"`
+	// Slots — for set_slots: the host-defined slot layout.
+	Slots []Slot `json:"slots,omitempty"`
+	// SlotID — for claim_slot: the slot to claim.
+	SlotID string `json:"slot_id,omitempty"`
 }
 
 // ServerMsg is a server → client frame.
@@ -68,6 +73,17 @@ type Player struct {
 	Spectator bool   `json:"spectator,omitempty"`
 }
 
+// Slot is a role/team position in the lobby. The host defines the slot
+// layout via set_slots; players claim slots via claim_slot. Slots are
+// purely informational to the server — the game interprets team/role.
+type Slot struct {
+	ID       string `json:"id"`
+	Team     string `json:"team,omitempty"`
+	Role     string `json:"role,omitempty"`
+	PlayerID string `json:"player_id,omitempty"`
+	Filled   bool   `json:"filled"`
+}
+
 // State is a full lobby snapshot as sent to clients.
 type State struct {
 	Code       string          `json:"code"`
@@ -76,5 +92,6 @@ type State struct {
 	Started    bool            `json:"started"`
 	Players    []Player        `json:"players"`
 	MaxPlayers int             `json:"max_players"`
+	Slots      []Slot          `json:"slots,omitempty"`
 	Metadata   json.RawMessage `json:"metadata,omitempty"`
 }
