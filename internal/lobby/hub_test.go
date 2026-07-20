@@ -609,3 +609,51 @@ func TestSpectatorDepartureDoesNotDecrementGameCount(t *testing.T) {
 		t.Fatalf("OnlineCount after host leave = %d, want 0", got)
 	}
 }
+
+func TestMatchmakeSeparatesByPlayerCount(t *testing.T) {
+	h := NewHub()
+	a := register(t, h, "a") // wants 4-player match
+	b := register(t, h, "b") // wants 2-player match
+	c := register(t, h, "c") // wants 2-player match
+
+	// A queues for a 4-player match — stays queued.
+	h.Matchmake(a, "game1", 4)
+	mA := last(drain(a), "matchmaking")
+	if mA == nil || mA.QueueSize != 1 || mA.TargetCount != 4 {
+		t.Fatalf("A: bad matchmaking frame: %+v", mA)
+	}
+
+	// B queues for a 2-player match — must NOT mix with A's queue.
+	h.Matchmake(b, "game1", 2)
+	mB := last(drain(b), "matchmaking")
+	if mB == nil || mB.QueueSize != 1 || mB.TargetCount != 2 {
+		t.Fatalf("B: bad matchmaking frame: %+v", mB)
+	}
+
+	// C queues for a 2-player match — B and C match (2-player queue fills).
+	// A must still be queued, NOT matched.
+	h.Matchmake(c, "game1", 2)
+
+	// B and C should get launch frames.
+	if l := last(drain(b), "launch"); l == nil {
+		t.Fatal("B was not launched")
+	}
+	if l := last(drain(c), "launch"); l == nil {
+		t.Fatal("C was not launched")
+	}
+
+	// A must NOT get a launch frame — the 4-player queue has only 1 player.
+	if l := last(drain(a), "launch"); l != nil {
+		t.Fatalf("A was launched into a 2-player match despite asking for 4: %+v", l)
+	}
+
+	// A should still be in the 4-player queue (1/4).
+	if len(h.matchQueues) != 1 {
+		t.Fatalf("expected 1 remaining match queue, got %d", len(h.matchQueues))
+	}
+	for key := range h.matchQueues {
+		if key.playerCount != 4 {
+			t.Fatalf("remaining queue has playerCount=%d, want 4", key.playerCount)
+		}
+	}
+}

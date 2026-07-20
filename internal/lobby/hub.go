@@ -99,6 +99,14 @@ func (s *Session) trySend(msg ServerMsg) {
 	}
 }
 
+// matchKey is the composite key for matchmaking queues. Players asking
+// for different match sizes are queued separately so a 2-player caller
+// can never pop a lobby out of players who asked for a 6-player game.
+type matchKey struct {
+	gameID      string
+	playerCount int
+}
+
 // Hub is the in-memory lobby registry. One global instance (Default)
 // lives for the process lifetime; lobbies are ephemeral and never
 // touch the database. A single mutex guards everything — operations
@@ -108,7 +116,7 @@ type Hub struct {
 	lobbies     map[string]*Lobby // code → lobby
 	userConns   map[string]int    // user ID → live /ws connection count
 	gameCount   map[string]int    // game ID → players currently in a lobby
-	matchQueues map[string][]*Session // game ID → queued sessions (for matchmaking)
+	matchQueues map[matchKey][]*Session // (game, player_count) → queued sessions
 }
 
 // Default is the process-wide hub used by the HTTP handlers.
@@ -119,7 +127,7 @@ func NewHub() *Hub {
 		lobbies:     make(map[string]*Lobby),
 		userConns:   make(map[string]int),
 		gameCount:   make(map[string]int),
-		matchQueues: make(map[string][]*Session),
+		matchQueues: make(map[matchKey][]*Session),
 	}
 }
 
@@ -351,17 +359,19 @@ func (h *Hub) Matchmake(s *Session, gameID string, playerCount int) {
 	h.removeFromQueueLocked(s)
 	h.leaveLocked(s)
 
-	// Add to queue.
-	queue := h.matchQueues[gameID]
+	// Add to queue — keyed by (game, playerCount) so a 2-player caller
+	// can never pop a lobby out of players who asked for a 6-player game.
+	key := matchKey{gameID: gameID, playerCount: playerCount}
+	queue := h.matchQueues[key]
 	queue = append(queue, s)
-	h.matchQueues[gameID] = queue
+	h.matchQueues[key] = queue
 	s.lobby = nil // not in a lobby yet, just queued
 
 	// Notify all queued players of the count.
 	for _, q := range queue {
 		q.trySend(ServerMsg{
-			Type:       "matchmaking",
-			QueueSize:  len(queue),
+			Type:        "matchmaking",
+			QueueSize:   len(queue),
 			TargetCount: playerCount,
 		})
 	}
@@ -369,7 +379,12 @@ func (h *Hub) Matchmake(s *Session, gameID string, playerCount int) {
 	// If enough players, create lobby + launch.
 	if len(queue) >= playerCount {
 		matched := queue[:playerCount]
-		h.matchQueues[gameID] = queue[playerCount:]
+		rest := queue[playerCount:]
+		if len(rest) == 0 {
+			delete(h.matchQueues, key)
+		} else {
+			h.matchQueues[key] = rest
+		}
 
 		// Create lobby with first player as host.
 		code, err := h.newCodeLocked()
@@ -415,17 +430,21 @@ func (h *Hub) CancelMatchmake(s *Session) {
 
 // removeFromQueueLocked removes s from all match queues. Callers hold h.mu.
 func (h *Hub) removeFromQueueLocked(s *Session) {
-	for gameID, queue := range h.matchQueues {
+	for key, queue := range h.matchQueues {
 		for i, q := range queue {
 			if q == s {
 				queue = append(queue[:i], queue[i+1:]...)
 				if len(queue) == 0 {
-					delete(h.matchQueues, gameID)
+					delete(h.matchQueues, key)
 				} else {
-					h.matchQueues[gameID] = queue
+					h.matchQueues[key] = queue
 					// Notify remaining players of updated count.
 					for _, rq := range queue {
-						rq.trySend(ServerMsg{Type: "matchmaking", QueueSize: len(queue)})
+						rq.trySend(ServerMsg{
+							Type:        "matchmaking",
+							QueueSize:   len(queue),
+							TargetCount: key.playerCount,
+						})
 					}
 				}
 				return
