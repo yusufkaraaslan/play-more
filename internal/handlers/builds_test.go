@@ -144,3 +144,54 @@ func TestBuilds_ReuploadGoesThroughBuildChannels(t *testing.T) {
 		t.Errorf("new build not in list: %s", body)
 	}
 }
+
+// TestBuilds_Rollback seeds two stable builds, activates the newer
+// one, then rolls back to the older one. The previous build must
+// become the active build for the channel.
+func TestBuilds_Rollback(t *testing.T) {
+	ts := testutil.NewTestServer(t)
+	owner := testutil.SeedUser(t, nil, testutil.SeedUserOpts{EmailVerified: true})
+	gameID := testutil.SeedGame(t, nil, owner.ID, "RollbackGame")
+
+	// The backfill migration created build #1 (active stable).
+	// Seed a second stable build (#2, inactive).
+	build2 := testutil.SeedBuild(t, nil, gameID, owner.ID, "stable")
+
+	// Activate build #2 — now #2 is active, #1 is inactive.
+	w, body := ts.DoAuthed(t, "PUT", "/api/v1/games/"+gameID+"/builds/"+build2+"/activate", nil, owner)
+	if w.Code != http.StatusOK {
+		t.Fatalf("activate build #2: %d %s", w.Code, body)
+	}
+
+	// Rollback from build #2 → should activate build #1.
+	w, body = ts.DoAuthed(t, "POST", "/api/v1/games/"+gameID+"/builds/"+build2+"/rollback", nil, owner)
+	if w.Code != http.StatusOK {
+		t.Fatalf("rollback: %d %s", w.Code, body)
+	}
+
+	// List builds — build #1 (the backfill) should now be active.
+	w, body = ts.DoAuthed(t, "GET", "/api/v1/games/"+gameID+"/builds", nil, owner)
+	if w.Code != http.StatusOK {
+		t.Fatalf("list: %d %s", w.Code, body)
+	}
+	var listed struct {
+		Builds []struct {
+			ID       string `json:"id"`
+			IsActive bool   `json:"is_active"`
+			Channel  string `json:"channel"`
+		} `json:"builds"`
+	}
+	testutil.DecodeJSON(t, body, &listed)
+	activeCount := 0
+	for _, b := range listed.Builds {
+		if b.Channel == "stable" && b.IsActive {
+			activeCount++
+			if b.ID == build2 {
+				t.Errorf("build #2 should be inactive after rollback")
+			}
+		}
+	}
+	if activeCount != 1 {
+		t.Errorf("expected exactly 1 active stable build, got %d", activeCount)
+	}
+}
