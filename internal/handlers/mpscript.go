@@ -12,12 +12,16 @@ import (
 //go:embed playmore-mp.js
 var mpScriptContent string
 
+//go:embed playmore-mp.d.ts
+var mpScriptTypes string
+
 // mpScriptETag is a strong ETag derived from the SDK's content, computed once
 // at startup. Because playmore-mp.js lives at a stable URL but its method
 // surface changes with each deploy, it must be revalidated rather than blindly
 // cached — otherwise a browser/CDN serves an old SDK (missing new lobby-control
 // methods) for up to the max-age after a release, silently breaking games.
 var mpScriptETag = `"` + hashHex(mpScriptContent) + `"`
+var mpScriptTypesETag = `"` + hashHex(mpScriptTypes) + `"`
 
 func hashHex(s string) string {
 	sum := sha256.Sum256([]byte(s))
@@ -44,4 +48,21 @@ func ServeMPScript(c *gin.Context) {
 
 	c.Header("Content-Type", "application/javascript; charset=utf-8")
 	c.String(http.StatusOK, mpScriptContent)
+}
+
+// ServeMPScriptTypes serves the TypeScript definition file at
+// GET /playmore-mp.d.ts. Games using bundlers or editors that support
+// ambient type declarations can reference this for autocomplete and
+// type checking without installing an npm package.
+func ServeMPScriptTypes(c *gin.Context) {
+	c.Header("ETag", mpScriptTypesETag)
+	c.Header("Cache-Control", "public, no-cache, s-maxage=60")
+
+	if match := c.GetHeader("If-None-Match"); match == mpScriptTypesETag {
+		c.Status(http.StatusNotModified)
+		return
+	}
+
+	c.Header("Content-Type", "application/typescript; charset=utf-8")
+	c.String(http.StatusOK, mpScriptTypes)
 }

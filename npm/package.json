@@ -1,0 +1,27 @@
+{
+  "name": "playmore-mp",
+  "version": "1.0.0",
+  "description": "PlayMore multiplayer lobby client for HTML5 games — lobby + WebRTC relay SDK",
+  "main": "playmore-mp.js",
+  "types": "playmore-mp.d.ts",
+  "files": [
+    "playmore-mp.js",
+    "playmore-mp.d.ts",
+    "README.md"
+  ],
+  "keywords": [
+    "playmore",
+    "multiplayer",
+    "webrtc",
+    "lobby",
+    "game",
+    "html5",
+    "sdk"
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/yusufkaraaslan/play-more",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yusufkaraaslan/play-more.git"
+  }
+}

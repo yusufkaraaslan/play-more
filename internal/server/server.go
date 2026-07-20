@@ -258,6 +258,7 @@ func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxi
 	// --games-domain origins (same engine), so a game loads it with a
 	// relative /playmore-mp.js regardless of which origin it runs on.
 	r.GET("/playmore-mp.js", handlers.ServeMPScript)
+	r.GET("/playmore-mp.d.ts", handlers.ServeMPScriptTypes)
 
 	// Multiplayer lobby WebSocket (#29). Root-mounted (not under /api —
 	// it is not a REST endpoint and the OpenAPI drift test ignores it).
