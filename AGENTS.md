@@ -38,6 +38,13 @@ Flags take priority over env vars (`PLAYMORE_*`). All env vars are optional.
 | `--behind-tls-proxy` | `PLAYMORE_BEHIND_TLS_PROXY` | false | Force Secure cookie flag |
 | `--stun-servers` | `PLAYMORE_STUN_SERVERS` | stun:stun.l.google.com:19302 | Comma-separated STUN URLs for WebRTC NAT traversal |
 | `--turn-servers` | `PLAYMORE_TURN_SERVERS` | "" | Comma-separated TURN URLs (e.g. turn:user:pass@host:port) |
+| `--turn` | `PLAYMORE_TURN` | false | Run the embedded TURN relay (needs inbound UDP) |
+| `--turn-listen` | `PLAYMORE_TURN_LISTEN` | 0.0.0.0:3478 | UDP address for the TURN control port |
+| `--turn-public-ip` | `PLAYMORE_TURN_PUBLIC_IP` | "" | Public IPv4 in relay candidates (required with `--turn`) |
+| `--turn-realm` | `PLAYMORE_TURN_REALM` | `--domain`, else `playmore` | TURN auth realm |
+| `--turn-secret` | `PLAYMORE_TURN_SECRET` | auto-generated | HMAC secret for ephemeral TURN credentials |
+| `--turn-min-port` | `PLAYMORE_TURN_MIN_PORT` | 49152 | Lowest UDP relay-allocation port |
+| `--turn-max-port` | `PLAYMORE_TURN_MAX_PORT` | 49251 | Highest UDP relay-allocation port |
 
 Gin defaults to release mode unless `GIN_MODE` is set.
 
@@ -107,6 +114,7 @@ Manual / E2E:
 - `internal/handlers/lobbybrowser.go` — public lobby list endpoint
 - `internal/middleware/auth.go` — auth middleware (pm_k_, pm_gk_, pm_gs_, WSQueryTokenAuth)
 - `internal/middleware/cors.go` — CORS for opaque-origin game iframes
+- `internal/turnserver/` — embedded TURN relay (pion/turn) + ephemeral HMAC credentials
 - `cmd/mp-test/main.go` — E2E multiplayer test harness
 - `frontend/index.html` — entire SPA frontend
 - `docs/sdk/` — multiplayer SDK documentation

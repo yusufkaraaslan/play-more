@@ -3,8 +3,10 @@ package main
 import (
 	"bufio"
 	"context"
+	"crypto/rand"
 	"crypto/tls"
 	"embed"
+	"encoding/base64"
 	"flag"
 	"fmt"
 	"log"
@@ -25,6 +27,7 @@ import (
 	"github.com/yusufkaraaslan/play-more/internal/models"
 	"github.com/yusufkaraaslan/play-more/internal/server"
 	"github.com/yusufkaraaslan/play-more/internal/storage"
+	"github.com/yusufkaraaslan/play-more/internal/turnserver"
 	"github.com/yusufkaraaslan/play-more/internal/uploadgc"
 	"github.com/yusufkaraaslan/play-more/internal/webhook"
 	"golang.org/x/crypto/acme/autocert"
@@ -60,6 +63,17 @@ func loadEnvFile(path string) {
 			os.Setenv(key, val)
 		}
 	}
+}
+
+// randomTURNSecret generates a shared secret for ephemeral TURN
+// credentials. Used both by the setup wizard (written to .env) and at
+// startup when --turn is on but no secret was supplied.
+func randomTURNSecret() string {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		log.Fatalf("Failed to generate TURN secret: %v", err)
+	}
+	return base64.RawURLEncoding.EncodeToString(b)
 }
 
 func runSetup() {
@@ -147,6 +161,37 @@ func runSetup() {
 		lines = append(lines, "PLAYMORE_SMTP_FROM="+smtpFrom)
 	}
 
+	// Multiplayer — embedded TURN relay
+	fmt.Println()
+	fmt.Println("── Multiplayer (TURN) ──")
+	fmt.Println("  WebRTC needs a TURN relay for players behind symmetric NAT or")
+	fmt.Println("  strict firewalls. Without one they fall back to the WebSocket")
+	fmt.Println("  relay, which is capped at 30 msg/s and always reliable+ordered —")
+	fmt.Println("  fine for turn-based games, too slow for real-time ones.")
+	fmt.Println()
+	fmt.Println("  Requires inbound UDP on the control port and the relay range.")
+	fmt.Println("  HTTP-only ingress (Cloudflare Tunnel, most PaaS) CANNOT carry it.")
+	if askYN("Run the embedded TURN relay?", false) {
+		turnIP := ask("Public IPv4 address of this server", "")
+		if turnIP == "" {
+			fmt.Println("  ⚠ Skipping TURN — a public IP is required (it can't be auto-detected behind NAT).")
+		} else {
+			turnPort := ask("TURN control port (UDP)", "3478")
+			minPort := ask("Relay port range — lowest (UDP)", "49152")
+			maxPort := ask("Relay port range — highest (UDP)", "49251")
+			lines = append(lines, "PLAYMORE_TURN=true")
+			lines = append(lines, "PLAYMORE_TURN_LISTEN=0.0.0.0:"+turnPort)
+			lines = append(lines, "PLAYMORE_TURN_PUBLIC_IP="+turnIP)
+			lines = append(lines, "PLAYMORE_TURN_MIN_PORT="+minPort)
+			lines = append(lines, "PLAYMORE_TURN_MAX_PORT="+maxPort)
+			lines = append(lines, "PLAYMORE_TURN_SECRET="+randomTURNSecret())
+			fmt.Println()
+			fmt.Println("  ✓ TURN configured. Open these in your firewall:")
+			fmt.Printf("      udp/%s        (control)\n", turnPort)
+			fmt.Printf("      udp/%s-%s  (relay allocations)\n", minPort, maxPort)
+		}
+	}
+
 	// Analytics
 	fmt.Println()
 	gc := ask("GoatCounter URL (leave empty to skip)", "")
@@ -202,6 +247,13 @@ func main() {
 	forceSecure := flag.Bool("behind-tls-proxy", false, "Always set Secure flag on cookies (use when behind a TLS-terminating reverse proxy)")
 	stunServers := flag.String("stun-servers", "stun:stun.l.google.com:19302", "Comma-separated STUN server URLs for WebRTC NAT traversal")
 	turnServers := flag.String("turn-servers", "", "Comma-separated TURN server URLs for WebRTC relay fallback (e.g. 'turn:user:pass@turn.example.com:3478')")
+	turnEnable := flag.Bool("turn", false, "Run an embedded TURN relay for WebRTC NAT traversal. Requires inbound UDP — see docs/SETUP.md.")
+	turnListen := flag.String("turn-listen", "0.0.0.0:3478", "UDP address for the embedded TURN control port")
+	turnPublicIP := flag.String("turn-public-ip", "", "Public IPv4 address advertised in TURN relay candidates (required with --turn; cannot be auto-detected behind NAT)")
+	turnRealm := flag.String("turn-realm", "", "TURN realm (defaults to --domain, else 'playmore')")
+	turnSecret := flag.String("turn-secret", "", "Shared secret for ephemeral TURN credentials. Auto-generated if empty — set it explicitly to keep credentials valid across restarts.")
+	turnMinPort := flag.Int("turn-min-port", 0, "Lowest UDP port for TURN relay allocations (default 49152)")
+	turnMaxPort := flag.Int("turn-max-port", 0, "Highest UDP port for TURN relay allocations (default 49251)")
 	uploadsGC := flag.Bool("uploads-gc", false, "Enable daily uploads/ directory sweep — deletes files unreferenced by any DB row and older than 90 days. Off by default; review --uploads-gc-dry-run output before enabling.")
 	uploadsGCDryRun := flag.Bool("uploads-gc-dry-run", false, "Run uploads GC in dry-run mode — log what would be pruned but don't actually delete. Requires --uploads-gc.")
 	flag.Parse()
@@ -305,6 +357,46 @@ func main() {
 			*turnServers = v
 		}
 	}
+	// Embedded TURN relay env fallbacks
+	if !isFlagSet("turn") {
+		if v := os.Getenv("PLAYMORE_TURN"); v == "true" || v == "1" {
+			*turnEnable = true
+		}
+	}
+	if !isFlagSet("turn-listen") {
+		if v := os.Getenv("PLAYMORE_TURN_LISTEN"); v != "" {
+			*turnListen = v
+		}
+	}
+	if !isFlagSet("turn-public-ip") {
+		if v := os.Getenv("PLAYMORE_TURN_PUBLIC_IP"); v != "" {
+			*turnPublicIP = v
+		}
+	}
+	if !isFlagSet("turn-realm") {
+		if v := os.Getenv("PLAYMORE_TURN_REALM"); v != "" {
+			*turnRealm = v
+		}
+	}
+	if !isFlagSet("turn-secret") {
+		if v := os.Getenv("PLAYMORE_TURN_SECRET"); v != "" {
+			*turnSecret = v
+		}
+	}
+	if !isFlagSet("turn-min-port") {
+		if v := os.Getenv("PLAYMORE_TURN_MIN_PORT"); v != "" {
+			if n, err := strconv.Atoi(v); err == nil {
+				*turnMinPort = n
+			}
+		}
+	}
+	if !isFlagSet("turn-max-port") {
+		if v := os.Getenv("PLAYMORE_TURN_MAX_PORT"); v != "" {
+			if n, err := strconv.Atoi(v); err == nil {
+				*turnMaxPort = n
+			}
+		}
+	}
 	server.RTCIceServers = server.ParseIceServers(*stunServers, *turnServers)
 
 	// Validate TLS options
@@ -363,6 +455,44 @@ func main() {
 	uploadgc.UploadsGCEnabled = *uploadsGC
 	uploadgc.UploadsGCDryRun = *uploadsGCDryRun
 	uploadgc.Start(context.Background())
+
+	// Embedded TURN relay — opt-in, because it needs inbound UDP that
+	// most deployments (anything behind an HTTP-only tunnel) can't
+	// provide. Failing to bind is fatal rather than a warning: the
+	// operator asked for TURN explicitly, and silently continuing
+	// would leave NAT-restricted players on the WebSocket relay while
+	// the logs claim everything is fine.
+	var turnSrv *turnserver.Server
+	if *turnEnable {
+		if *turnMinPort < 0 || *turnMinPort > 65535 || *turnMaxPort < 0 || *turnMaxPort > 65535 {
+			log.Fatal("--turn-min-port and --turn-max-port must be between 0 and 65535")
+		}
+		secret := *turnSecret
+		if secret == "" {
+			secret = randomTURNSecret()
+			fmt.Println("⚠  --turn-secret not set — generated a random one for this process.")
+			fmt.Println("    Credentials issued before a restart stop working after it, and")
+			fmt.Println("    multiple instances won't agree on them. Set PLAYMORE_TURN_SECRET")
+			fmt.Println("    to pin it. See docs/SETUP.md.")
+		}
+		realm := *turnRealm
+		if realm == "" {
+			realm = *domain // falls back to turnserver.DefaultRealm when empty
+		}
+		var err error
+		turnSrv, err = turnserver.Start(turnserver.Config{
+			Listen:   *turnListen,
+			PublicIP: *turnPublicIP,
+			Realm:    realm,
+			Secret:   secret,
+			MinPort:  uint16(*turnMinPort),
+			MaxPort:  uint16(*turnMaxPort),
+		})
+		if err != nil {
+			log.Fatalf("Failed to start embedded TURN relay: %v", err)
+		}
+		server.TURNCredentialFunc = turnSrv.ICEServersFor
+	}
 
 	// Periodic cleanup of expired sessions, email tokens, and stale play sessions
 	go func() {
@@ -482,6 +612,11 @@ func main() {
 	middleware.StopAnalyticsWriter()
 	webhook.Stop()
 	lobby.Default.Shutdown()
+	if turnSrv != nil {
+		if err := turnSrv.Close(); err != nil {
+			log.Printf("Error stopping TURN relay: %v", err)
+		}
+	}
 	close(middleware.ShutdownCh)
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

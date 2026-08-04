@@ -24,6 +24,16 @@ import (
 // so the SPA can pass it to the game iframe for RTCPeerConnection.
 var RTCIceServers []map[string]any
 
+// TURNCredentialFunc, when non-nil, mints per-user ephemeral TURN
+// credentials that are appended to the static RTCIceServers list on
+// each /rtc-config request. main.go sets it when the embedded TURN
+// relay is enabled.
+//
+// It is a func var rather than a direct turnserver import so this
+// package stays unaware of the relay's existence — /rtc-config is the
+// only thing that needs to know, and tests can substitute it freely.
+var TURNCredentialFunc func(userID string) []map[string]any
+
 // ParseIceServers builds the iceServers array for WebRTC from
 // comma-separated STUN and TURN URL strings.
 func ParseIceServers(stun, turn string) []map[string]any {
@@ -60,6 +70,32 @@ func ParseIceServers(stun, turn string) []map[string]any {
 		servers = []map[string]any{{"urls": "stun:stun.l.google.com:19302"}}
 	}
 	return servers
+}
+
+// iceServersFor builds the ICE server list for a single /rtc-config
+// request: the static --stun-servers/--turn-servers entries, plus
+// freshly minted embedded-TURN credentials when that relay is running.
+//
+// The static slice is copied rather than appended to in place. A bare
+// `append(RTCIceServers, minted...)` would write into that package-level
+// slice's spare capacity, so two concurrent requests could stomp each
+// other and hand one user another user's TURN credential.
+func iceServersFor(c *gin.Context) []map[string]any {
+	if TURNCredentialFunc == nil {
+		return RTCIceServers
+	}
+	u := middleware.GetUser(c)
+	if u == nil {
+		return RTCIceServers
+	}
+	minted := TURNCredentialFunc(u.ID)
+	if len(minted) == 0 {
+		return RTCIceServers
+	}
+	out := make([]map[string]any, 0, len(RTCIceServers)+len(minted))
+	out = append(out, RTCIceServers...)
+	out = append(out, minted...)
+	return out
 }
 
 // =============================================================================
@@ -190,7 +226,7 @@ func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxi
 		c.JSON(200, gin.H{"status": "ready"})
 	})
 	r.GET("/rtc-config", middleware.AuthOptional(), middleware.AuthRequired(), func(c *gin.Context) {
-		c.JSON(200, gin.H{"iceServers": RTCIceServers})
+		c.JSON(200, gin.H{"iceServers": iceServersFor(c)})
 	})
 
 	// =========================================================================

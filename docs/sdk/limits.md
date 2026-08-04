@@ -49,7 +49,8 @@ Every cap, rate limit, and size bound in the PlayMore multiplayer system. When a
 | Limit | Value | Source | What happens when exceeded |
 |-------|-------|--------|----------------------------|
 | STUN server | Google public (configurable) | `--stun-servers` | Default: `stun:stun.l.google.com:19302`. Override with a comma-separated list. Passed to the game iframe via the `init` frame's `rtc_config.iceServers`. |
-| TURN server | Optional (configurable) | `--turn-servers` | Default: none. Without a TURN server, peers behind symmetric NAT or restrictive firewalls cannot relay via TURN — they fall back to the server relay. Set this for production. |
+| TURN server | Optional (configurable) | `--turn-servers` | Default: none. Without a TURN server, peers behind symmetric NAT or restrictive firewalls cannot relay via TURN — they fall back to the server relay, which is capped at 30 msg/s and always reliable+ordered. Set this for production. |
+| Embedded TURN relay | Off | `--turn` | Runs a TURN relay in-process. Needs inbound UDP (control port + one port per concurrent relayed peer, default 49152–49251). Credentials are ephemeral, 10-min TTL, minted per user. See [SETUP.md](../SETUP.md#turn-relay-multiplayer). |
 | Keepalive ping interval | 15s | `KEEPALIVE_INTERVAL` | Each open data channel sends a `__pm_ping` every 15s. |
 | Pong timeout | 5s | `PONG_TIMEOUT` | If no `__pm_pong` arrives within 5s, the channel is marked `failed` and traffic for that peer falls back to the server relay. |
 | Reconnection attempts | 3 | `RECONNECT_MAX_ATTEMPTS` | After a channel fails, the shim retries up to 3 times. |
