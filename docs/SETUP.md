@@ -170,6 +170,11 @@ and multiple instances won't agree on them.
 Clients receive **ephemeral credentials** (10-minute TTL, HMAC-derived, minted
 per user at `GET /rtc-config`). No TURN passwords are stored anywhere.
 
+Two limits keep one account from taking the whole relay: `/rtc-config` is
+rate-limited to 30 requests/min per IP, and each account may hold at most 8
+concurrent allocations (enough for a full 8-player mesh where every peer needs
+relay). Exceeding the allocation cap returns TURN error 486 and is logged.
+
 Enabling the embedded relay also gives you self-hosted STUN on the same port,
 so you no longer depend on Google's public STUN server.
 

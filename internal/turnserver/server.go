@@ -30,6 +30,7 @@ import (
 	"log"
 	"net"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/pion/logging"
@@ -47,6 +48,16 @@ const (
 	DefaultMaxPort = 49251
 	DefaultRealm   = "playmore"
 )
+
+// DefaultMaxAllocationsPerUser caps how many relay allocations one
+// account may hold at once.
+//
+// Without a cap, a single account can allocate the entire port range
+// and deny the relay to everyone else — the range is finite (100 ports
+// by default) and allocations survive until they time out. 8 covers the
+// worst legitimate case, a full 8-player mesh where every peer needs
+// relay, while holding one account to a small share of the range.
+const DefaultMaxAllocationsPerUser = 8
 
 // Config is the embedded TURN server's configuration. Zero values are
 // filled with the Default* constants where a sane default exists;
@@ -74,6 +85,10 @@ type Config struct {
 
 	// CredentialTTL is how long minted credentials stay valid.
 	CredentialTTL time.Duration
+
+	// MaxAllocationsPerUser caps concurrent relay allocations per
+	// account. Defaults to DefaultMaxAllocationsPerUser.
+	MaxAllocationsPerUser int
 }
 
 func (c *Config) withDefaults() {
@@ -92,6 +107,61 @@ func (c *Config) withDefaults() {
 	if c.Listen == "" {
 		c.Listen = "0.0.0.0:3478"
 	}
+	if c.MaxAllocationsPerUser <= 0 {
+		c.MaxAllocationsPerUser = DefaultMaxAllocationsPerUser
+	}
+}
+
+// allocTracker counts live relay allocations per account so the quota
+// handler can reject the account that tries to monopolise the range.
+//
+// Keyed on the user ID rather than the TURN username: the username
+// embeds an expiry, so a client gets a fresh one from every
+// /rtc-config call and could otherwise reset its own quota just by
+// re-minting.
+type allocTracker struct {
+	mu    sync.Mutex
+	perID map[string]int
+}
+
+func newAllocTracker() *allocTracker {
+	return &allocTracker{perID: make(map[string]int)}
+}
+
+func (a *allocTracker) allowed(username string, limit int) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.perID[userIDFrom(username)] < limit
+}
+
+func (a *allocTracker) add(username string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.perID[userIDFrom(username)]++
+}
+
+func (a *allocTracker) remove(username string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	id := userIDFrom(username)
+	if n := a.perID[id]; n <= 1 {
+		// Delete rather than leave a zero behind, so the map doesn't
+		// grow without bound across a long-running process.
+		delete(a.perID, id)
+	} else {
+		a.perID[id] = n - 1
+	}
+}
+
+// userIDFrom extracts the account portion of a TURN username without
+// validating the expiry. Deliberately separate from CheckUsername:
+// an allocation is torn down after its credential has expired, and
+// the counter must still decrement then or the quota leaks.
+func userIDFrom(username string) string {
+	if sep := strings.Index(username, ":"); sep >= 0 {
+		return username[sep+1:]
+	}
+	return username
 }
 
 // Validate checks the configuration and returns a diagnostic warning
@@ -169,11 +239,28 @@ func Start(cfg Config) (*Server, error) {
 	}
 
 	loggerFactory := logging.NewDefaultLoggerFactory()
+	tracker := newAllocTracker()
 
 	ts, err := turn.NewServer(turn.ServerConfig{
 		Realm:         cfg.Realm,
 		LoggerFactory: loggerFactory,
 		AuthHandler:   authHandler(cfg),
+		QuotaHandler: func(username, realm string, srcAddr net.Addr) bool {
+			if tracker.allowed(username, cfg.MaxAllocationsPerUser) {
+				return true
+			}
+			log.Printf("turn: allocation quota (%d) reached for %q from %v",
+				cfg.MaxAllocationsPerUser, username, srcAddr)
+			return false
+		},
+		EventHandler: turn.EventHandler{
+			OnAllocationCreated: func(_, _ net.Addr, _, username, _ string, _ net.Addr, _ int) {
+				tracker.add(username)
+			},
+			OnAllocationDeleted: func(_, _ net.Addr, _, username, _ string) {
+				tracker.remove(username)
+			},
+		},
 		PacketConnConfigs: []turn.PacketConnConfig{{
 			PacketConn:            conn,
 			RelayAddressGenerator: relayGen,

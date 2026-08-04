@@ -268,6 +268,85 @@ func TestAllocate_EndToEnd(t *testing.T) {
 	})
 }
 
+// The relay port range is finite, so one account must not be able to
+// allocate all of it. The quota is keyed on the account, not the TURN
+// username — usernames embed an expiry and a client gets a fresh one
+// from every /rtc-config call, so username-keyed counting would let a
+// caller reset its own quota just by re-minting.
+func TestAllocationQuota_IsPerAccountNotPerUsername(t *testing.T) {
+	srv := startTestServer(t)
+	addr := turnAddr(t, srv)
+
+	// Two credentials for the same account, minted a second apart so
+	// their usernames (and therefore embedded expiries) differ.
+	base := time.Now()
+	first := turnserver.Mint(testSecret, "same-user", time.Minute, base)
+	second := turnserver.Mint(testSecret, "same-user", time.Minute, base.Add(time.Second))
+	if first.Username == second.Username {
+		t.Fatal("test needs two distinct usernames for the same account")
+	}
+
+	var held []interface{ Close() error }
+	defer func() {
+		for _, c := range held {
+			_ = c.Close()
+		}
+	}()
+
+	// Exhaust the quota using the first credential.
+	limit := turnserver.DefaultMaxAllocationsPerUser
+	for i := 0; i < limit; i++ {
+		client, closeClient := newClient(t, addr, first.Username, first.Password)
+		defer closeClient()
+		relay, err := client.Allocate()
+		if err != nil {
+			t.Fatalf("allocation %d/%d should have been permitted: %v", i+1, limit, err)
+		}
+		held = append(held, relay)
+	}
+
+	// A fresh username for the SAME account must not get a new budget.
+	client, closeClient := newClient(t, addr, second.Username, second.Password)
+	defer closeClient()
+	if _, err := client.Allocate(); err == nil {
+		t.Fatal("re-minting a credential must not reset the per-account allocation quota")
+	}
+}
+
+// A different account must still be served once another has hit its
+// quota — the cap bounds one abuser, it does not close the relay.
+func TestAllocationQuota_OtherAccountsUnaffected(t *testing.T) {
+	srv := startTestServer(t)
+	addr := turnAddr(t, srv)
+
+	hog := turnserver.Mint(testSecret, "hog", time.Minute, time.Now())
+	var held []interface{ Close() error }
+	defer func() {
+		for _, c := range held {
+			_ = c.Close()
+		}
+	}()
+
+	for i := 0; i < turnserver.DefaultMaxAllocationsPerUser; i++ {
+		client, closeClient := newClient(t, addr, hog.Username, hog.Password)
+		defer closeClient()
+		relay, err := client.Allocate()
+		if err != nil {
+			t.Fatalf("hog allocation %d failed: %v", i+1, err)
+		}
+		held = append(held, relay)
+	}
+
+	victim := turnserver.Mint(testSecret, "victim", time.Minute, time.Now())
+	client, closeClient := newClient(t, addr, victim.Username, victim.Password)
+	defer closeClient()
+	relay, err := client.Allocate()
+	if err != nil {
+		t.Fatalf("a second account should still be served: %v", err)
+	}
+	_ = relay.Close()
+}
+
 // startTestServer binds the relay on loopback with an OS-assigned
 // control port, so tests never collide on 3478 or need privileges.
 func startTestServer(t *testing.T) *turnserver.Server {

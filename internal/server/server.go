@@ -225,7 +225,12 @@ func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxi
 		}
 		c.JSON(200, gin.H{"status": "ready"})
 	})
-	r.GET("/rtc-config", middleware.AuthOptional(), middleware.AuthRequired(), func(c *gin.Context) {
+	// Rate-limited because this endpoint mints TURN credentials when the
+	// embedded relay is on. Each response grants ~10 minutes of relay
+	// access to whoever holds it, so an unbounded endpoint would let one
+	// account mint an endless supply to hand out. The SPA fetches this
+	// once per game launch; 30/min is far above legitimate use.
+	r.GET("/rtc-config", middleware.RateLimit(30, 60), middleware.AuthOptional(), middleware.AuthRequired(), func(c *gin.Context) {
 		c.JSON(200, gin.H{"iceServers": iceServersFor(c)})
 	})
 
