@@ -3024,6 +3024,12 @@
             const sandbox = ['allow-scripts', 'allow-pointer-lock', 'allow-popups'];
             if (hasSeparateOrigin) sandbox.push('allow-same-origin');
             frame.setAttribute('sandbox', sandbox.join(' '));
+            // Delegate WebGPU to the game iframe. The `webgpu` Permissions Policy
+            // defaults to `self`, which blocks cross-origin / opaque-origin iframes
+            // from navigator.gpu — without this, Godot-WebGPU exports see
+            // "WebGPU unavailable" and never boot. Matches the Permissions-Policy
+            // response header set on /play/* HTML in handlers/games.go.
+            frame.setAttribute('allow', 'webgpu');
             // Multiplayer games need the SPA's postMessage bridge (lobby
             // commands + pm_gs_ session token) — a top-level tab has no
             // parent to bridge to, so the game's online menu would be dead

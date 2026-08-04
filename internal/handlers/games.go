@@ -948,6 +948,16 @@ func ServeGameFiles(spaOrigin, gamesDomain string) gin.HandlerFunc {
 			// Prevent any popped-out / new-tab game window from reaching back
 			// into the SPA via window.opener.
 			c.Header("Cross-Origin-Opener-Policy", "same-origin")
+			// Delegate WebGPU to the game document. The `webgpu` Permissions
+			// Policy defaults to `self`, which blocks sandboxed/opaque-origin
+			// (no --games-domain) and cross-origin (games.*) iframes from
+			// navigator.gpu. The matching iframe `allow="webgpu"` is set
+			// client-side in frontend/index.html::launchGame. `*` because game
+			// documents are never same-origin with the SPA. The rest of the
+			// list mirrors securityHeaders in spa.go so we don't regress the
+			// camera/mic/sensor restrictions that the global middleware sets
+			// (c.Header overwrites, not appends).
+			c.Header("Permissions-Policy", "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=(), webgpu=*")
 		} else {
 			c.Header("Content-Security-Policy", csp)
 		}
