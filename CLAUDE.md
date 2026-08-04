@@ -20,7 +20,8 @@ go vet ./...                                              # Only linter in the r
 ./playmore --trusted-proxies '127.0.0.1/32,10.0.0.0/8'    # REQUIRED behind reverse proxy
 ./playmore --behind-tls-proxy                             # Force Secure-cookie when proxy terminates TLS
 ./playmore --games-domain games.example.com               # Serve /play/* from separate origin (sandboxing)
-./playmore --stun-servers ... --turn-servers ...          # WebRTC ICE config, exposed via GET /rtc-config
+./playmore --stun-servers ... --turn-servers ...          # External WebRTC ICE config, exposed via GET /rtc-config
+./playmore --turn --turn-public-ip 203.0.113.10           # Embedded TURN relay (needs inbound UDP; off by default)
 ./playmore --uploads-gc --uploads-gc-dry-run              # Preview the unreferenced-uploads sweep before enabling
 docker-compose up -d                                      # Docker deployment
 ```
@@ -73,6 +74,7 @@ internal/
   lobby/                   # Multiplayer lobby hub: hub.go, protocol.go, persist.go (async SQLite)
   webhook/dispatcher.go    # Outbound webhook queue: buffered channel + worker, HMAC-SHA256 signing
   uploadgc/gc.go           # Periodic sweeps: expired upload sessions + opt-in uploads/ prune
+  turnserver/              # Embedded TURN relay (pion/turn) + ephemeral HMAC credentials
   email/email.go           # SMTP sender, health check, ProtonMail Bridge detection
   testutil/server.go       # Test harness (see Testing)
 frontend/index.html        # Vanilla JS SPA (~4900 lines, inline CSS/JS). js/ and css/ are empty
@@ -114,7 +116,8 @@ Per-group middleware (`GlobalRateLimit(600, 300)`, `AuthOptional`, `CSRFProtect`
 - **Database**: SQLite via `modernc.org/sqlite` (pure Go), WAL mode, `SetMaxOpenConns(1)`, foreign keys ON. FTS5 on games (title, description, tags) with auto-indexing triggers. Migrations in `db.go::migrationsAll()` are idempotent — append, never edit existing entries. `storage.Schema()` / `storage.Migrations()` / `IsIdempotentMigrationError()` exist so `testutil` applies the exact production DDL.
 - **Rate limiting**: Per-IP, per-endpoint, in-memory, plus `GlobalRateLimit` on the API group. Failed logins additionally get per-(IP, account) exponential backoff (`loginbackoff.go`) — deliberately *not* per-account alone, which was abusable as a targeted lockout DoS.
 - **Analytics**: Page views written asynchronously via channel; `middleware.StartAnalyticsWriter()` batches every 5s or 50 records. 90-day retention.
-- **Background workers** (all started in `main.go` ~line 358): `StartRateLimitCleanup`, `StartAnalyticsWriter`, `lobby.Default.RestoreLobbies` + `StartCleanup`, `webhook.Start`/`Stop`, `uploadgc.Start`.
+- **Background workers** (all started in `main.go` ~line 358): `StartRateLimitCleanup`, `StartAnalyticsWriter`, `lobby.Default.RestoreLobbies` + `StartCleanup`, `webhook.Start`/`Stop`, `uploadgc.Start`, and `turnserver.Start` when `--turn` is set.
+- **Embedded TURN (#102)**: `internal/turnserver` runs a pion/turn relay in-process, opt-in via `--turn`. Exists because the WebSocket relay fallback is capped at 30 msg/s and is always reliable+ordered (TCP), which breaks real-time games and silently degrades the unreliable data channel — it is *not* a bandwidth optimization, TURN relays through the same server. Credentials are ephemeral (10-min TTL, `base64(HMAC-SHA1(secret, "<expiry>:<user-id>"))`), minted per user at `GET /rtc-config` — the scheme is coturn's `use-auth-secret`, so an external coturn via `--turn-servers` stays interchangeable. Off by default because TURN needs inbound UDP that HTTP-only ingress (Cloudflare Tunnel, most PaaS) cannot carry. Guardrails: `/rtc-config` rate-limited 30/min, 8 concurrent allocations per account (`QuotaHandler`, keyed on user ID not username — usernames embed an expiry and would otherwise let a caller reset its own quota by re-minting).
 - **Trusted proxies**: By default the server trusts NO proxy headers. `--trusted-proxies` with explicit CIDRs enables them; `0.0.0.0/0` and `::/0` **panic** at startup. `middleware.RealClientIP` runs before the logger so access logs and rate limits use the unspoofable IP.
 - **HTTPS redirect**: Only when `X-Forwarded-Proto: http` is seen AND a trusted proxy is configured; redirects using `baseURL`, not `Host` (prevents Host-header injection). Must run before security headers.
 - **TLS**: `MinVersion: tls.VersionTLS13` for both direct and auto-TLS. `--auto-tls` and `--tls-cert/--tls-key` are mutually exclusive.
