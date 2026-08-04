@@ -202,8 +202,11 @@ WebRTC fails in the real world. Common failure modes:
   STUN servers the SDK tries.
 - **Old or non-standard browsers** lack complete WebRTC support.
 - **TURN servers** (which would punch through most of the above) are
-  not deployed by default — PlayMore ships with a public STUN server
-  only.
+  not enabled by default — PlayMore ships pointing at a public STUN
+  server only. An embedded TURN relay is available behind `--turn`,
+  and an external coturn via `--turn-servers`; both need inbound UDP,
+  which is why neither is on out of the box. See
+  [SETUP.md](../SETUP.md#turn-relay-multiplayer).
 
 Without a fallback, any of these means the game is unplayable online
 for that player. With transparent fallback:

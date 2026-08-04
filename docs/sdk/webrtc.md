@@ -45,7 +45,8 @@ The peer with the smaller ID creates the data channel and sends the offer. The o
 | Type | Default | Configuration |
 |---|---|---|
 | STUN | `stun:stun.l.google.com:19302` | `--stun-servers` / `PLAYMORE_STUN_SERVERS` |
-| TURN | (none) | `--turn-servers` / `PLAYMORE_TURN_SERVERS` |
+| TURN (external) | (none) | `--turn-servers` / `PLAYMORE_TURN_SERVERS` |
+| TURN (embedded) | off | `--turn` / `PLAYMORE_TURN` — see [SETUP.md](../SETUP.md#turn-relay-multiplayer) |
 
 ICE server config is served at `GET /rtc-config`:
 
@@ -62,6 +63,19 @@ turn:user:pass@turn.example.com:3478
 ```
 
 The server parses these into `username` and `credential` fields automatically. TURN is optional but recommended for production — it ensures connectivity behind symmetric NATs and restrictive firewalls.
+
+With the embedded relay enabled (`--turn`), `/rtc-config` additionally returns a `stun:` and a `turn:` entry pointing at this server, with **ephemeral per-user credentials** valid for 10 minutes:
+
+```json
+{ "iceServers": [
+  { "urls": "stun:stun.l.google.com:19302" },
+  { "urls": "stun:203.0.113.10:3478" },
+  { "urls": "turn:203.0.113.10:3478?transport=udp",
+    "username": "1700000600:9f2c…", "credential": "base64-hmac…" }
+] }
+```
+
+Credentials are minted per request against the logged-in user, so they can't be shared or replayed for long. Nothing needs to change in game code — the shim passes whatever `/rtc-config` returns straight to `RTCPeerConnection`.
 
 ## Keepalive
 
