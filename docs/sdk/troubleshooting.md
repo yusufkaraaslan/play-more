@@ -57,7 +57,9 @@ The shim is a no-op if `window.PlayMore` already exists (`if (window.PlayMore) r
 
 **Cause:** `pm_gs_` tokens have a 5-minute TTL. The SPA refreshes the token every ~4 minutes and passes the new one to the iframe, but if the game cached the raw token string at launch it will be stale within minutes.
 
-**Solution:** Never cache the raw token. Call `PlayMore.sessionToken()` each time you need it — the shim reads from the live context object that the SPA updates on refresh. If the SPA tab is backgrounded (throttled by the browser), the refresh may lag; the token will be rejected until the SPA wakes up and mints a fresh one.
+**Solution:** Never cache the raw token. Call `PlayMore.sessionToken()` each time you need it — the shim reads from the live context object that the SPA updates on refresh, and `onToken` fires on every rotation if you need to retry work that failed on a stale one.
+
+If the SPA tab is backgrounded, browser timer throttling can delay a refresh past the expiry and calls will 401 in the meantime. The SPA re-mints immediately when the tab becomes visible again, so this resolves on its own the moment the player comes back — treat a 401 as retryable rather than ending the session.
 
 ---
 

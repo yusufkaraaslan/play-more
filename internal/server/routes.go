@@ -194,7 +194,11 @@ func mountAPIRoutes(g *gin.RouterGroup, cfg apiConfig) {
 	g.GET("/games/:id/sdk-keys", middleware.AuthRequired(), middleware.RateLimit(60, 3600), handlers.ListGameAPIKeysHandler)
 	g.POST("/games/:id/sdk-keys", middleware.AuthRequired(), handlers.RequireVerifiedEmail(), middleware.RateLimit(10, 3600), handlers.CreateGameAPIKeyHandler)
 	g.DELETE("/games/:id/sdk-keys/:kid", middleware.AuthRequired(), middleware.RateLimit(30, 3600), handlers.DeleteGameAPIKeyHandler)
-	g.POST("/games/:id/sdk-token", middleware.AuthRequired(), middleware.RateLimit(60, 3600), handlers.MintGameSessionTokenHandler)
+	// The IP limit is deliberately loose (the real meter is the per-account
+	// AllowByKey guard inside the handler): the SPA re-mints a session token
+	// every 4 minutes for the whole of a play session, so players sharing an
+	// egress IP would otherwise throttle each other off multiplayer.
+	g.POST("/games/:id/sdk-token", middleware.AuthRequired(), middleware.RateLimit(600, 3600), handlers.MintGameSessionTokenHandler)
 	g.DELETE("/sdk-tokens/:id", middleware.AuthRequired(), middleware.RateLimit(30, 3600), handlers.RevokeGameSessionTokenHandler)
 
 	// Play sessions — track live game sessions for analytics + realtime

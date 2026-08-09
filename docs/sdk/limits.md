@@ -72,7 +72,8 @@ Every cap, rate limit, and size bound in the PlayMore multiplayer system. When a
 | Limit | Value | Source | What happens when exceeded |
 |-------|-------|--------|----------------------------|
 | Global rate limit | 600 req / 5 min per IP | `GlobalRateLimit(600, 300)` | 429 Too Many Requests. Applies to all `/api/` and `/api/v1/` routes. Per-IP, sliding window. |
-| SDK token mint | 60 / hour | route | 429 on the 61st mint in an hour. |
+| SDK token mint (per account) | 180 / hour | `sdk_token.go` | 429 on the 181st mint in an hour. The real meter for this route — a play session costs ~16 mints/hour (one at launch, then the ~4-min refresh), so this covers roughly 7 concurrent games plus retry headroom. |
+| SDK token mint (per IP) | 600 / hour | route | 429 on the 601st mint in an hour. Deliberately loose so players sharing an egress IP (household, dorm, CGNAT) don't throttle each other out of token refreshes. |
 | SDK key create | 10 / hour | route | 429 on the 11th creation in an hour. |
 
 Per-endpoint rate limits (login, register, upload, etc.) are documented alongside their routes in `internal/server/routes.go`. The global limit is the floor — every API call counts against it regardless of the per-endpoint limit.

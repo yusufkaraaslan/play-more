@@ -21,6 +21,21 @@ func MintGameSessionTokenHandler(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "not authenticated"})
 		return
 	}
+
+	// Per-account limit, layered on the per-IP middleware (never replacing
+	// it). The route's IP limit alone is wrong here: the SPA re-mints every
+	// 4 minutes for the length of a play session (~16 mints/hour per game),
+	// so several players behind one NAT — a household, a dorm, CGNAT —
+	// legitimately share an IP and would throttle each other out of token
+	// refreshes. This route requires session auth, so the account is the
+	// honest identity to meter on. 180/hour covers ~7 concurrent games plus
+	// retry headroom; MaxActiveGameSessionTokensPerUser separately bounds
+	// how many tokens can actually be live at once.
+	if !middleware.AllowByKey("sdktoken:"+user.ID, 180, 3600) {
+		c.JSON(http.StatusTooManyRequests, gin.H{"error": "too many session token requests, please try again later"})
+		return
+	}
+
 	gameID := c.Param("id")
 
 	game, err := models.GetGameByID(gameID)

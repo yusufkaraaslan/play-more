@@ -596,6 +596,12 @@ window.addEventListener('message', (ev) => {
     case 'msg':         // a relayed message from another player
       // d.from — sender player id, d.data — the payload
       break;
+    case 'token':       // refreshed session token (~every 4 min)
+      // d.session_token — replaces the init token, which expires
+      // after 5 minutes; always use the newest one for API calls
+      // d.rtc_config — refreshed ICE servers (TURN credentials are
+      // ephemeral too); use it for peer connections opened from here on
+      break;
     case 'closed':      // lobby gone (host left / disconnected) — d.reason
       break;
     case 'error':       // a lobby command failed — d.error
