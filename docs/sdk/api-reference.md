@@ -36,6 +36,7 @@ platform at `/playmore-mp.js` and is also embedded in the binary.
   - [`PlayMore.onLobbyState(callback)`](#playmoreonlobbystatecallback)
   - [`PlayMore.onMatchmaking(callback)`](#playmoreonmatchmakingcallback)
   - [`PlayMore.onLaunch(callback)`](#playmoreonlaunchcallback)
+  - [`PlayMore.onToken(callback)`](#playmoreontokencallback)
   - [`PlayMore.onTransportChange(callback)`](#playmoreontransportchangecallback)
   - [`PlayMore.onPingChange(callback)`](#playmoreonpingchangecallback)
 - [Sending data](#sending-data)
@@ -922,6 +923,39 @@ Play queue filled). The callback receives the launched lobby snapshot.
 **This is where you begin play** — hide your menu and start your game
 loop. WebRTC connections to peers are initiated at this point. Contrast
 with `onReady`, which fires pre-lobby for the menu.
+
+### `PlayMore.onToken(callback)`
+
+Fires when the platform refreshes the short-lived `pm_gs_` session
+token. Session tokens have a 5-minute TTL and the expiry is a hard
+cut-off, so the SPA re-mints one roughly every 4 minutes for as long as
+your game is running and pushes the replacement in.
+
+You do **not** need this callback to stay authenticated —
+[`PlayMore.sessionToken()`](#playmoresessiontoken) already returns the
+new value by the time the callback runs. Subscribe only if you want to
+retry work that failed on an expired token, or to push the fresh token
+into something that caches it (a worker, an open upload).
+
+**Signature**
+
+```js
+PlayMore.onToken(function (sessionToken) { /* ... */ });
+```
+
+| Argument | Type | Description |
+|---|---|---|
+| `sessionToken` | `string` | The new `pm_gs_` token. Identical to `PlayMore.sessionToken()`. |
+
+```js
+PlayMore.onToken(function (token) {
+  // A save that 401'd on an expired token — try it again now.
+  if (pendingSave) saveProgress(pendingSave, token);
+});
+```
+
+> Never cache the raw string. Call `PlayMore.sessionToken()` at the
+> point of use; see [limits](limits.md) for the TTL.
 
 ---
 

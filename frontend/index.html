@@ -3113,12 +3113,22 @@
         let mpRtcConfig = null;     // WebRTC ICE servers from /rtc-config
         let mpCurrentGameId = null; // game ID for the current multiplayer session
 
+        // Bumped by mpCleanup so an in-flight mint started for a game the
+        // player has since closed cannot write its token back into the
+        // globals. Without this, a refresh tick that resolves just after
+        // mpCleanup() would leave mpGameToken holding a token scoped to the
+        // previous game, and mpEnsureSocket's `if (mpGameToken) mpConnect()`
+        // would then open the next game's socket with it.
+        let mpSessionEpoch = 0;
+
         async function mpMintToken(gameId) {
+            const epoch = mpSessionEpoch;
             try {
                 const [tokenRes, rtcRes] = await Promise.all([
                     api('/games/' + gameId + '/sdk-token', { method: 'POST', body: '{}' }),
                     fetch('/rtc-config').then(r => r.json()).catch(() => null)
                 ]);
+                if (epoch !== mpSessionEpoch) return null;   // session torn down mid-flight
                 mpGameToken = tokenRes.token;
                 if (rtcRes && rtcRes.iceServers) mpRtcConfig = rtcRes;
                 return tokenRes.token;
@@ -3164,24 +3174,57 @@
         // Session tokens hard-expire after GameSessionTokenTTL (5 min) — the
         // expiry is a hard cut-off, so a game holding only its launch-time
         // token loses save/API access mid-session. Re-mint on a 4-minute
-        // cadence (comfortably inside the TTL, matching the refresh the token
-        // model documents) and push each fresh token into the running game via
-        // the 'token' bridge message. The SDK updates its context in place
-        // without re-firing onReady. mpMintToken already swallows failures
-        // (returns null), so a blip just means the next tick retries.
+        // cadence (matching the refresh the token model documents) and push
+        // each fresh token into the running game via the 'token' bridge
+        // message. The SDK updates its context in place without re-firing
+        // onReady.
+        //
+        // This is a self-rescheduling timeout chain, NOT setInterval: a failed
+        // mint has to retry inside the 1 minute of slack the 4-min cadence
+        // leaves against the 5-min TTL. On a fixed 4-min interval one blip
+        // would leave the game holding a dead token for ~3 minutes.
+        const MP_TOKEN_REFRESH_MS = 4 * 60 * 1000;
+        const MP_TOKEN_RETRY_MS = 30 * 1000;
         let mpTokenRefreshTimer = null;
+        let mpLastTokenMintAt = 0;
+
         function mpStartTokenRefresh() {
+            mpLastTokenMintAt = Date.now();
+            mpScheduleTokenRefresh(MP_TOKEN_REFRESH_MS);
+        }
+        function mpScheduleTokenRefresh(delay) {
             mpStopTokenRefresh();
-            mpTokenRefreshTimer = setInterval(() => {
+            mpTokenRefreshTimer = setTimeout(mpRefreshTokenNow, delay);
+        }
+        function mpRefreshTokenNow() {
+            mpTokenRefreshTimer = null;
+            // Session torn down (mpCleanup) — let the chain die.
+            if (!mpLaunched || !mpCurrentGameId) return;
+            mpMintToken(mpCurrentGameId).then((t) => {
                 if (!mpLaunched || !mpCurrentGameId) return;
-                mpMintToken(mpCurrentGameId).then((t) => {
-                    if (t && mpLaunched) mpNotifyGame({ playmore: 'token', session_token: t });
-                });
-            }, 4 * 60 * 1000);
+                if (!t) { mpScheduleTokenRefresh(MP_TOKEN_RETRY_MS); return; }
+                mpLastTokenMintAt = Date.now();
+                // Ship the refreshed ICE config alongside the token: mpMintToken
+                // re-fetches /rtc-config on every mint, and TURN credentials are
+                // ephemeral (10-min TTL), so a peer joining late would otherwise
+                // offer relay candidates the TURN server rejects.
+                mpNotifyGame({ playmore: 'token', session_token: t, rtc_config: mpRtcConfig });
+                mpScheduleTokenRefresh(MP_TOKEN_REFRESH_MS);
+            });
         }
         function mpStopTokenRefresh() {
-            if (mpTokenRefreshTimer) { clearInterval(mpTokenRefreshTimer); mpTokenRefreshTimer = null; }
+            if (mpTokenRefreshTimer) { clearTimeout(mpTokenRefreshTimer); mpTokenRefreshTimer = null; }
         }
+
+        // Hidden tabs get their timers throttled (Chrome's intensive throttling
+        // drops them to ~1/min after 5 minutes backgrounded), which can push a
+        // 4-min refresh past the 5-min expiry. When the tab comes back, mint
+        // straight away if the live token is already due rather than waiting
+        // out a timer that has drifted.
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden || !mpLaunched || !mpCurrentGameId) return;
+            if (Date.now() - mpLastTokenMintAt >= MP_TOKEN_REFRESH_MS) mpScheduleTokenRefresh(0);
+        });
 
         // Ensure the lobby socket is connecting/open, re-minting a token first
         // if a previous connection dropped, so a game can recover after a blip.
@@ -3246,6 +3289,7 @@
         // The server handles lobby leave automatically when the WS disconnects.
         function mpCleanup() {
             mpStopTokenRefresh();
+            mpSessionEpoch++;   // invalidate any mint still in flight
             mpPending = []; mpMinting = false;
             mpGameToken = null; mpRtcConfig = null; mpCurrentGameId = null;
             mpLobby = null; mpLaunched = false;

@@ -105,7 +105,7 @@ The `ctx` object passed to your `onReady` handler is your authoritative snapshot
 | `you` | `{ id, username }` | This player. `id` is the stable peer id used as `from`/`to` in messages. |
 | `host` | `boolean` | `true` if this player is the lobby host. Use it to decide who drives authoritative state. Updates live on host migration. |
 | `players` | `array` | Initial roster: `[{ id, username, avatar_url, ready, host }]`. Use `onPlayers` for subsequent changes. |
-| `sessionToken` | `string` | Platform session token for this play session (prefixed `pm_gs_`). Store/echo it if your game records play sessions. |
+| `sessionToken` | `string` | Platform session token for this play session (prefixed `pm_gs_`). It expires after 5 minutes and the platform rotates it roughly every 4 — **don't hold on to this string**, call `PlayMore.sessionToken()` at the point of use (or subscribe to `onToken`). |
 | `metadata` | `object \| null` | Host-authored lobby settings (map, difficulty, mode). May be `null`; updates live as the host changes it. |
 | `spectator` | `boolean` | `true` if this connection joined as a read-only spectator (can receive but not send). |
 
@@ -117,7 +117,7 @@ PlayMore.gameId();       // "8f2c-..."
 PlayMore.me();           // { id, username }
 PlayMore.isHost();       // true / false
 PlayMore.players();      // current roster (live; reflects onPlayers updates)
-PlayMore.sessionToken(); // "pm_gs_..."
+PlayMore.sessionToken(); // "pm_gs_..." (always the live token; rotates ~every 4 min)
 PlayMore.isActive();     // true between onReady and onClosed
 PlayMore.metadata();     // host-authored settings object, or null
 PlayMore.isSpectator();  // true if joined as read-only spectator

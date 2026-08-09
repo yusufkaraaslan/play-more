@@ -94,7 +94,8 @@
     closed: [],
     lobbyState: [],
     launch: [],
-    matchmaking: []
+    matchmaking: [],
+    token: []
   };
 
   function on(kind) {
@@ -600,6 +601,16 @@
         if (d.session_token) {
           ctx.sessionToken = d.session_token;
           emit('token', ctx.sessionToken);
+        }
+        // The same refresh carries fresh ICE servers. TURN credentials are
+        // ephemeral (10-min TTL, shorter than a typical session), and
+        // rtcIceServers is read when each RTCPeerConnection is constructed
+        // — so refreshing it here is what keeps peers that join late from
+        // offering relay candidates the TURN server will reject. Existing
+        // connections keep the config they were built with; that is fine,
+        // an established relay allocation stays valid.
+        if (d.rtc_config && d.rtc_config.iceServers) {
+          rtcIceServers = d.rtc_config.iceServers;
         }
         break;
       case 'lobby_state':
