@@ -590,6 +590,18 @@
           startStatsReporter();
         }
         break;
+      case 'token':
+        // The SPA re-minted the short-lived session token (5-min TTL,
+        // refreshed every 4 min) and pushed the replacement. Update the
+        // context in place — no onReady re-fire, nothing about the lobby
+        // changed — so sessionToken() always returns a live token. Games
+        // doing their own platform API calls can subscribe via onToken to
+        // retry work that failed on an expired token.
+        if (d.session_token) {
+          ctx.sessionToken = d.session_token;
+          emit('token', ctx.sessionToken);
+        }
+        break;
       case 'lobby_state':
         // Lobby state update (lobby created, player joined/left, ready toggled,
         // host migrated, metadata changed). Update ctx and connect to any newly
@@ -643,6 +655,7 @@
     onLobbyState: on('lobbyState'),
     onLaunch: on('launch'),
     onMatchmaking: on('matchmaking'),
+    onToken: on('token'),
 
     send: function (data, to) {
       if (!started || parentOrigin === null) return API;

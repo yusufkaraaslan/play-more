@@ -102,6 +102,7 @@ export type ClosedCallback = () => void;
 export type LobbyStateCallback = (lobby: LobbyState) => void;
 export type LaunchCallback = (lobby: LobbyState) => void;
 export type MatchmakingCallback = (info: MatchmakingInfo) => void;
+export type TokenCallback = (sessionToken: string) => void;
 export type TransportChangeCallback = (peerId: string, transport: Transport) => void;
 export type PingChangeCallback = (peerId: string, rtt: number) => void;
 
@@ -119,6 +120,8 @@ export interface PlayMoreAPI {
   onLobbyState(fn: LobbyStateCallback): this;
   onLaunch(fn: LaunchCallback): this;
   onMatchmaking(fn: MatchmakingCallback): this;
+  /** Fires when the platform refreshes the short-lived session token (~every 4 min). `sessionToken()` already returns the new value. */
+  onToken(fn: TokenCallback): this;
 
   // ── Send game data ────────────────────────────────────────
   /** Broadcast data to all peers, or send to a specific peer. */
