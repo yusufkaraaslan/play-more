@@ -928,6 +928,33 @@ func ServeGameFiles(spaOrigin, gamesDomain string) gin.HandlerFunc {
 			return
 		}
 
+		// Resolve a directory request to its index.html BEFORE deriving any
+		// headers, so Content-Type / sandbox CSP / cache rules below are
+		// computed from the file actually served.
+		//
+		// This path is not exotic — it is how every build-based game loads.
+		// http.ServeFile 301s "<dir>/index.html" to "<dir>/", and a game whose
+		// entry_file is builds/<id>/index.html has exactly that URL as its
+		// frame.src, so the browser's second request is always the directory
+		// form. 404ing it took every such game offline.
+		//
+		// Directory *listings* stay blocked, which is what the guard below was
+		// for: a directory without an index.html is still a 404, and we never
+		// hand a bare directory to ServeFile (which would generate a listing).
+		fi, err := os.Stat(fullPath)
+		if err != nil {
+			c.String(http.StatusNotFound, "not found")
+			return
+		}
+		if fi.IsDir() {
+			index := filepath.Join(fullPath, "index.html")
+			if ifi, ierr := os.Stat(index); ierr != nil || ifi.IsDir() {
+				c.String(http.StatusNotFound, "not found")
+				return
+			}
+			fullPath = index
+		}
+
 		// CSP: permissive for inert game assets, but any extension that a
 		// browser could render as a script-executing document gets a
 		// server-enforced sandbox so a direct visit to /play/<id>/<file>
@@ -978,12 +1005,6 @@ func ServeGameFiles(spaOrigin, gamesDomain string) gin.HandlerFunc {
 		}
 		// nosniff stops the browser from second-guessing our Content-Type.
 		c.Header("X-Content-Type-Options", "nosniff")
-		// Block directory listings — ServeFile generates an index for
-		// subdirectories without an index.html.
-		if fi, err := os.Stat(fullPath); err != nil || fi.IsDir() {
-			c.String(http.StatusNotFound, "not found")
-			return
-		}
 		http.ServeFile(c.Writer, c.Request, fullPath)
 	}
 }
