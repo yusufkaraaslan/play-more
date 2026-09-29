@@ -324,11 +324,19 @@
         .status-error { background: rgba(193,87,87,0.15); color: var(--danger); border: 1px solid rgba(193,87,87,0.3); }
 
         /* Game Player */
-        .game-player { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--bg-secondary); z-index: 2000; display: flex; flex-direction: column; pointer-events: none; opacity: 0; transform: scale(0.95); transition: opacity 0.4s ease, transform 0.4s ease; }
+        /* height is declared twice on purpose: on mobile a position:fixed box
+           resolves 100% against the LARGE viewport (browser toolbars hidden), so
+           the bottom of the game ends up underneath the toolbar. 100dvh tracks
+           the actually-visible area; browsers without dvh drop it and keep 100%. */
+        .game-player { position: fixed; top: 0; left: 0; width: 100%; height: 100%; height: 100dvh; background: var(--bg-secondary); z-index: 2000; display: flex; flex-direction: column; pointer-events: none; opacity: 0; transform: scale(0.95); transition: opacity 0.4s ease, transform 0.4s ease; }
         .game-player.active { pointer-events: all; opacity: 1; transform: scale(1); }
         .game-player-header { height: 50px; background: var(--bg-secondary); display: flex; align-items: center; justify-content: space-between; padding: 0 20px; border-bottom: 1px solid var(--border-color); flex-shrink: 0; }
         .game-player-title { font-size: 16px; }
         .game-player iframe { flex: 1; border: none; width: 100%; }
+        /* Fullscreen fallback for browsers without the Element Fullscreen API. */
+        .game-player.pseudo-fs .game-player-header { display: none; }
+        .game-player.pseudo-fs #pseudo-fs-exit { display: flex; }
+        #pseudo-fs-exit { display: none; position: fixed; top: calc(8px + env(safe-area-inset-top)); right: calc(8px + env(safe-area-inset-right)); z-index: 2100; width: 40px; height: 40px; align-items: center; justify-content: center; border-radius: 50%; border: 1px solid var(--border-color); background: rgba(0,0,0,0.55); color: #fff; font-size: 16px; line-height: 1; cursor: pointer; }
 
         /* Toast Notifications */
         .toast-container { position: fixed; bottom: 20px; right: 20px; z-index: 3000; display: flex; flex-direction: column; gap: 10px; }
@@ -711,7 +719,8 @@
                 <button class="btn-secondary" data-act="closePlayer">Close</button>
             </div>
         </div>
-        <iframe id="player-frame" allow="gamepad; fullscreen" referrerpolicy="no-referrer"></iframe>
+        <iframe id="player-frame" allow="gamepad; fullscreen" referrerpolicy="no-referrer" allowfullscreen></iframe>
+        <button id="pseudo-fs-exit" data-act="toggleFullscreen" title="Exit fullscreen" aria-label="Exit fullscreen">✕</button>
     </div>
 
     <div class="toast-container" id="toast-container" aria-live="polite"></div>
@@ -835,8 +844,76 @@
             const headers = opts.body && typeof opts.body === 'string' ? { 'Content-Type': 'application/json' } : {};
             const res = await fetch('/api' + path, { headers: {...headers, ...opts.headers}, credentials: 'same-origin', ...opts });
             const data = await res.json();
-            if (!res.ok) throw new Error(data.error || 'Request failed');
+            if (!res.ok) {
+                // Carry the status and the parsed body on the Error. Some
+                // endpoints answer with more than a message — the publish gate
+                // returns the list of what the store page is still missing —
+                // and throwing that away would leave callers unable to say
+                // anything more useful than "Request failed".
+                const err = new Error(data.error || 'Request failed');
+                err.status = res.status;
+                err.data = data;
+                throw err;
+            }
             return data;
+        }
+
+        /* ============ Store-page readiness ============ */
+        // Mirrors models.StoreReadiness (internal/models/readiness.go). The
+        // SERVER is authoritative — publishing is gated there, and this copy
+        // exists only so the dashboard and the edit form can show the
+        // checklist without a request per game. Keep the two in step: if the
+        // bar moves in Go, it moves here.
+        const STORE_BAR = { descriptionChars: 80, screenshots: 1, tags: 3 };
+
+        function storeReadiness(g) {
+            // [...str] counts code points, matching Go's utf8.RuneCountInString,
+            // so a Turkish or Japanese description is measured the same way the
+            // server measures it. str.length would count UTF-16 units and
+            // disagree on anything outside the BMP.
+            const desc = [...String(g.description || '').trim()].length;
+            const shots = (g.screenshots || []).filter(x => String(x).trim()).length;
+            const tags = (g.tags || []).filter(x => String(x).trim()).length;
+            const items = [
+                { key: 'description', label: 'Description', done: desc >= STORE_BAR.descriptionChars,
+                  hint: 'Write at least ' + STORE_BAR.descriptionChars + ' characters (' + desc + ' so far).' },
+                { key: 'cover', label: 'Cover image', done: !!String(g.cover_path || '').trim(),
+                  hint: 'Upload a cover image — it is what players see in the store grid.' },
+                { key: 'screenshots', label: 'Screenshot', done: shots >= STORE_BAR.screenshots,
+                  hint: 'Add at least ' + STORE_BAR.screenshots + ' screenshot of actual gameplay.' },
+                { key: 'tags', label: 'Tags', done: tags >= STORE_BAR.tags,
+                  hint: 'Add at least ' + STORE_BAR.tags + ' tags so players can find your game (' + tags + ' so far).' }
+            ];
+            const missing = items.filter(i => !i.done);
+            return { ready: missing.length === 0, items, missing };
+        }
+
+        // renderReadinessChecklist draws the checklist. `published` shifts the
+        // wording: an incomplete game that is ALREADY live was grandfathered in
+        // and is not going anywhere, so it gets a nudge, not a warning.
+        function renderReadinessChecklist(g, published) {
+            const r = storeReadiness(g);
+            if (r.ready) {
+                return '<div class="card-box" style="margin-bottom:20px;border-left:3px solid var(--success);">' +
+                    '<strong style="font-size:13px;">✓ Store page complete</strong>' +
+                    '<p style="font-size:12px;color:var(--text-secondary);margin-top:6px;">This game meets the requirements to be published.</p></div>';
+            }
+            const heading = published
+                ? '⚠ Your store page is incomplete'
+                : 'Store page — ' + (r.items.length - r.missing.length) + ' of ' + r.items.length + ' done';
+            const sub = published
+                ? 'This game is live and stays live. Filling these in makes it easier to find and more likely to be played.'
+                : 'Complete these to publish this game.';
+            let html = '<div class="card-box" style="margin-bottom:20px;border-left:3px solid ' + (published ? 'var(--toast-error, #c15757)' : 'var(--accent)') + ';">';
+            html += '<strong style="font-size:13px;">' + heading + '</strong>';
+            html += '<p style="font-size:12px;color:var(--text-secondary);margin:6px 0 10px;">' + sub + '</p>';
+            html += '<ul style="list-style:none;padding:0;margin:0;font-size:12px;">';
+            r.items.forEach(i => {
+                html += '<li style="padding:3px 0;color:' + (i.done ? 'var(--text-secondary)' : 'var(--text-primary)') + ';">' +
+                    (i.done ? '✓ ' : '○ ') + escapeHtml(i.label) +
+                    (i.done ? '' : ' <span style="color:var(--text-secondary);">— ' + escapeHtml(i.hint) + '</span>') + '</li>';
+            });
+            return html + '</ul></div>';
         }
 
         /* ============ Chunked Upload Helper ============ */
@@ -3025,12 +3102,20 @@
             const sandbox = ['allow-scripts', 'allow-pointer-lock', 'allow-popups'];
             if (hasSeparateOrigin) sandbox.push('allow-same-origin');
             frame.setAttribute('sandbox', sandbox.join(' '));
-            // Delegate WebGPU to the game iframe. The `webgpu` Permissions Policy
-            // defaults to `self`, which blocks cross-origin / opaque-origin iframes
-            // from navigator.gpu — without this, Godot-WebGPU exports see
-            // "WebGPU unavailable" and never boot. Matches the Permissions-Policy
-            // response header set on /play/* HTML in handlers/games.go.
-            frame.setAttribute('allow', 'webgpu');
+            // `allow` is a COMPLETE container policy — assigning it REPLACES what
+            // the element's markup declared, it does not merge. #114 set this to
+            // just 'webgpu' and so silently dropped the `gamepad; fullscreen` on
+            // #player-frame, which killed gamepad input everywhere and blocked any
+            // game calling requestFullscreen() itself. Every feature the iframe
+            // needs must therefore be listed here, together, in this one place.
+            //   fullscreen — games with their own fullscreen button
+            //   gamepad    — controller input (was silently lost in #114)
+            //   webgpu     — defaults to `self`, which blocks cross-origin and
+            //                opaque-origin iframes from navigator.gpu, so
+            //                Godot-WebGPU exports see "WebGPU unavailable" and
+            //                never boot. Mirrors the Permissions-Policy response
+            //                header set on /play/* HTML in handlers/games.go.
+            frame.setAttribute('allow', 'fullscreen; gamepad; webgpu');
             // Multiplayer games need the SPA's postMessage bridge (lobby
             // commands + pm_gs_ session token) — a top-level tab has no
             // parent to bridge to, so the game's online menu would be dead
@@ -3090,7 +3175,12 @@
                 gameSessionStart = null;
             }
             stopFps();
-            if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+            if (fullscreenElement()) {
+                const exit = document.exitFullscreen || document.webkitExitFullscreen;
+                const done = exit.call(document);
+                if (done && done.catch) done.catch(() => {});
+            }
+            pseudoFullscreen(false);
             document.getElementById('game-player').classList.remove('active');
             setTimeout(() => { document.getElementById('player-frame').src = ''; }, 400);
             // Always tear down any multiplayer session — the socket/token are
@@ -3432,13 +3522,29 @@
         }
 
         /* ============ Fullscreen ============ */
+        // Feature-detect native fullscreen and fall back to hiding the player header.
+        function fullscreenElement() {
+            return document.fullscreenElement || document.webkitFullscreenElement || null;
+        }
+        function pseudoFullscreen(on) {
+            document.getElementById('game-player').classList.toggle('pseudo-fs', on);
+        }
         function toggleFullscreen() {
             const player = document.getElementById('game-player');
-            if (document.fullscreenElement) {
-                document.exitFullscreen();
-            } else {
-                player.requestFullscreen().catch(() => {});
+            if (fullscreenElement()) {
+                const exit = document.exitFullscreen || document.webkitExitFullscreen;
+                const done = exit.call(document);
+                if (done && done.catch) done.catch(() => {});
+                return;
             }
+            if (player.classList.contains('pseudo-fs')) { pseudoFullscreen(false); return; }
+            const request = player.requestFullscreen || player.webkitRequestFullscreen;
+            if (!request) { pseudoFullscreen(true); return; }   // iOS
+            let done;
+            // Safari's prefixed form returns undefined instead of a promise, and
+            // a request can still be rejected outright (permission, user-gesture).
+            try { done = request.call(player); } catch { pseudoFullscreen(true); return; }
+            if (done && done.catch) done.catch(() => pseudoFullscreen(true));
         }
 
         /* ============ Modal ============ */
@@ -3622,13 +3728,23 @@
 
                 html += games.map(g => {
                     const coverSrc = playAsset(g.cover_path) || '';
+                    const rd = storeReadiness(g);
                     const pubBadge = g.published
                         ? '<span style="background:var(--success);color:#000;padding:2px 8px;border-radius:3px;font-size:11px;font-weight:600;">Published</span>'
                         : '<span style="background:var(--text-secondary);color:#000;padding:2px 8px;border-radius:3px;font-size:11px;font-weight:600;">Draft</span>';
+                    // The nag, and the reason a Publish click would bounce.
+                    // Shown for live games too: those were grandfathered when
+                    // the requirement landed, so this is a nudge, never a
+                    // threat — nothing gets unpublished behind their back.
+                    const rdNote = rd.ready ? '' :
+                        '<div style="font-size:11px;color:var(--text-secondary);margin-top:4px;">' +
+                        (g.published ? '⚠ Store page incomplete — ' : 'Needed to publish: ') +
+                        escapeHtml(rd.missing.map(m => m.label).join(', ')) +
+                        ' · <a href="#" ' + act('editGame', g.id) + ' style="color:var(--accent);">fix</a></div>';
                     return '<div class="dashboard-card">' +
                         (coverSrc ? '<img src="' + escapeHtml(coverSrc) + '" style="width:180px;height:80px;object-fit:cover;border-radius:3px;cursor:pointer;" ' + act('showGameDetail', g.id) + '>' : '<div style="width:180px;height:80px;background:var(--bg-secondary);border-radius:3px;"></div>') +
                         '<div><div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;"><div class="game-card-title" style="cursor:pointer;margin-bottom:0;" ' + act('showGameDetail', g.id) + '>' + escapeHtml(g.title) + '</div>' + pubBadge + '</div>' +
-                        '<div class="dashboard-stats"><span>' + escapeHtml(g.genre) + '</span><span>★ ' + (g.avg_rating||0).toFixed(1) + '</span><span>' + (g.review_count||0) + ' reviews</span><span>' + (g.play_count||0) + ' plays</span></div></div>' +
+                        '<div class="dashboard-stats"><span>' + escapeHtml(g.genre) + '</span><span>★ ' + (g.avg_rating||0).toFixed(1) + '</span><span>' + (g.review_count||0) + ' reviews</span><span>' + (g.play_count||0) + ' plays</span></div>' + rdNote + '</div>' +
                         '<div class="dashboard-actions">' +
                         '<button class="dash-btn dash-btn-edit" ' + act('toggleVisibility', g.id, !g.published) + '>' + (g.published ? 'Unpublish' : 'Publish') + '</button>' +
                         '<button class="dash-btn dash-btn-edit" ' + act('showGameDetail', g.id) + '>View</button>' +
@@ -3645,7 +3761,23 @@
                 await api('/games/' + id + '/visibility', { method: 'PUT', body: JSON.stringify({ published }) });
                 toast(published ? 'Game published!' : 'Game set to draft.', 'success');
                 loadDashboard();
-            } catch (e) { toast(e.message, 'error'); }
+            } catch (e) {
+                // 422 means the store page is incomplete. A bare "store page
+                // incomplete" toast would leave the developer guessing which
+                // part, so name the outstanding items and offer the way to fix
+                // them rather than making them hunt.
+                if (e.status === 422 && e.data && e.data.missing) {
+                    showModal('Cannot publish yet',
+                        '<p>This game needs a complete store page before it can go live:</p>' +
+                        '<ul style="margin:10px 0 0 18px;font-size:13px;">' +
+                        (e.data.items || []).filter(i => !i.done).map(i =>
+                            '<li style="padding:2px 0;"><strong>' + escapeHtml(i.label) + '</strong> — ' + escapeHtml(i.hint || '') + '</li>').join('') +
+                        '</ul>',
+                        () => { closeModal(); editGame(id); });
+                    return;
+                }
+                toast(e.message, 'error');
+            }
         }
 
         async function deleteGame(id, title) {
@@ -3667,6 +3799,11 @@
                 let html = '<div class="dev-editor">';
                 html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;"><h2 class="section-title" style="margin-bottom:0;">Edit: ' + escapeHtml(g.title) + '</h2>';
                 html += '<button class="btn-secondary" ' + act('showDevTab', 'games') + '>Back to Games</button></div>';
+
+                // Checklist first: what's outstanding should be visible while
+                // the fields that satisfy it are being filled in, not only
+                // after a rejected Publish.
+                html += renderReadinessChecklist(g, g.published);
 
                 // === Basic Info ===
                 html += '<div class="card-box" style="margin-bottom:20px;"><h3 style="font-size:14px;text-transform:uppercase;letter-spacing:1px;margin-bottom:15px;">Basic Info</h3>';

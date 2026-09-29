@@ -107,6 +107,31 @@ Options:
 - `--tags TAGS` — Comma-separated tags
 - `--cover PATH` — Cover image file
 - `--webgpu` — Mark as WebGPU game
+- `--publish` — Take the game live after uploading (see below)
+
+> **A push creates a draft.** Uploading is not publishing — a new game is not
+> visible in the store until you publish it. Add `--publish` to go live in the
+> same command. If the store page doesn't yet meet the requirements the upload
+> still succeeds, the publish is refused, and the CLI prints what's missing.
+
+#### Store page requirements
+
+A game must have a complete store page before it can be published:
+
+| Requirement | Bar |
+|---|---|
+| Description | At least 80 characters |
+| Cover image | One image |
+| Screenshots | At least 1 |
+| Tags | At least 3 |
+
+`PUT /api/v1/games/:id/visibility` answers **422** when these aren't met, with
+`missing` and `items` describing what's outstanding. `GET /api/v1/games/:id/readiness`
+reports the same checklist without attempting a state change — call it from CI
+to fail with a useful message instead of a bare rejection.
+
+Unpublishing is never gated. Games that were already published before this
+requirement was introduced keep their ability to publish (`exempt: true`).
 
 #### `update` — Update game metadata
 
@@ -224,7 +249,8 @@ will. New integrations should use `/api/v1/`.
 | PUT | `/api/v1/games/:id` | Yes | Update game (JSON: all fields) |
 | DELETE | `/api/v1/games/:id` | Yes | Delete game |
 | POST | `/api/v1/games/:id/reupload` | Yes | Replace game files (multipart: game_file) |
-| PUT | `/api/v1/games/:id/visibility` | Yes | Publish/unpublish (JSON: {published: bool}) |
+| PUT | `/api/v1/games/:id/visibility` | Yes | Publish/unpublish (JSON: {published: bool}). 422 if the store page is incomplete |
+| GET | `/api/v1/games/:id/readiness` | Yes | Store-page checklist (owner only) |
 | POST | `/api/v1/games/:id/screenshots` | Yes | Add screenshots (multipart) |
 | DELETE | `/api/v1/games/:id/screenshots/:index` | Yes | Remove screenshot |
 

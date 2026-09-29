@@ -71,9 +71,13 @@ func CreateGame(title, genre, description, developerID string, price float64, ta
 		} else {
 			slug = fmt.Sprintf("%s-%d", baseSlug, attempt)
 		}
+		// published = 0 explicitly. The column still DEFAULTs to 1 for the
+		// benefit of any older row, but a new game now starts as a draft so
+		// its store page can be filled in before anyone sees it — an upload
+		// is not a publish. ToggleVisibility is the only way live.
 		_, err = storage.DB.Exec(
-			`INSERT INTO games (id, title, slug, genre, price, description, developer_id, tags, is_webgpu, multiplayer, entry_file, screenshots)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			`INSERT INTO games (id, title, slug, genre, price, description, developer_id, tags, is_webgpu, multiplayer, entry_file, screenshots, published)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
 			id, title, slug, genre, price, description, developerID, string(tagsJSON), isWebGPU, multiplayer, "index.html", screenshotsJSON,
 		)
 		if err == nil {
@@ -90,7 +94,7 @@ func CreateGame(title, genre, description, developerID string, price float64, ta
 	game := &Game{
 		ID: id, Title: title, Slug: slug, Genre: genre, Price: price,
 		Description: description, DeveloperID: developerID, Tags: tags,
-		IsWebGPU: isWebGPU, Multiplayer: multiplayer, EntryFile: "index.html", Published: true,
+		IsWebGPU: isWebGPU, Multiplayer: multiplayer, EntryFile: "index.html", Published: false,
 	}
 	return game, nil
 }

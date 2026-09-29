@@ -98,8 +98,14 @@ func TestChunkedUpload_HappyPath(t *testing.T) {
 		t.Fatal("no game_id returned")
 	}
 
-	// The game should now exist.
+	// The game should now exist — as a DRAFT. Uploading is no longer
+	// publishing (store-page gate), so it is visible to its owner and to
+	// nobody else until they complete the store page and publish.
 	w, body = ts.Do(t, "GET", "/api/v1/games/"+fin.GameID, nil)
+	if w.Code != http.StatusNotFound {
+		t.Errorf("freshly uploaded game must not be publicly visible: %d %s", w.Code, body)
+	}
+	w, body = ts.Do(t, "GET", "/api/v1/games/"+fin.GameID, nil, testutil.WithAuth(user))
 	if w.Code != http.StatusOK {
 		t.Errorf("GET created game: %d %s", w.Code, body)
 	}

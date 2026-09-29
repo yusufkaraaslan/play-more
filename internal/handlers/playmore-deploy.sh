@@ -23,7 +23,9 @@ playmore-deploy — CLI tool for deploying games to PlayMore
 
 Usage:
   playmore-deploy init    [--server URL] [--key KEY]     Configure server and API key
-  playmore-deploy push    [--file PATH] [--title T] ...  Upload or re-upload game
+  playmore-deploy push    [--file PATH] [--title T] [--publish] ...  Upload or re-upload game
+                          Uploads land as DRAFTS; --publish takes it live
+                          (requires a complete store page)
   playmore-deploy update  [--title T] [--desc D] ...     Update game metadata
   playmore-deploy devlog  --title T [--content C]        Post a devlog entry
   playmore-deploy status                                 Show current config and game info
@@ -169,17 +171,18 @@ cmd_push() {
     [[ -n "$SERVER" ]] || die "Not configured. Run: playmore-deploy init"
     [[ -n "$API_KEY" ]] || die "No API key. Run: playmore-deploy init"
 
-    local file="" title="" genre="" desc="" tags="" cover="" webgpu="false"
+    local file="" title="" genre="" desc="" tags="" cover="" webgpu="false" publish="false"
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --file)   file="$2"; shift 2 ;;
-            --title)  title="$2"; shift 2 ;;
-            --genre)  genre="$2"; shift 2 ;;
-            --desc)   desc="$2"; shift 2 ;;
-            --tags)   tags="$2"; shift 2 ;;
-            --cover)  cover="$2"; shift 2 ;;
-            --webgpu) webgpu="true"; shift ;;
-            *)        die "Unknown option: $1" ;;
+            --file)    file="$2"; shift 2 ;;
+            --title)   title="$2"; shift 2 ;;
+            --genre)   genre="$2"; shift 2 ;;
+            --desc)    desc="$2"; shift 2 ;;
+            --tags)    tags="$2"; shift 2 ;;
+            --cover)   cover="$2"; shift 2 ;;
+            --webgpu)  webgpu="true"; shift ;;
+            --publish) publish="true"; shift ;;
+            *)         die "Unknown option: $1" ;;
         esac
     done
 
@@ -263,6 +266,44 @@ cmd_push() {
                 success "Game uploaded!"
             fi
         fi
+    fi
+
+    # An upload creates a DRAFT — the server requires a complete store page
+    # before a game goes live. Without this step a scripted deploy would report
+    # success and then be invisible in the store, which is the worst possible
+    # failure mode: silent. So say plainly which of the two happened.
+    if [[ "$publish" == "true" && -n "${GAME_ID:-}" ]]; then
+        info "Publishing..."
+        # Deliberately NOT api_call: that helper die()s on any 4xx, discarding
+        # the response body — and on a 422 the body IS the useful part, the
+        # list of what the store page is still missing.
+        local pub_response pub_code pub_body
+        pub_response=$(curl -s -w "\n%{http_code}" -X PUT \
+            -H "Authorization: Bearer $API_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{"published":true}' \
+            "${SERVER}/api/games/$GAME_ID/visibility") || die "Connection failed while publishing."
+        pub_code=$(echo "$pub_response" | tail -1)
+        pub_body=$(echo "$pub_response" | sed '$d')
+
+        if [[ "$pub_code" == "200" ]]; then
+            success "Published."
+        elif [[ "$pub_code" == "422" ]]; then
+            warn "Upload succeeded, but the publish request was refused — the store page is incomplete."
+            echo "$pub_body" \
+                | grep -o '"missing":\[[^]]*\]' \
+                | sed 's/.*\[//; s/\]//; s/"//g; s/,/\n/g' \
+                | while read -r m; do [[ -n "$m" ]] && echo "    still needed: $m"; done
+            echo "    Finish it at ${SERVER}/#dev — publishing was not changed."
+            return 1
+        else
+            local perr
+            perr=$(echo "$pub_body" | grep -o '"error":"[^"]*"' | head -1 | cut -d'"' -f4)
+            warn "Uploaded, but publishing failed: ${perr:-HTTP $pub_code}"
+            return 1
+        fi
+    elif [[ -n "${GAME_ID:-}" ]]; then
+        info "Upload complete. New games start as drafts; re-uploads keep their current visibility. Manage publishing at ${SERVER}/#dev"
     fi
 
     echo ""

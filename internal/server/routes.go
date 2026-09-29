@@ -64,6 +64,7 @@ func mountAPIRoutes(g *gin.RouterGroup, cfg apiConfig) {
 	g.DELETE("/games/:id", middleware.AuthRequired(), middleware.RateLimit(10, 3600), handlers.DeleteGame)
 	g.POST("/games/:id/reupload", middleware.AuthRequired(), handlers.RequireVerifiedEmail(), middleware.RateLimit(10, 3600), bodyLimit(cfg.uploadCap), handlers.ReuploadGameFiles)
 	g.PUT("/games/:id/visibility", middleware.AuthRequired(), handlers.RequireVerifiedEmail(), middleware.RateLimit(30, 3600), handlers.ToggleVisibility)
+	g.GET("/games/:id/readiness", middleware.AuthRequired(), handlers.GameReadiness)
 	g.POST("/games/:id/cover", middleware.AuthRequired(), handlers.RequireVerifiedEmail(), middleware.RateLimit(20, 3600), bodyLimit((5<<20)+(1<<20)), handlers.UpdateCoverImage)
 	g.POST("/games/:id/screenshots", middleware.AuthRequired(), handlers.RequireVerifiedEmail(), middleware.RateLimit(20, 3600), bodyLimit(cfg.uploadCap), handlers.ManageScreenshots)
 	g.DELETE("/games/:id/screenshots/:index", middleware.AuthRequired(), middleware.RateLimit(60, 3600), handlers.DeleteScreenshot)

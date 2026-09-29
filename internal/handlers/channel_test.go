@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/yusufkaraaslan/play-more/internal/handlers"
@@ -64,8 +65,9 @@ func TestServe_OwnerCanPreviewBeta(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("owner beta preview: %d %s", w.Code, body)
 	}
-	if string(body) != "BETA_MARKER" {
-		t.Errorf("beta content mismatch: got %q, want BETA_MARKER", body)
+	// Contains, not equality: game HTML is served with the storage shim spliced in.
+	if !strings.Contains(string(body), "BETA_MARKER") {
+		t.Errorf("beta content mismatch: got %q, want it to contain BETA_MARKER", body)
 	}
 
 	// Non-owner gets 404.
@@ -105,8 +107,9 @@ func TestServe_OwnerCanPreviewInternal(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("owner internal preview: %d %s", w.Code, body)
 	}
-	if string(body) != "INTERNAL_MARKER" {
-		t.Errorf("internal content mismatch: got %q, want INTERNAL_MARKER", body)
+	// Contains, not equality: game HTML is served with the storage shim spliced in.
+	if !strings.Contains(string(body), "INTERNAL_MARKER") {
+		t.Errorf("internal content mismatch: got %q, want it to contain INTERNAL_MARKER", body)
 	}
 
 	// Non-owner gets 404.

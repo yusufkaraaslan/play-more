@@ -402,6 +402,38 @@ paths:
         "200": { description: Visibility updated }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "422":
+          description: >
+            Store page is incomplete, so the game cannot be published. The
+            response lists what is outstanding. Unpublishing is never rejected.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StoreReadinessError" }
+  /games/{id}/readiness:
+    get:
+      tags: [Games]
+      summary: Store-page checklist for a game (owner only)
+      description: >
+        Reports whether the game's store page meets the bar required to
+        publish. `exempt` is true for games that were already live before the
+        store-page gate was introduced; those can publish regardless of
+        `ready`.
+      security:
+        - session: []
+        - apiKey: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Store-page readiness
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StoreReadiness" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /games/{id}/cover:
     post:
       tags: [Games]
@@ -2184,6 +2216,41 @@ components:
                   email_verification: { type: string, enum: [required] }
                   smtp_required: { type: boolean, description: "True when SMTP isn't configured and the operator must set it up" }
   schemas:
+    StoreReadinessItem:
+      type: object
+      required: [key, label, done]
+      properties:
+        key:   { type: string, description: "Stable identifier: description, cover, screenshots, tags" }
+        label: { type: string, description: "Human-readable name of the requirement" }
+        done:  { type: boolean, description: "True when this requirement is met" }
+        hint:  { type: string, description: "What to do about it, present on unmet items" }
+    StoreReadiness:
+      type: object
+      required: [ready, exempt, can_publish, published, items]
+      properties:
+        ready:       { type: boolean, description: "True when every requirement is met" }
+        exempt:      { type: boolean, description: "Game predates the store-page gate and may publish regardless" }
+        can_publish: { type: boolean, description: "ready OR exempt — whether a publish would be accepted" }
+        published:   { type: boolean, description: "Current visibility" }
+        missing:
+          type: array
+          description: "Labels of the outstanding requirements"
+          items: { type: string }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/StoreReadinessItem" }
+    StoreReadinessError:
+      type: object
+      required: [error, missing, items]
+      properties:
+        error:   { type: string }
+        missing:
+          type: array
+          description: "Labels of the outstanding requirements"
+          items: { type: string }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/StoreReadinessItem" }
     Error:
       type: object
       required: [error]

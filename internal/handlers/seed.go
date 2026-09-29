@@ -80,7 +80,7 @@ func SeedData(c *gin.Context) {
 			Title: "Neon Overdrive", Genre: "racing", Price: 19.99, Discount: 20,
 			Tags: []string{"Racing", "Multiplayer", "Cyberpunk"}, IsWebGPU: false, Multiplayer: true,
 			Color1: [3]uint8{180, 50, 200}, Color2: [3]uint8{20, 10, 40},
-			Desc:        "Race through neon-lit cyberpunk cities at breakneck speeds.",
+			Desc:        "Race through neon-lit cyberpunk cities at breakneck speeds. Weave between traffic, chain near-misses to charge your boost, and outrun the syndicate enforcers hunting you.",
 			CustomAbout: "Experience the thrill of high-speed racing through a stunning cyberpunk cityscape. Customize your vehicle with over 50 unique parts, compete against AI opponents or friends online, and become the ultimate street racer.",
 			Features:    []string{"High-speed racing gameplay", "Vehicle customization system", "Online multiplayer (up to 8 players)", "Dynamic weather and day/night cycle", "12 unique tracks across 4 city districts"},
 			SysReqMin:   "Browser: Chrome 90+, Firefox 88+\nWebGL: 2.0 required\nRAM: 4GB\nInternet: Broadband",
@@ -91,7 +91,7 @@ func SeedData(c *gin.Context) {
 			Title: "Void Echoes", Genre: "rpg", Price: 29.99, Discount: 15,
 			Tags: []string{"RPG", "Space", "Story Rich"}, IsWebGPU: true,
 			Color1: [3]uint8{40, 80, 180}, Color2: [3]uint8{5, 10, 30},
-			Desc:        "An epic space RPG where your choices shape the galaxy.",
+			Desc:        "An epic space RPG where your choices shape the galaxy. Recruit a crew, broker peace or start wars between rival systems, and live with endings that remember what you did.",
 			CustomAbout: "Explore distant worlds, forge alliances with alien civilizations, and uncover the ancient mysteries of the Void. Every decision matters in this narrative-driven adventure spanning 40+ hours of gameplay.",
 			Features:    []string{"Deep branching narrative", "Real-time tactical combat", "200+ unique items and weapons", "6 recruitable companions", "New Game+ with alternate storylines"},
 			SysReqMin:   "Browser: Chrome 100+\nWebGL: 2.0 required\nRAM: 4GB",
@@ -101,7 +101,7 @@ func SeedData(c *gin.Context) {
 			Title: "Shadow Tactics", Genre: "strategy", Price: 24.99, Discount: 30,
 			Tags: []string{"Strategy", "Stealth", "Tactical"}, IsWebGPU: false,
 			Color1: [3]uint8{50, 50, 50}, Color2: [3]uint8{10, 15, 10},
-			Desc:        "Command an elite team in this tactical stealth game.",
+			Desc:        "Command an elite team in this tactical stealth game. Scout patrol routes, coordinate silent takedowns, and improvise when a plan falls apart mid-mission.",
 			CustomAbout: "Plan your approach, execute precise maneuvers, and complete missions without leaving a trace. Each specialist has unique abilities that combine for creative solutions to every challenge.",
 			Features:    []string{"5 playable specialists with unique skills", "30 hand-crafted missions", "Real-time tactics with pause", "Multiple completion paths per mission", "Challenge modes and leaderboards"},
 			SysReqMin:   "Browser: Chrome 90+\nWebGL: 2.0\nRAM: 2GB",
@@ -111,7 +111,7 @@ func SeedData(c *gin.Context) {
 			Title: "XOX Challenge", Genre: "puzzle", Price: 0, Discount: 0,
 			Tags: []string{"Puzzle", "Casual", "Classic"}, IsWebGPU: false,
 			Color1: [3]uint8{102, 192, 244}, Color2: [3]uint8{20, 30, 50},
-			Desc:        "The classic game of Tic-Tac-Toe, beautifully reimagined for the web.",
+			Desc:        "The classic game of Tic-Tac-Toe, beautifully reimagined for the web. Play a friend across the table or test yourself against an opponent that never makes the same mistake twice.",
 			CustomAbout: "A modern take on the timeless game. Play against a friend locally with smooth animations and an elegant dark theme. Perfect for quick gaming sessions!",
 			Features:    []string{"Local 2-player gameplay", "Smooth animations", "Win detection with highlights", "Score tracking"},
 			SysReqMin:   "Any modern browser",
@@ -201,6 +201,13 @@ func SeedData(c *gin.Context) {
 		if len(screenshots) > 0 {
 			storage.DB.Exec(`UPDATE games SET screenshots=? WHERE id=?`, mustJSON(screenshots), game.ID)
 		}
+
+		// CreateGame now yields a draft (store-page gate), but demo data whose
+		// entire purpose is to populate a browsable store would be pointless
+		// invisible. These rows are complete by construction — the generators
+		// above give every one of them a cover and three screenshots — so this
+		// publishes what would pass the gate anyway rather than bypassing it.
+		storage.DB.Exec(`UPDATE games SET published = 1 WHERE id = ?`, game.ID)
 
 		// Create XOX game file
 		if sg.Title == "XOX Challenge" {

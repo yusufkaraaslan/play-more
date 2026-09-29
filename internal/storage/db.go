@@ -263,6 +263,30 @@ func migrationsAll() []string {
 			PRIMARY KEY (user_id, game_id, key))`,
 		`CREATE INDEX IF NOT EXISTS idx_game_saves_game ON game_saves(game_id)`,
 		`ALTER TABLE lobbies ADD COLUMN max_players INTEGER DEFAULT 8`,
+		// Store-page quality gate: publishing now requires a complete store
+		// page (see models.StoreReadiness). Games that were already live when
+		// the gate landed are grandfathered — taking someone's published game
+		// offline retroactively is not something a new rule gets to do.
+		//
+		// The grandfathering UPDATE is a ONE-SHOT data migration, and the
+		// statements below are the machinery that keeps it that way. Every
+		// entry in this slice runs on every boot; a failing ALTER does NOT
+		// stop the statements after it, it is just swallowed as idempotent. So
+		// a bare `UPDATE ... WHERE published = 1` would re-run forever and
+		// exempt each game as it was published — the gate would quietly erode
+		// to nothing across a restart. schema_flags records that the stamping
+		// already happened, and the UPDATE is guarded on that flag's absence.
+		//
+		// Order is load-bearing: the guarded UPDATE must precede the INSERT
+		// that sets the flag, or it would be a no-op on the very first run.
+		`CREATE TABLE IF NOT EXISTS schema_flags (
+			key        TEXT PRIMARY KEY,
+			applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
+		`ALTER TABLE games ADD COLUMN store_gate_exempt BOOLEAN DEFAULT 0`,
+		`UPDATE games SET store_gate_exempt = 1
+		  WHERE published = 1
+		    AND NOT EXISTS (SELECT 1 FROM schema_flags WHERE key = 'store_gate_grandfathered')`,
+		`INSERT OR IGNORE INTO schema_flags (key) VALUES ('store_gate_grandfathered')`,
 	}
 }
 
@@ -322,6 +346,14 @@ func Migrations() []string {
 }
 
 const schema = `
+-- One-shot data migrations record themselves here. See migrationsAll():
+-- every migration statement runs on every boot, so anything that must happen
+-- exactly once needs an explicit marker to check against.
+CREATE TABLE IF NOT EXISTS schema_flags (
+    key        TEXT PRIMARY KEY,
+    applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS users (
     id          TEXT PRIMARY KEY,
     username    TEXT UNIQUE NOT NULL,
@@ -369,6 +401,7 @@ CREATE TABLE IF NOT EXISTS games (
     sys_req_min TEXT DEFAULT '',
     sys_req_rec TEXT DEFAULT '',
     multiplayer BOOLEAN DEFAULT 0,
+    store_gate_exempt BOOLEAN DEFAULT 0,
     created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
 );

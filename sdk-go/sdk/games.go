@@ -49,6 +49,10 @@ type GameUploadOptions struct {
 // UploadGame creates a new game via POST /games. The file is
 // sent as multipart/form-data alongside the metadata fields.
 // On success, returns the created Game.
+//
+// The game is created as a DRAFT and is not visible in the store. Uploading
+// is not publishing: call SetPublished once the store page is complete (see
+// GameReadiness for what that requires).
 func (c *Client) UploadGame(ctx context.Context, opts GameUploadOptions) (*Game, error) {
 	if opts.GameFile == nil {
 		return nil, fmt.Errorf("GameFile is required")
@@ -149,6 +153,60 @@ func (c *Client) GetGame(ctx context.Context, id string) (*Game, error) {
 // DeleteGame removes a game (owner only).
 func (c *Client) DeleteGame(ctx context.Context, id string) error {
 	req, err := c.newRequest(ctx, "DELETE", "/games/"+id, nil, "")
+	if err != nil {
+		return err
+	}
+	return c.do(req, nil)
+}
+
+// StoreReadinessItem is one requirement on the store-page checklist.
+type StoreReadinessItem struct {
+	Key   string `json:"key"`
+	Label string `json:"label"`
+	Done  bool   `json:"done"`
+	Hint  string `json:"hint,omitempty"`
+}
+
+// StoreReadiness reports whether a game's store page is complete enough to
+// publish. Exempt is true for games that were already live before the
+// store-page requirement existed; those publish regardless of Ready.
+type StoreReadiness struct {
+	Ready      bool                 `json:"ready"`
+	Exempt     bool                 `json:"exempt"`
+	CanPublish bool                 `json:"can_publish"`
+	Published  bool                 `json:"published"`
+	Missing    []string             `json:"missing"`
+	Items      []StoreReadinessItem `json:"items"`
+}
+
+// GameReadiness returns the store-page checklist for a game (owner only).
+//
+// Worth calling before SetPublished in an automated pipeline: it reports what
+// is outstanding without attempting a state change, so a CI job can fail with
+// a useful message instead of a bare 422.
+func (c *Client) GameReadiness(ctx context.Context, gameID string) (*StoreReadiness, error) {
+	req, err := c.newRequest(ctx, "GET", "/games/"+gameID+"/readiness", nil, "")
+	if err != nil {
+		return nil, err
+	}
+	var out StoreReadiness
+	if err := c.do(req, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// SetPublished publishes or unpublishes a game.
+//
+// UploadGame creates a DRAFT — uploading is not publishing. Call this to take
+// a game live once its store page is complete.
+//
+// Publishing an incomplete store page returns an *Error with StatusCode 422,
+// whose Body lists what is missing; call GameReadiness for that as structured
+// data. Unpublishing is never rejected.
+func (c *Client) SetPublished(ctx context.Context, gameID string, published bool) error {
+	body, _ := json.Marshal(map[string]bool{"published": published})
+	req, err := c.newRequest(ctx, "PUT", "/games/"+gameID+"/visibility", bytes.NewReader(body), "application/json")
 	if err != nil {
 		return err
 	}

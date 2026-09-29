@@ -89,6 +89,7 @@ func mountDriftFixture(r *gin.Engine) {
 	r.DELETE("/api/v1/games/:id", func(c *gin.Context) {})
 	r.POST("/api/v1/games/:id/reupload", func(c *gin.Context) {})
 	r.PUT("/api/v1/games/:id/visibility", func(c *gin.Context) {})
+	r.GET("/api/v1/games/:id/readiness", func(c *gin.Context) {})
 	r.POST("/api/v1/games/:id/cover", func(c *gin.Context) {})
 	r.POST("/api/v1/games/:id/screenshots", func(c *gin.Context) {})
 	r.DELETE("/api/v1/games/:id/screenshots/:index", func(c *gin.Context) {})

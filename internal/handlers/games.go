@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -19,6 +20,7 @@ import (
 	"github.com/yusufkaraaslan/play-more/internal/models"
 	"github.com/yusufkaraaslan/play-more/internal/storage"
 	"github.com/yusufkaraaslan/play-more/internal/webhook"
+	"golang.org/x/net/html"
 )
 
 // videoURLAllowedPrefixes — only embed URLs from trusted providers are accepted.
@@ -424,6 +426,45 @@ func UpdateGame(c *gin.Context) {
 }
 
 // ToggleVisibility lets a developer publish/unpublish their own game.
+// GameReadiness returns the store-page checklist for a game.
+//
+// It exists so the dashboard can show what's outstanding *while* the developer
+// edits, instead of only finding out at the moment they hit Publish. A gate
+// that reports its criteria up front reads as a to-do list; the same gate
+// discovered by rejection reads as a wall.
+//
+// Owner-only: the checklist describes an unpublished page, which nobody else
+// is entitled to see.
+func GameReadiness(c *gin.Context) {
+	user := middleware.GetUser(c)
+	if user == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "not authenticated"})
+		return
+	}
+	game, err := models.GetGameByID(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "game not found"})
+		return
+	}
+	if game.DeveloperID != user.ID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "not your game"})
+		return
+	}
+	readiness := models.StoreReadiness(game)
+	exempt := models.IsStoreGateExempt(game.ID)
+	c.JSON(http.StatusOK, gin.H{
+		"ready": readiness.Ready,
+		// Exempt games were live before the gate existed: they can publish
+		// regardless, but the checklist is still reported so the dashboard can
+		// nudge without threatening.
+		"exempt":      exempt,
+		"can_publish": readiness.Ready || exempt,
+		"published":   game.Published,
+		"missing":     readiness.Missing,
+		"items":       readiness.Items,
+	})
+}
+
 func ToggleVisibility(c *gin.Context) {
 	user := middleware.GetUser(c)
 	if user == nil {
@@ -446,7 +487,24 @@ func ToggleVisibility(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
 		return
 	}
-	storage.DB.Exec(`UPDATE games SET published = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, input.Published, game.ID)
+	// The gate applies to going live only. Unpublishing is always allowed —
+	// a developer must be able to pull their own game at any moment, and
+	// making that conditional on the page being complete would trap exactly
+	// the games most in need of pulling.
+	if input.Published && !models.IsStoreGateExempt(game.ID) {
+		if readiness := models.StoreReadiness(game); !readiness.Ready {
+			c.JSON(http.StatusUnprocessableEntity, gin.H{
+				"error":   "store page incomplete",
+				"missing": readiness.Missing,
+				"items":   readiness.Items,
+			})
+			return
+		}
+	}
+	if _, err := storage.DB.Exec(`UPDATE games SET published = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, input.Published, game.ID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update visibility"})
+		return
+	}
 	if input.Published {
 		webhook.Dispatch(models.WebhookEventGamePublished, user.ID, gin.H{
 			"game_id": game.ID,
@@ -1005,6 +1063,16 @@ func ServeGameFiles(spaOrigin, gamesDomain string) gin.HandlerFunc {
 		}
 		// nosniff stops the browser from second-guessing our Content-Type.
 		c.Header("X-Content-Type-Options", "nosniff")
+		// HTML documents get the Storage shim spliced in (see storageShim):
+		// the sandbox above makes localStorage *throw*, which kills games that
+		// read it at init. Only .html/.htm — splicing a <script> into the .svg
+		// and .xml documents that also take the sandbox branch would corrupt
+		// them. Falls through to ServeFile if the file can't be streamed.
+		if ext == ".html" || ext == ".htm" {
+			if serveGameHTMLWithShim(c, fullPath) {
+				return
+			}
+		}
 		http.ServeFile(c.Writer, c.Request, fullPath)
 	}
 }
@@ -1013,6 +1081,172 @@ func ServeGameFiles(spaOrigin, gamesDomain string) gin.HandlerFunc {
 // extensions. Returns "" for unknown extensions — http.ServeFile will then
 // sniff, but X-Content-Type-Options:nosniff prevents browsers from acting
 // on a sniff that disagrees with the extension.
+// storageShim is injected into every HTML game document served from /play.
+//
+// Game documents run at an opaque origin: htmlCSP below applies `sandbox`
+// without allow-same-origin, deliberately, so uploaded JS can never reach the
+// SPA's cookies or mint API keys. At an opaque origin the Storage APIs are not
+// merely empty — *reading the getter itself* throws SecurityError:
+//
+//	Uncaught DOMException: Window.localStorage getter: Forbidden in a
+//	sandboxed document without the 'allow-same-origin' flag.
+//
+// Games commonly touch localStorage at module-init time to load a high score.
+// That throw propagates out of the game's top-level IIFE, so nothing after it
+// runs — not even the first requestAnimationFrame. The player sees a blank
+// canvas and the "play" button appearing to do nothing, with the real cause
+// only visible in the console. Guarding it here turns a hard crash into a
+// no-op for the whole class of games.
+//
+// The shim installs a same-shape in-memory Storage ONLY when the real one is
+// unreachable, so behaviour is untouched anywhere Storage actually works
+// (and if a future browser grants sandboxed storage, this quietly stops
+// applying). It is deliberately NOT persistent: durable per-user state is
+// /api/v1/games/:id/saves/:key (see models.GameSave), which the opaque origin
+// can reach with a pm_gs_ token. Persisting through this shim would need a
+// synchronous read of an async API, which cannot be done faithfully.
+//
+// indexedDB is NOT shimmed — emulating it is a far larger surface, and unlike
+// Storage most libraries already feature-detect it via a call that returns a
+// rejected request rather than throwing on property access.
+const storageShim = `<script>(function(){var ok=false;try{ok=!!window.localStorage}catch(e){}` +
+	`if(ok)return;function mk(){var m=Object.create(null);return{` +
+	`getItem:function(k){k=String(k);return Object.prototype.hasOwnProperty.call(m,k)?m[k]:null},` +
+	`setItem:function(k,v){m[String(k)]=String(v)},` +
+	`removeItem:function(k){delete m[String(k)]},` +
+	`clear:function(){m=Object.create(null)},` +
+	`key:function(i){var ks=Object.keys(m);return(i>=0&&i<ks.length)?ks[i]:null},` +
+	`get length(){return Object.keys(m).length}};}` +
+	`try{Object.defineProperty(window,'localStorage',{value:mk(),configurable:true});}catch(e){}` +
+	`try{Object.defineProperty(window,'sessionStorage',{value:mk(),configurable:true});}catch(e){}` +
+	`})();</script>`
+
+// shimScanLimit bounds how much of a game document we read looking for the
+// injection point. Single-file games can embed megabytes of base64 assets, so
+// the document is streamed rather than buffered; only this prefix is held.
+const shimScanLimit = 64 << 10
+
+// asciiIndexFold is a case-insensitive IndexByte-style search restricted to
+// ASCII folding. bytes.ToLower is unusable here: it folds by rune, and a few
+// runes (U+0130 for one) change byte length when lowered, which would shift
+// every offset we compute against the original buffer.
+func asciiIndexFold(hay []byte, needle string) int {
+	if len(needle) == 0 || len(hay) < len(needle) {
+		return -1
+	}
+	fold := func(b byte) byte {
+		if b >= 'A' && b <= 'Z' {
+			return b + ('a' - 'A')
+		}
+		return b
+	}
+	for i := 0; i+len(needle) <= len(hay); i++ {
+		j := 0
+		for ; j < len(needle); j++ {
+			if fold(hay[i+j]) != fold(needle[j]) {
+				break
+			}
+		}
+		if j == len(needle) {
+			return i
+		}
+	}
+	return -1
+}
+
+// shimInsertOffset picks where in an HTML prefix the shim can be spliced in.
+//
+// Offset 0 is the last resort, not the default: content before <!doctype html>
+// pushes the browser into quirks mode, which silently breaks the percentage
+// heights that nearly every full-viewport canvas game relies on. So we insert
+// after <head> where possible, falling back to after <html>, then after the
+// doctype — all of which keep standards mode — and only use 0 for a document
+// that has no doctype and is therefore already in quirks mode.
+func shimInsertOffset(prefix []byte) int {
+	z := html.NewTokenizer(bytes.NewReader(prefix))
+	offset, fallback := 0, 0
+	for {
+		kind := z.Next()
+		offset += len(z.Raw())
+		switch kind {
+		case html.ErrorToken:
+			return fallback
+		case html.DoctypeToken:
+			fallback = offset
+		case html.StartTagToken:
+			name, _ := z.TagName()
+			switch string(name) {
+			case "head":
+				return offset
+			case "html":
+				fallback = offset
+			default:
+				return fallback
+			}
+		case html.TextToken:
+			if len(bytes.TrimSpace(z.Text())) != 0 {
+				return fallback
+			}
+		}
+	}
+}
+
+// serveGameHTMLWithShim streams an HTML game document with storageShim spliced
+// in near the top. It reports whether it handled the request; false means the
+// caller should fall back to http.ServeFile unmodified.
+//
+// Range and non-GET requests fall back deliberately: injection changes the
+// body length, so byte offsets a client already holds would no longer line up.
+// Range on a game's entry document is not a real access pattern (the /play/
+// gzip exclusion exists for media assets), whereas a silently corrupted range
+// would be very hard to debug.
+func serveGameHTMLWithShim(c *gin.Context, fullPath string) bool {
+	if c.Request.Method != http.MethodGet || c.Request.Header.Get("Range") != "" {
+		return false
+	}
+	// Let http.ServeFile keep canonicalising "<dir>/index.html" to "<dir>/"
+	// with a 301. Build-based games are loaded via exactly that URL, so
+	// answering it with 200 here would quietly retire the redirect the player
+	// currently depends on (#118) — not something a storage shim should change.
+	if strings.HasSuffix(c.Request.URL.Path, "/index.html") {
+		return false
+	}
+	f, err := os.Open(fullPath)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+
+	// Size comes from the open descriptor, not the caller's earlier os.Stat, so
+	// a re-upload landing between the two cannot desync the Content-Length we
+	// advertise from the bytes we go on to write.
+	fi, err := f.Stat()
+	if err != nil || fi.IsDir() {
+		return false
+	}
+
+	prefix := make([]byte, shimScanLimit)
+	n, err := io.ReadFull(f, prefix)
+	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
+		return false
+	}
+	prefix = prefix[:n]
+	off := shimInsertOffset(prefix)
+
+	h := c.Writer.Header()
+	h.Set("Content-Length", strconv.FormatInt(fi.Size()+int64(len(storageShim)), 10))
+	h.Set("Last-Modified", fi.ModTime().UTC().Format(http.TimeFormat))
+	c.Status(http.StatusOK)
+
+	c.Writer.Write(prefix[:off])
+	c.Writer.Write([]byte(storageShim))
+	c.Writer.Write(prefix[off:])
+	if n == shimScanLimit {
+		io.Copy(c.Writer, f) // remainder streams; never fully buffered
+	}
+	return true
+}
+
 func contentTypeForExt(ext string) string {
 	switch ext {
 	case ".html", ".htm":
