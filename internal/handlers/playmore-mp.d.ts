@@ -111,7 +111,19 @@ export type PingChangeCallback = (peerId: string, rtt: number) => void;
  * Callbacks fire asynchronously; lobby-entry commands (`createLobby`,
  * `joinLobby`, `quickPlay`) are queued if the socket is still connecting.
  */
+export interface DirectConnectOptions {
+  /** Service origin, HTTPS except for localhost development. */
+  server: string;
+  gameId: string;
+  /** Obtain a fresh player pm_gs_ token from your authenticated backend.
+   * Called at connection time and every four minutes. Never return a secret SDK key. */
+  getToken: () => string | Promise<string>;
+}
+
 export interface PlayMoreAPI {
+  connect(options: DirectConnectOptions): Promise<PlayMoreAPI>;
+  disconnect(): PlayMoreAPI;
+  onError(callback: (message: string) => void): PlayMoreAPI;
   // ── Callbacks ──────────────────────────────────────────────
   onReady(fn: ReadyCallback): this;
   onMessage(fn: MessageCallback): this;

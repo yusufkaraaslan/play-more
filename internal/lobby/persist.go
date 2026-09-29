@@ -1,6 +1,7 @@
 package lobby
 
 import (
+	"database/sql"
 	"encoding/json"
 	"log"
 	"time"
@@ -8,80 +9,83 @@ import (
 	"github.com/yusufkaraaslan/play-more/internal/storage"
 )
 
-// persistCh is a buffered channel for async lobby persistence. The hub
-// sends lobby pointers here instead of writing to the DB synchronously,
-// so the global mutex is only held for the channel send (nanoseconds),
-// not for the DB write (which could block under disk contention).
-var persistCh = make(chan *Lobby, 256)
-
-func init() {
-	go persistWorker()
+// Each hub owns an ordered persistence queue. Only immutable snapshots cross
+// into the writer goroutine; deletes share the queue so an older upsert cannot
+// resurrect a deleted lobby. The writer captures its DB instead of reading the
+// mutable package-global storage.DB.
+type lobbyWrite struct {
+	code, gameID, metadata, members, former, lastActive string
+	maxPlayers                                          int
+	started, deleted                                    bool
+}
+type lobbyStore struct {
+	db     *sql.DB
+	writes chan lobbyWrite
+	done   chan struct{}
 }
 
-func persistWorker() {
-	for l := range persistCh {
-		persistLobbySync(l)
+// UseDatabase attaches persistence before serving connections. Passing nil
+// drains and stops the previous writer, useful during shutdown and in tests.
+func (h *Hub) UseDatabase(db *sql.DB) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.store != nil {
+		h.store.close()
+		h.store = nil
 	}
-}
-
-// persistLobby enqueues a lobby for async DB persistence. Non-blocking —
-// if the channel is full (extreme contention), the write is dropped
-// rather than blocking the hub mutex.
-func persistLobby(l *Lobby) {
-	if storage.DB == nil {
+	if db == nil {
 		return
 	}
-	select {
-	case persistCh <- l:
-	default:
-		log.Printf("lobby persist channel full, dropping write for %s", l.Code)
+	store := &lobbyStore{db: db, writes: make(chan lobbyWrite, 256), done: make(chan struct{})}
+	h.store = store
+	go store.run()
+}
+func (s *lobbyStore) close() { close(s.writes); <-s.done }
+func (s *lobbyStore) run() {
+	defer close(s.done)
+	for w := range s.writes {
+		var err error
+		if w.deleted {
+			_, err = s.db.Exec(`DELETE FROM lobbies WHERE code = ?`, w.code)
+		} else {
+			_, err = s.db.Exec(
+				`INSERT INTO lobbies (code, game_id, max_players, started, metadata, member_ids, former_member_ids, last_active)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+				 ON CONFLICT(code) DO UPDATE SET max_players=excluded.max_players,
+				 started=excluded.started, metadata=excluded.metadata, member_ids=excluded.member_ids,
+				 former_member_ids=excluded.former_member_ids, last_active=excluded.last_active`,
+				w.code, w.gameID, w.maxPlayers, w.started, w.metadata, w.members, w.former, w.lastActive)
+		}
+		if err != nil {
+			log.Printf("lobby persistence error for %s: %v", w.code, err)
+		}
 	}
 }
 
-// persistLobbySync writes the lobby state to the DB. Called by the
-// persist worker goroutine.
-func persistLobbySync(l *Lobby) {
-	if storage.DB == nil {
+// Called with h.mu held. Backpressure bounds memory without dropping state.
+func (h *Hub) persistLobby(l *Lobby) {
+	if h.store == nil {
 		return
 	}
-	memberIDs := make([]string, 0, len(l.Members))
+	members := make([]string, 0, len(l.Members))
 	for _, m := range l.Members {
-		memberIDs = append(memberIDs, m.UserID)
+		members = append(members, m.UserID)
 	}
-	formerIDs := make([]string, 0, len(l.FormerMembers))
+	former := make([]string, 0, len(l.FormerMembers))
 	for id := range l.FormerMembers {
-		formerIDs = append(formerIDs, id)
+		former = append(former, id)
 	}
-	memberJSON, _ := json.Marshal(memberIDs)
-	formerJSON, _ := json.Marshal(formerIDs)
-	metaStr := ""
-	if l.Metadata != nil {
-		metaStr = string(l.Metadata)
-	}
-	_, err := storage.DB.Exec(
-		`INSERT INTO lobbies (code, game_id, max_players, started, metadata, member_ids, former_member_ids, last_active)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-		 ON CONFLICT(code) DO UPDATE SET
-		   max_players = excluded.max_players,
-		   started = excluded.started,
-		   metadata = excluded.metadata,
-		   member_ids = excluded.member_ids,
-		   former_member_ids = excluded.former_member_ids,
-		   last_active = excluded.last_active`,
-		l.Code, l.GameID, l.MaxPlayers, l.Started, metaStr, string(memberJSON), string(formerJSON),
-		time.Now().UTC().Format(time.RFC3339),
-	)
-	if err != nil {
-		log.Printf("lobby persist error for %s: %v", l.Code, err)
-	}
+	memberJSON, _ := json.Marshal(members)
+	formerJSON, _ := json.Marshal(former)
+	h.store.writes <- lobbyWrite{code: l.Code, gameID: l.GameID,
+		maxPlayers: l.MaxPlayers, started: l.Started, metadata: string(l.Metadata),
+		members: string(memberJSON), former: string(formerJSON),
+		lastActive: l.LastActive.UTC().Format(time.RFC3339)}
 }
-
-// deleteLobby removes a lobby from the DB. Called when a lobby is closed.
-func deleteLobby(code string) {
-	if storage.DB == nil {
-		return
+func (h *Hub) deleteLobby(code string) {
+	if h.store != nil {
+		h.store.writes <- lobbyWrite{code: code, deleted: true}
 	}
-	storage.DB.Exec(`DELETE FROM lobbies WHERE code = ?`, code)
 }
 
 // RestoreLobbies loads active lobbies from the DB into the hub. Called
@@ -89,6 +93,7 @@ func deleteLobby(code string) {
 // restored — their members are gone (WebSocket disconnected) but
 // FormerMembers is populated so players can rejoin.
 func (h *Hub) RestoreLobbies() {
+	h.UseDatabase(storage.DB)
 	if storage.DB == nil {
 		return
 	}

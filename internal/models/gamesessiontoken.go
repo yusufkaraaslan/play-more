@@ -171,7 +171,7 @@ func ValidateGameSessionToken(rawToken string) (*GameSessionToken, *User, error)
 		log.Printf("game session token: bad expires_at format: %q", expiresAt)
 		return nil, nil, fmt.Errorf("internal error")
 	}
-	if time.Now().UTC().After(expTime) {
+	if !time.Now().UTC().Before(expTime) {
 		return nil, nil, fmt.Errorf("session token expired")
 	}
 	tok.ExpiresAt = expiresAt
@@ -267,4 +267,15 @@ func WithTx(fn func(tx *sql.Tx) error) error {
 		return err
 	}
 	return tx.Commit()
+}
+
+// HasRuntimeScope is the permission currently supported by the multiplayer,
+// play-session and save APIs. Unknown/reserved scopes grant no access.
+func (t *GameSessionToken) HasRuntimeScope() bool {
+	for _, scope := range strings.Split(t.Scopes, ",") {
+		if strings.TrimSpace(scope) == "session:write" || strings.TrimSpace(scope) == "all" {
+			return true
+		}
+	}
+	return false
 }

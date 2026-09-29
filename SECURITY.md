@@ -46,24 +46,31 @@ The bundled defaults aim to be safe but not paranoid. Specifically:
 
 ## Game iframe sandbox
 
-Uploaded games run in a sandboxed iframe. The sandbox attribute is set dynamically based on whether `--games-domain` is configured:
+Every game HTML response has a server-enforced CSP sandbox without
+`allow-same-origin`, including direct navigation and deployments using
+`--games-domain`. Uploaded scripts cannot access the parent application's DOM
+or storage. A separate games domain remains recommended for defense in depth.
 
-**Without `--games-domain`** (games served from main domain `/play/<id>/*`):
-- Sandbox: `allow-scripts allow-pointer-lock allow-popups allow-popups-to-escape-sandbox`
-- **No `allow-same-origin`** — iframe runs in an opaque origin
-- ✅ Games CANNOT call `/api/*` with the user's cookies (no credentials cross opaque origin)
-- ✅ Games CANNOT read `parent.document` or the SPA's localStorage
-- ❌ Games CANNOT use their own `localStorage` / `IndexedDB` (storage is per-origin and the opaque origin storage is wiped each load)
-- **Best for:** simple games that don't need persistence (puzzle, arcade, demos)
+Games have opaque origins, so native localStorage/IndexedDB access is unavailable.
+The player supplies an in-memory localStorage/sessionStorage compatibility shim;
+its contents are not durable. Use the per-player, per-game cloud saves API for
+persistent data. The iframe's `allow-same-origin` attribute on a separate games
+domain does not override the stricter response CSP.
 
-**With `--games-domain`** (games served from `games.example.com`):
-- Sandbox includes `allow-same-origin`
-- Games run on their own origin, scoped storage to that origin
-- ✅ Games CANNOT call `/api/*` with the user's cookies (cookies are scoped to main domain)
-- ✅ Games CANNOT read SPA DOM (iframe is cross-origin)
-- ✅ Games CAN use `localStorage`, `IndexedDB`, etc. (scoped to `games.example.com`)
-- **Best for:** save-game-heavy games, games that need persistence
-- ⚠️ All games on a self-hosted instance share the `games.example.com` origin and therefore share storage — one game can read another game's localStorage. For full per-game isolation, use a wildcard subdomain like `<id>.games.example.com` (requires DNS + wildcard cert work).
+## Multiplayer credentials
+
+Game-session tokens bind a player to one game. Creation, matchmaking, joining,
+and spectating enforce that boundary. Runtime operations require `session:write`
+or `all`. Cross-origin sockets require an explicit valid runtime token; cookie
+connections retain same-origin protection. Tokens are rechecked on commands and
+once per second while idle. Renewal uses an `auth` frame with a fresh token for
+the same identity and game. Application access logs omit query strings; reverse
+proxy logs must do the same because browser WebSocket URLs carry runtime tokens.
+
+Long-lived account/game secrets belong only on trusted backends, never in native
+executables or browser bundles. See [external games](docs/sdk/external-games.md).
+Game payloads are not validated by the relay, and P2P peers can continue exchanging
+traffic independently of service credentials. This is not an anti-cheat system.
 
 ## Known Limitations
 

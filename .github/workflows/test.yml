@@ -15,6 +15,10 @@ jobs:
           go-version: "1.26"
       - name: Test
         run: go test ./...
+      - name: Multiplayer race regressions
+        run: go test -race ./internal/lobby ./internal/handlers ./internal/server -run 'TestPersistence|TestShutdownPersists|TestWS_|TestAccessLog|TestRTCConfigGame'
+      - name: Multiplayer browser SDK
+        run: node --test scripts/test-mp-sdk.cjs
 
   sdk-go:
     runs-on: ubuntu-latest

@@ -42,6 +42,8 @@
 
   var parent = window.parent;
   var parentOrigin = null;
+  var direct = null;
+  var directEpoch = 0;
 
   var ctx = { code: '', gameId: '', you: null, host: false, players: [], metadata: null, spectator: false };
   var started = false;
@@ -95,7 +97,8 @@
     lobbyState: [],
     launch: [],
     matchmaking: [],
-    token: []
+    token: [],
+    error: []
   };
 
   function on(kind) {
@@ -113,6 +116,7 @@
   }
 
   function post(obj, origin) {
+    if (direct) { directPost(obj); return; }
     try { parent.postMessage(obj, origin || '*'); } catch (e) {}
   }
 
@@ -552,12 +556,14 @@
   // ── Message listener ──────────────────────────────────────────
 
   window.addEventListener('message', function (ev) {
-    if (ev.source !== parent) return;
+    if (direct || ev.source !== parent) return;
     var d = ev.data;
     if (!d || typeof d !== 'object' || !d.playmore) return;
-
     if (parentOrigin === null) parentOrigin = ev.origin;
+    receive(d);
+  });
 
+  function receive(d) {
     switch (d.playmore) {
       case 'init':
         ctx = {
@@ -647,6 +653,9 @@
           emit('message', d.from, d.data);
         }
         break;
+      case 'error':
+        emit('error', d.error);
+        break;
       case 'closed':
         started = false;
         stopStatsReporter();
@@ -654,11 +663,123 @@
         emit('closed');
         break;
     }
-  });
+  }
+
+  // Standalone transport. The application supplies a short-lived token from
+  // its authenticated backend; no account or game secret belongs in this SDK.
+  function directPost(obj) {
+    if (!direct.socket || direct.socket.readyState !== 1) return;
+    var types = { create_lobby: 'create', join_lobby: 'join', quick_play: 'matchmake',
+      ready_up: 'ready', start_game: 'start', leave_lobby: 'leave',
+      cancel_matchmake: 'cancel_matchmake', send: 'msg', set_metadata: 'set_metadata',
+      set_slots: 'set_slots', claim_slot: 'claim_slot' };
+    var type = types[obj.playmore];
+    if (!type) return;
+    var wire = Object.assign({}, obj, { type: type });
+    delete wire.playmore;
+    if (type === 'create' || type === 'matchmake') wire.game_id = ctx.gameId;
+    direct.socket.send(JSON.stringify(wire));
+  }
+
+  function disconnect() {
+    directEpoch++;
+    if (direct) {
+      clearTimeout(direct.timer);
+      if (direct.socket) direct.socket.close();
+    }
+    direct = null;
+    parentOrigin = null;
+    started = false;
+    stopStatsReporter();
+    closeAllPeers();
+    ctx = { code: '', gameId: '', you: null, host: false, players: [], metadata: null, spectator: false };
+    return API;
+  }
+
+  async function connect(options) {
+    if (!options || typeof options.getToken !== 'function') throw new Error('getToken callback required');
+    var base = new URL(options.server);
+    if (base.protocol !== 'https:' && !(base.protocol === 'http:' &&
+        (base.hostname === 'localhost' || base.hostname === '127.0.0.1' || base.hostname === '[::1]'))) {
+      throw new Error('HTTPS is required except on localhost');
+    }
+    if (base.username || base.password || base.search || base.hash || base.pathname !== '/') {
+      throw new Error('server must be an origin URL');
+    }
+    disconnect();
+    var state = { socket: null, timer: null };
+    direct = state;
+    var epoch = directEpoch;
+    function current() { return direct === state && epoch === directEpoch; }
+    async function credentials() {
+      var token = await options.getToken();
+      if (typeof token !== 'string' || token.indexOf('pm_gs_') !== 0) throw new Error('A player game-session token is required');
+      var res = await fetch(base.origin + '/rtc-config', {
+        headers: { Authorization: 'Bearer ' + token }, credentials: 'omit', cache: 'no-store'
+      });
+      if (!res.ok) throw new Error('Runtime authentication failed');
+      var config = await res.json();
+      if (!config.you || config.game_id !== options.gameId) throw new Error('Token is for a different game');
+      return { token: token, config: config };
+    }
+    async function refresh() {
+      try {
+        var auth = await credentials();
+        if (!current()) return;
+        if (!ctx.you || auth.config.you.id !== ctx.you.id) throw new Error('Player identity changed');
+        state.socket.send(JSON.stringify({ type: 'auth', token: auth.token }));
+        receive({ playmore: 'token', session_token: auth.token, rtc_config: auth.config });
+        state.timer = setTimeout(refresh, 240000);
+      } catch (err) {
+        if (!current()) return;
+        emit('error', err.message);
+        state.timer = setTimeout(refresh, 30000);
+      }
+    }
+    try {
+      var auth = await credentials();
+      if (!current()) throw new Error('Connection cancelled');
+      var wsURL = new URL('/ws', base);
+      wsURL.protocol = base.protocol === 'https:' ? 'wss:' : 'ws:';
+      wsURL.searchParams.set('token', auth.token);
+      var socket = new WebSocket(wsURL.href);
+      state.socket = socket;
+      await new Promise(function (resolve, reject) {
+        socket.onopen = resolve;
+        socket.onerror = function () { reject(new Error('WebSocket connection failed')); };
+        socket.onclose = function () { reject(new Error('WebSocket connection closed')); };
+      });
+      if (!current()) { socket.close(); throw new Error('Connection cancelled'); }
+      parentOrigin = base.origin;
+      socket.onmessage = function (ev) {
+        if (!current()) return;
+        var msg; try { msg = JSON.parse(ev.data); } catch (_) { return; }
+        if (msg.type === 'authenticated') return;
+        msg.playmore = msg.type === 'lobby' ? 'lobby_state' : msg.type;
+        receive(msg);
+      };
+      socket.onclose = function () {
+        if (!current()) return;
+        disconnect();
+        emit('closed');
+      };
+      socket.onerror = function () { if (current()) emit('error', 'WebSocket connection failed'); };
+      receive({ playmore: 'init', game_id: options.gameId, you: auth.config.you,
+        session_token: auth.token, rtc_config: auth.config });
+      if (current()) state.timer = setTimeout(refresh, 240000);
+      return API;
+    } catch (err) {
+      if (current()) disconnect();
+      throw err;
+    }
+  }
 
   // ── Public API ────────────────────────────────────────────────
 
   var API = {
+    connect: connect,
+    disconnect: disconnect,
+    onError: on('error'),
     onReady: on('ready'),
     onMessage: on('message'),
     onPlayers: on('players'),

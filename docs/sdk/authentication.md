@@ -62,7 +62,7 @@ Response (the raw key is shown **once**):
 - Maximum 5 keys per game
 - Cannot access account endpoints (`/auth/*`, `/settings/*`, `/api-keys`, `/profile`, `/admin/*`) → **403**
 - Cannot connect to the WebSocket (`/ws`) → **403**
-- Scopes: `"all"` grants everything; specific scopes can be CSV-listed. Only `session:write` gates behavior currently; other scopes are reserved.
+- SDK-key scope strings are reserved metadata; do not assume they grant endpoint access. Runtime tokens use `session:write` (or `all`) for multiplayer, play sessions, RTC configuration, and saves. Other runtime scopes are rejected by the mint endpoint.
 
 Manage keys:
 
@@ -182,4 +182,4 @@ These paths receive no CORS headers — a game iframe cannot call them.
 | Storage | SHA-256 hash only (raw shown once) | SHA-256 hash only (raw shown once) |
 | Entropy | 256 bits (crypto/rand) | 256 bits (crypto/rand) |
 
-Session tokens are designed for short blast radius: the SPA refreshes them before expiry (every ~4 minutes), and expired or revoked tokens immediately stop working.
+The SPA and standalone SDK refresh tokens every four minutes and send an `auth` frame to renew the existing WebSocket. The server checks token validity on every command and once per second while idle. Expired or revoked tokens close the connection; renewal cannot change its player or game. HTTP requests validate tokens individually. See [external games](external-games.md) for direct browser/native integration.

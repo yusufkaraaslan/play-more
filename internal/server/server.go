@@ -129,14 +129,7 @@ func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxi
 	})
 
 	// Custom logger — strips query strings so tokens don't land in logs.
-	r.Use(gin.LoggerWithFormatter(func(p gin.LogFormatterParams) string {
-		path := strings.ReplaceAll(p.Path, "\n", "")
-		path = strings.ReplaceAll(path, "\r", "")
-		return fmt.Sprintf("%s | %3d | %13v | %15s | %-7s %s\n",
-			p.TimeStamp.Format("2006/01/02 - 15:04:05"),
-			p.StatusCode, p.Latency, p.ClientIP, p.Method, path,
-		)
-	}))
+	r.Use(gin.LoggerWithFormatter(accessLogFormatter))
 
 	// Trust proxies
 	hasTrustedProxy := false
@@ -230,9 +223,7 @@ func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxi
 	// access to whoever holds it, so an unbounded endpoint would let one
 	// account mint an endless supply to hand out. The SPA fetches this
 	// once per game launch; 30/min is far above legitimate use.
-	r.GET("/rtc-config", middleware.RateLimit(30, 60), middleware.AuthOptional(), middleware.AuthRequired(), func(c *gin.Context) {
-		c.JSON(200, gin.H{"iceServers": iceServersFor(c)})
-	})
+	mountRTCConfig(r)
 
 	// =========================================================================
 	// API routes — mounted under both /api/v1 (canonical) and /api
@@ -331,4 +322,27 @@ func New(frontendFS embed.FS, goatCounterURL, gamesDomain, baseURL, trustedProxi
 	}
 
 	return r
+}
+
+func accessLogFormatter(p gin.LogFormatterParams) string {
+	path := strings.ReplaceAll(p.Request.URL.Path, "\n", "")
+	path = strings.ReplaceAll(path, "\r", "")
+	return fmt.Sprintf("%s | %3d | %13v | %15s | %-7s %s\n",
+		p.TimeStamp.Format("2006/01/02 - 15:04:05"),
+		p.StatusCode, p.Latency, p.ClientIP, p.Method, path,
+	)
+}
+
+func mountRTCConfig(r *gin.Engine) {
+	r.OPTIONS("/rtc-config", middleware.CORS())
+	r.GET("/rtc-config", middleware.RateLimit(30, 60), middleware.AuthOptional(), middleware.AuthRequiredOrGameSession(), func(c *gin.Context) {
+		response := gin.H{"iceServers": iceServersFor(c)}
+		if tok := middleware.GetGameSessionToken(c); tok != nil {
+			u := middleware.GetUser(c)
+			response["game_id"] = tok.GameID
+			response["you"] = gin.H{"id": u.ID, "username": u.Username}
+		}
+		c.Header("Cache-Control", "no-store")
+		c.JSON(200, response)
+	})
 }

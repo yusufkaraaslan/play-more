@@ -12,7 +12,8 @@ import "encoding/json"
 type ClientMsg struct {
 	// Type is one of: create, join, leave, ready, start, msg, set_metadata,
 	// matchmake, cancel_matchmake, set_slots, claim_slot.
-	Type string `json:"type"`
+	Type  string `json:"type"`
+	Token string `json:"token,omitempty"` // auth: replacement runtime credential
 	// GameID — for create/matchmake: the game to play.
 	GameID string `json:"game_id,omitempty"`
 	// Code — for join: the lobby code to join (case-insensitive).

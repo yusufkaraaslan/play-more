@@ -148,6 +148,10 @@ func AuthRequiredOrGameSession() gin.HandlerFunc {
 		}
 		// pm_gk_ keys are for server-side logic only — not browser-facing
 		// surfaces (WebSocket, cloud saves).
+		if tok := GetGameSessionToken(c); tok != nil && !tok.HasRuntimeScope() {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "session:write scope required"})
+			return
+		}
 		if IsGameAPIKeyAuth(c) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "game API keys are not accepted here"})
 			c.Abort()

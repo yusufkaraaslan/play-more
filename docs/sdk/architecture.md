@@ -34,8 +34,8 @@ the system degrades gracefully on hostile networks.
 
 The four stages:
 
-1. **Lobby (matchmaking)** — players create or join a lobby via the
-   SPA UI, share a 6-character code, ready up, and the host starts the
+1. **Lobby (matchmaking)** — players create or join a lobby via their
+   game UI, share a 6-character code, ready up, and the host starts the
    game.
 2. **Signaling (relay)** — once launched, the SDK negotiates WebRTC
    connections peer-to-peer. The signaling offers, answers, and ICE
@@ -47,6 +47,13 @@ The four stages:
 4. **Fallback (relay)** — if WebRTC fails (symmetric NAT, corporate
    firewall, old browser), the SDK transparently routes that peer's
    traffic through the relay. The game never sees the switch.
+
+## Standalone clients
+
+External browser games can call `PlayMore.connect` to own their socket directly.
+Native clients can use the same WebSocket protocol with a player game-session
+Bearer token. The parent bridge below remains the default for hosted iframes.
+[External games](external-games.md) describes token delivery, renewal, and limits.
 
 ## The SPA-game bridge
 

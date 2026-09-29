@@ -2,7 +2,9 @@ package handlers
 
 import (
 	"context"
+	"database/sql"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/coder/websocket"
@@ -11,6 +13,7 @@ import (
 	"github.com/yusufkaraaslan/play-more/internal/lobby"
 	"github.com/yusufkaraaslan/play-more/internal/middleware"
 	"github.com/yusufkaraaslan/play-more/internal/models"
+	"github.com/yusufkaraaslan/play-more/internal/storage"
 )
 
 const (
@@ -37,18 +40,9 @@ const (
 // or a pm_gs_ game session token (minted by the SPA and passed to the
 // game iframe) via AuthOptional+AuthRequiredOrGameSession on the route.
 //
-// When the connection is authenticated with a pm_gs_ token, the game_id
-// from the token is available for scoping (e.g. restricting lobby creation
-// to the token's game). The current implementation still allows any
-// multiplayer game — the token's primary value is scoped, short-lived
-// auth that doesn't expose the user's session cookie to the iframe.
-//
-// CSRF note: WebSocket handshakes are GETs, so CSRFProtect never sees
-// them — the equivalent protection against cross-site WebSocket
-// hijacking is the Origin check inside websocket.Accept, which rejects
-// any browser handshake whose Origin host differs from the request
-// Host. Non-browser clients send no Origin and pass (same stance as
-// CSRF-exempt API-key requests).
+// Game tokens bind every lobby operation to one game. Cross-origin upgrades
+// are allowed only after validating an explicit game token; cookie/account
+// authentication retains the WebSocket library's same-origin protection.
 func GameLobbyWS(hub *lobby.Hub) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		user := middleware.GetUser(c)
@@ -63,7 +57,13 @@ func GameLobbyWS(hub *lobby.Hub) gin.HandlerFunc {
 			gameSessionGameID = tok.GameID
 		}
 
-		conn, err := websocket.Accept(c.Writer, c.Request, nil)
+		options := &websocket.AcceptOptions{}
+		if middleware.GetGameSessionToken(c) != nil {
+			// This option skips Origin validation, not TLS. Only an explicit,
+			// already validated game token may bypass the cookie-origin gate.
+			options.InsecureSkipVerify = true
+		}
+		conn, err := websocket.Accept(c.Writer, c.Request, options)
 		if err != nil {
 			// Accept has already written the HTTP error (including 403
 			// on cross-origin handshakes).
@@ -72,7 +72,7 @@ func GameLobbyWS(hub *lobby.Hub) gin.HandlerFunc {
 		defer conn.Close(websocket.StatusInternalError, "server error")
 		conn.SetReadLimit(wsMaxFrameBytes)
 
-		sess, err := hub.Register(user.ID, user.Username, user.AvatarURL)
+		sess, err := hub.Register(user.ID, user.Username, user.AvatarURL, gameSessionGameID)
 		if err != nil {
 			conn.Close(websocket.StatusPolicyViolation, err.Error())
 			return
@@ -83,6 +83,25 @@ func GameLobbyWS(hub *lobby.Hub) gin.HandlerFunc {
 		// when the hub force-closes the session (slow consumer, abuse).
 		ctx, cancel := context.WithCancel(c.Request.Context())
 		defer cancel()
+		credential := &wsCredential{db: storage.DB, token: middleware.GetGameSessionToken(c)}
+		if credential.token != nil {
+			go func() {
+				ticker := time.NewTicker(time.Second)
+				defer ticker.Stop()
+				for {
+					select {
+					case <-ticker.C:
+						if !credential.valid(ctx) {
+							conn.Close(websocket.StatusPolicyViolation, "credential expired or revoked")
+							sess.Close()
+							return
+						}
+					case <-ctx.Done():
+						return
+					}
+				}
+			}()
+		}
 		go func() {
 			select {
 			case <-sess.Done():
@@ -149,6 +168,26 @@ func GameLobbyWS(hub *lobby.Hub) gin.HandlerFunc {
 			if winCount++; winCount > wsMaxMsgsPerSec {
 				sess.Send(lobby.ServerMsg{Type: "error", Error: "message rate limit exceeded"})
 				break
+			}
+			if !credential.valid(ctx) {
+				conn.Close(websocket.StatusPolicyViolation, "credential expired or revoked")
+				return
+			}
+			if msg.Type == "auth" {
+				if gameSessionGameID == "" {
+					conn.Close(websocket.StatusPolicyViolation, "runtime token required")
+					return
+				}
+				tok, _, err := models.ValidateGameSessionToken(msg.Token)
+				if err != nil || tok.UserID != user.ID || tok.GameID != gameSessionGameID || !tok.HasRuntimeScope() {
+					conn.Close(websocket.StatusPolicyViolation, "invalid replacement credential")
+					return
+				}
+				credential.mu.Lock()
+				credential.token = tok
+				credential.mu.Unlock()
+				sess.Send(lobby.ServerMsg{Type: "authenticated"})
+				continue
 			}
 			if msg.Type == "join" {
 				if now := time.Now(); now.Sub(joinWinStart) >= time.Minute {
@@ -263,3 +302,26 @@ var (
 type gameLobbyError string
 
 func (e gameLobbyError) Error() string { return string(e) }
+
+// The read loop owns refreshes; the idle monitor shares this immutable token
+// pointer under a mutex. The captured DB never changes under either goroutine.
+type wsCredential struct {
+	mu    sync.Mutex
+	db    *sql.DB
+	token *models.GameSessionToken
+}
+
+func (a *wsCredential) valid(ctx context.Context) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.token == nil {
+		return true
+	}
+	var expires, scopes string
+	var revoked bool
+	if err := a.db.QueryRowContext(ctx, `SELECT expires_at, revoked, scopes FROM game_session_tokens WHERE id = ?`, a.token.ID).Scan(&expires, &revoked, &scopes); err != nil {
+		return false
+	}
+	deadline, err := time.Parse(time.RFC3339, expires)
+	return err == nil && !revoked && time.Now().Before(deadline) && (&models.GameSessionToken{Scopes: scopes}).HasRuntimeScope()
+}

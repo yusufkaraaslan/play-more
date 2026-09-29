@@ -6,11 +6,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
+	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
 	"github.com/yusufkaraaslan/play-more/internal/handlers"
@@ -22,16 +24,14 @@ import (
 )
 
 // newWSServer wires a real TCP test server with the /ws route mounted
-// exactly like production (rate limit + AuthOptional + AuthRequired)
+// exactly like production (including runtime-token authentication)
 // on a fresh hub, and returns the ws:// URL.
 func newWSServer(t *testing.T) (*testutil.TestServer, *lobby.Hub, string) {
 	t.Helper()
 	testutil.ResetRateLimits()
 	ts := testutil.NewTestServer(t)
 	hub := lobby.NewHub()
-	ts.Engine.GET("/ws", middleware.RateLimit(30, 60), middleware.AuthOptional(), middleware.AuthRequired(), handlers.GameLobbyWS(hub))
-	srv := httptest.NewServer(ts.Engine)
-	t.Cleanup(srv.Close)
+	srv := serveWS(t, ts, hub)
 	return ts, hub, "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws"
 }
 
@@ -95,9 +95,7 @@ func newWSServerDefaultHub(t *testing.T) (*testutil.TestServer, string) {
 	t.Helper()
 	testutil.ResetRateLimits()
 	ts := testutil.NewTestServer(t)
-	ts.Engine.GET("/ws", middleware.RateLimit(60, 60), middleware.AuthOptional(), middleware.AuthRequired(), handlers.GameLobbyWS(lobby.Default))
-	srv := httptest.NewServer(ts.Engine)
-	t.Cleanup(srv.Close)
+	srv := serveWS(t, ts, lobby.Default)
 	return ts, "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws"
 }
 
@@ -403,4 +401,20 @@ func TestWS_OnlineCountInGamePayload(t *testing.T) {
 		t.Fatal("online_players missing from multiplayer game payload")
 	}
 	_ = fmt.Sprintf("%d", *payload.OnlinePlayers)
+}
+
+// Use the production authentication chain and wait for upgraded handlers to
+// exit before draining persistence and allowing the test DB to close.
+func serveWS(t *testing.T, ts *testutil.TestServer, hub *lobby.Hub) *httptest.Server {
+	hub.UseDatabase(storage.DB)
+	var active sync.WaitGroup
+	handler := handlers.GameLobbyWS(hub)
+	ts.Engine.GET("/ws", middleware.RateLimit(30, 60), middleware.WSQueryTokenAuth(), middleware.AuthOptional(), middleware.AuthRequiredOrGameSession(), func(c *gin.Context) {
+		active.Add(1)
+		defer active.Done()
+		handler(c)
+	})
+	srv := httptest.NewServer(ts.Engine)
+	t.Cleanup(func() { srv.Close(); active.Wait(); hub.UseDatabase(nil) })
+	return srv
 }

@@ -75,3 +75,7 @@ For the complete method-by-method reference, see **[api-reference.md](api-refere
 For every cap and rate limit (8 players, 8 KiB/frame, 30 msgs/s, 2 h idle lobby lifetime, token TTLs, and what happens when each is exceeded), see **[limits.md](limits.md)**.
 
 For the underlying lobby/wire protocol and non-browser clients, see **[../DEVELOPER.md](../DEVELOPER.md)**.
+
+For games on another website or native clients, see
+[External web and native games](external-games.md): direct SDK connections,
+player-token requirements, renewal, and the native WebSocket protocol.

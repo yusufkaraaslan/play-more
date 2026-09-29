@@ -47,9 +47,9 @@ func CORS() gin.HandlerFunc {
 		path := c.Request.URL.Path
 
 		// Only handle CORS for API paths — non-API routes (SPA, /play/,
-		// /uploads/, /health, /rtc-config) don't need CORS headers from
+		// /uploads/, /health) don't need CORS headers from
 		// this middleware (some set their own, e.g. /play/ sets ACAO:*).
-		if !strings.HasPrefix(path, "/api/") {
+		if !strings.HasPrefix(path, "/api/") && path != "/rtc-config" {
 			c.Next()
 			return
 		}

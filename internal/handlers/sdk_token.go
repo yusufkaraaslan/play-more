@@ -55,6 +55,10 @@ func MintGameSessionTokenHandler(c *gin.Context) {
 		Scopes string `json:"scopes"`
 	}
 	_ = c.ShouldBindJSON(&input)
+	if input.Scopes != "" && input.Scopes != "session:write" && input.Scopes != "all" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "supported scopes: session:write or all"})
+		return
+	}
 
 	tok, rawToken, err := models.MintGameSessionToken(user.ID, gameID, input.Scopes)
 	if err != nil {

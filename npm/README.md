@@ -61,3 +61,12 @@ PlayMore.ping('player-id');     // RTT in ms, -1 if unknown
 See the full documentation at [docs/sdk/api-reference.md](https://github.com/yusufkaraaslan/play-more/blob/main/docs/sdk/api-reference.md).
 
 TypeScript definitions are available at `/playmore-mp.d.ts` on your PlayMore instance.
+
+## Externally hosted games
+
+The repository SDK supports `await PlayMore.connect({ server, gameId, getToken })`
+and `PlayMore.disconnect()` without a PlayMore parent frame. Use a fresh,
+player-specific game-session token; never embed a developer secret. See
+[external games](https://github.com/yusufkaraaslan/play-more/blob/main/docs/sdk/external-games.md)
+for integration requirements. These changes must be included in a package release
+before relying on them through npm.

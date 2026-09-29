@@ -1287,3 +1287,15 @@ and returned by `players()`) has this shape:
   }
 </script>
 ```
+
+
+## Standalone connection
+
+`await PlayMore.connect({ server, gameId, getToken })` connects an externally
+hosted browser game without the PlayMore parent page. `server` is an HTTPS
+origin (HTTP is allowed on localhost); `getToken` supplies a fresh player
+`pm_gs_` token on startup and every four minutes. `PlayMore.disconnect()` closes
+its socket and peers and cancels refreshes. `PlayMore.onError(fn)` receives
+server and connection errors. Reconnect explicitly with `connect`, then rejoin
+using the previous lobby code. See [external games](external-games.md) for
+identity requirements and the native protocol.

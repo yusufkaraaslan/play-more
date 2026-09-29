@@ -42,6 +42,7 @@ type Session struct {
 	UserID    string
 	Username  string
 	AvatarURL string
+	gameID    string // immutable game restriction; empty for account-authenticated sessions
 
 	hub       *Hub
 	lobby     *Lobby // guarded by hub.mu
@@ -129,28 +130,29 @@ type SessionTransportStats struct {
 // MultiplayerStatsSnapshot is the admin-facing aggregate of live lobby
 // data and client-reported transport stats.
 type MultiplayerStatsSnapshot struct {
-	ActiveLobbies        int     `json:"active_lobbies"`
-	PlayersInLobbies    int     `json:"players_in_lobbies"`
-	PeerConnections     int     `json:"peer_connections"`
-	P2PConnections      int     `json:"p2p_connections"`
-	RelayConnections    int     `json:"relay_connections"`
-	P2PRatio            float64 `json:"p2p_ratio"`       // 0–100
-	RelayRatio          float64 `json:"relay_ratio"`     // 0–100
-	AvgRTT              int     `json:"avg_rtt_ms"`      // 0 if no data
-	ReportingSessions   int     `json:"reporting_sessions"`
+	ActiveLobbies     int     `json:"active_lobbies"`
+	PlayersInLobbies  int     `json:"players_in_lobbies"`
+	PeerConnections   int     `json:"peer_connections"`
+	P2PConnections    int     `json:"p2p_connections"`
+	RelayConnections  int     `json:"relay_connections"`
+	P2PRatio          float64 `json:"p2p_ratio"`   // 0–100
+	RelayRatio        float64 `json:"relay_ratio"` // 0–100
+	AvgRTT            int     `json:"avg_rtt_ms"`  // 0 if no data
+	ReportingSessions int     `json:"reporting_sessions"`
 }
 
 // Hub is the in-memory lobby registry. One global instance (Default)
-// lives for the process lifetime; lobbies are ephemeral and never
-// touch the database. A single mutex guards everything — operations
+// lives for the process lifetime; optional persistence receives immutable
+// snapshots through an ordered writer queue. A single mutex guards everything — operations
 // are tiny map/slice updates, and contention is bounded by MaxLobbies.
 type Hub struct {
 	mu          sync.Mutex
-	lobbies     map[string]*Lobby // code → lobby
-	userConns   map[string]int    // user ID → live /ws connection count
-	gameCount   map[string]int    // game ID → players currently in a lobby
-	matchQueues map[matchKey][]*Session // (game, player_count) → queued sessions
+	lobbies     map[string]*Lobby                 // code → lobby
+	userConns   map[string]int                    // user ID → live /ws connection count
+	gameCount   map[string]int                    // game ID → players currently in a lobby
+	matchQueues map[matchKey][]*Session           // (game, player_count) → queued sessions
 	mpStats     map[string]*SessionTransportStats // sessionID → latest transport stats
+	store       *lobbyStore
 }
 
 // Default is the process-wide hub used by the HTTP handlers.
@@ -167,14 +169,19 @@ func NewHub() *Hub {
 }
 
 // Register creates a Session for a newly-upgraded connection.
-func (h *Hub) Register(userID, username, avatarURL string) (*Session, error) {
+func (h *Hub) Register(userID, username, avatarURL string, gameIDs ...string) (*Session, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.userConns[userID] >= MaxConnsPerUser {
 		return nil, ErrTooManyConns
 	}
 	h.userConns[userID]++
+	gameID := ""
+	if len(gameIDs) > 0 {
+		gameID = gameIDs[0]
+	}
 	return &Session{
+		gameID:    gameID,
 		UserID:    userID,
 		Username:  username,
 		AvatarURL: avatarURL,
@@ -235,7 +242,7 @@ func (h *Hub) Create(s *Session, gameID string, maxPlayers int) error {
 	s.lobby = l
 	s.ready = false
 	l.broadcastState()
-	persistLobby(l)
+	h.persistLobby(l)
 	return nil
 }
 
@@ -245,7 +252,7 @@ func (h *Hub) Join(s *Session, code string) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	l, ok := h.lobbies[normalizeCode(code)]
-	if !ok {
+	if !ok || (s.gameID != "" && l.GameID != s.gameID) {
 		return ErrLobbyNotFound
 	}
 	if l.Started {
@@ -283,7 +290,7 @@ func (h *Hub) Join(s *Session, code string) error {
 	s.lobby = l
 	s.ready = false
 	l.broadcastState()
-	persistLobby(l)
+	h.persistLobby(l)
 	return nil
 }
 
@@ -294,7 +301,7 @@ func (h *Hub) JoinSpectator(s *Session, code string) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	l, ok := h.lobbies[normalizeCode(code)]
-	if !ok {
+	if !ok || (s.gameID != "" && l.GameID != s.gameID) {
 		return ErrLobbyNotFound
 	}
 	// Cap spectators to prevent relay amplification DoS.
@@ -317,7 +324,7 @@ func (h *Hub) JoinSpectator(s *Session, code string) error {
 	l.LastActive = time.Now()
 	s.lobby = l
 	l.broadcastState()
-	persistLobby(l)
+	h.persistLobby(l)
 	return nil
 }
 
@@ -357,7 +364,7 @@ func (h *Hub) SetMetadata(s *Session, metadata []byte) error {
 	l.Metadata = metadata
 	l.LastActive = time.Now()
 	l.broadcastState()
-	persistLobby(l)
+	h.persistLobby(l)
 	return nil
 }
 
@@ -440,7 +447,7 @@ func (h *Hub) SetPublic(s *Session, public bool) error {
 	}
 	l.Public = public
 	l.LastActive = time.Now()
-	persistLobby(l)
+	h.persistLobby(l)
 	return nil
 }
 
@@ -514,7 +521,7 @@ func (h *Hub) Matchmake(s *Session, gameID string, playerCount int) {
 		// Start immediately.
 		l.Started = true
 		state := l.snapshot()
-		persistLobby(l)
+		h.persistLobby(l)
 		for _, m := range l.Members {
 			m.trySend(ServerMsg{Type: "launch", Lobby: state})
 		}
@@ -577,7 +584,7 @@ func (h *Hub) Start(s *Session) error {
 	l.Started = true
 	l.LastActive = time.Now()
 	state := l.snapshot()
-	persistLobby(l)
+	h.persistLobby(l)
 	for _, m := range l.Members {
 		m.trySend(ServerMsg{Type: "launch", Lobby: state})
 	}
@@ -800,7 +807,7 @@ func (h *Hub) leaveLocked(s *Session) {
 	}
 	l.LastActive = time.Now()
 	l.broadcastState()
-	persistLobby(l)
+	h.persistLobby(l)
 }
 
 // closeLobbyLocked destroys a lobby and notifies members. Members stay
@@ -808,7 +815,7 @@ func (h *Hub) leaveLocked(s *Session) {
 // can create or join another lobby.
 func (h *Hub) closeLobbyLocked(l *Lobby, reason string) {
 	delete(h.lobbies, l.Code)
-	deleteLobby(l.Code)
+	h.deleteLobby(l.Code)
 	for _, m := range l.Members {
 		// Only decrement for non-spectators (spectators were never counted).
 		if !m.spectator {
@@ -831,19 +838,25 @@ func (h *Hub) decGameCountLocked(gameID string) {
 }
 
 // Shutdown notifies all lobby members that the server is restarting,
-// then closes all lobbies. Called from main.go on SIGTERM/SIGINT.
+// then saves lobby snapshots and closes their connections. Called from main.go on SIGTERM/SIGINT.
 // Players see "server_restarting" and know to reconnect.
 func (h *Hub) Shutdown() {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	for _, l := range h.lobbies {
+		h.persistLobby(l)
 		for _, m := range l.Members {
 			m.trySend(ServerMsg{Type: "closed", Reason: "server_restarting"})
+			m.lobby = nil
+			m.Close()
 		}
-		deleteLobby(l.Code)
 	}
 	h.lobbies = make(map[string]*Lobby)
 	h.gameCount = make(map[string]int)
+	if h.store != nil {
+		h.store.close()
+		h.store = nil
+	}
 }
 
 // StartCleanup launches the idle-lobby reaper. Follows the same

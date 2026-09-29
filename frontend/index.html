@@ -3055,9 +3055,13 @@
             const gameData = currentGameData;
             if (gameData && gameData.id === gameId && gameData.multiplayer) {
                 if (!currentUser) { showAuth('login'); return; }
+                mpCleanup();
+                const epoch = mpSessionEpoch;
                 mpCurrentGameId = gameId;
                 mpLaunched = true; // arm the bridge for this multiplayer session
-                mpMintToken(gameId).then(() => {
+                mpMintToken(gameId).then((token) => {
+                    if (epoch !== mpSessionEpoch) return;
+                    if (!token) { mpCleanup(); toast('Could not authenticate multiplayer. Please try again.', 'error'); return; }
                     mpConnect();
                     mpStartTokenRefresh();
                     launchGame(gameId, entryFile);
@@ -3226,6 +3230,9 @@
         }
 
         function mpConnect() {
+            // Never fall back to an account cookie: every game connection must
+            // retain its game restriction even when token minting fails.
+            if (!mpGameToken || !mpGameToken.startsWith('pm_gs_')) return;
             if (mpSocket && (mpSocket.readyState === WebSocket.CONNECTING || mpSocket.readyState === WebSocket.OPEN)) return;
             const proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
             let wsUrl = proto + location.host + '/ws';
@@ -3298,6 +3305,7 @@
                 // re-fetches /rtc-config on every mint, and TURN credentials are
                 // ephemeral (10-min TTL), so a peer joining late would otherwise
                 // offer relay candidates the TURN server rejects.
+                mpSend({ type: 'auth', token: t });
                 mpNotifyGame({ playmore: 'token', session_token: t, rtc_config: mpRtcConfig });
                 mpScheduleTokenRefresh(MP_TOKEN_REFRESH_MS);
             });
@@ -3327,7 +3335,11 @@
             if (mpGameToken) { mpConnect(); }
             else {
                 mpMinting = true;
-                mpMintToken(mpCurrentGameId).then(() => { mpMinting = false; mpConnect(); })
+                mpMintToken(mpCurrentGameId).then((token) => {
+                    mpMinting = false;
+                    if (token) mpConnect();
+                    else { mpPending = []; mpNotifyGame({ playmore: 'error', error: 'Could not authenticate multiplayer. Please try again.' }); }
+                })
                                             .catch(() => { mpMinting = false; });
             }
         }
