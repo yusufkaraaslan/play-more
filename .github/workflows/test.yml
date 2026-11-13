@@ -18,7 +18,7 @@ jobs:
       - name: Multiplayer race regressions
         run: go test -race ./internal/lobby ./internal/handlers ./internal/server -run 'TestPersistence|TestShutdownPersists|TestWS_|TestAccessLog|TestRTCConfigGame'
       - name: Multiplayer browser SDK
-        run: node --test scripts/test-mp-sdk.cjs
+        run: node --test scripts/test-mp-*.cjs
 
   sdk-go:
     runs-on: ubuntu-latest

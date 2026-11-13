@@ -128,6 +128,15 @@ func SeedData(c *gin.Context) {
 			SysReqRec:   "Chrome, Firefox, or Safari",
 		},
 		{
+			Title: "Multiplayer Tic-Tac-Toe", Genre: "puzzle", Multiplayer: true,
+			Tags:   []string{"Multiplayer", "Turn-Based", "Classic"},
+			Color1: [3]uint8{170, 130, 245}, Color2: [3]uint8{24, 18, 42},
+			Desc:        "Challenge a friend to online Tic-Tac-Toe. Create a private two-player lobby or find an opponent with Quick Play, then take turns placing X and O.",
+			CustomAbout: "A compact host-authoritative multiplayer reference. The host validates each move and broadcasts the board over reliable messages using star topology. Includes matchmaking, ready-up, win and draw detection, and rematches.",
+			Features:    []string{"Online two-player matches", "Quick Play or private lobby codes", "Host-validated turns", "Win and draw detection", "Rematches"},
+			SysReqMin:   "Any modern browser", SysReqRec: "Latest Chrome, Firefox, or Safari",
+		},
+		{
 			Title: "MP Test Arena", Genre: "experimental", Price: 0, Discount: 0,
 			Tags: []string{"Multiplayer", "Diagnostic", "WebRTC"}, IsWebGPU: false, Multiplayer: true,
 			Color1: [3]uint8{60, 140, 220}, Color2: [3]uint8{12, 18, 28},
@@ -216,6 +225,9 @@ func SeedData(c *gin.Context) {
 			game.UpdateFiles(storage.GameDir(game.ID), "index.html")
 		} else if sg.Title == "Co-op Canvas" {
 			storage.SaveGameFile(game.ID, "index.html", []byte(generateCoopCanvasGame()))
+			game.UpdateFiles(storage.GameDir(game.ID), "index.html")
+		} else if sg.Title == "Multiplayer Tic-Tac-Toe" {
+			storage.SaveGameFile(game.ID, "index.html", []byte(generateMultiplayerTicTacToeGame()))
 			game.UpdateFiles(storage.GameDir(game.ID), "index.html")
 		} else if sg.Title == "MP Test Arena" {
 			storage.SaveGameFile(game.ID, "index.html", []byte(generateMPTestArenaGame()))
@@ -932,4 +944,116 @@ func generateMPTestArenaGame() string {
 </script>
 </body>
 </html>`
+}
+
+// generateMultiplayerTicTacToeGame demonstrates reliable, host-validated turns.
+func generateMultiplayerTicTacToeGame() string {
+	return `<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Multiplayer Tic-Tac-Toe</title>
+<style>
+*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:#18122a;color:#f4efff;font:16px system-ui}
+main{width:min(94vw,440px);padding:24px;text-align:center}h1{font-size:28px}p{line-height:1.5;color:#c8bddc}
+button,input{font:inherit;padding:12px;border-radius:10px;border:1px solid #665383;margin:4px;background:#302343;color:inherit}
+button{cursor:pointer}button:hover:enabled{background:#574071}button:disabled{opacity:.5;cursor:default}input{width:145px;text-transform:uppercase}
+#board{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:20px 0}#board button{aspect-ratio:1;margin:0;font-size:48px;font-weight:bold}
+#notice{min-height:24px;color:#ffcc92}#code{font-size:28px;letter-spacing:5px} [hidden]{display:none!important}
+</style></head><body><main>
+<h1>Multiplayer Tic-Tac-Toe</h1><p id="status" role="status">Connecting to PlayMore…</p>
+<section id="menu" hidden><button id="quick">Quick Play</button><button id="create">Create Lobby</button>
+<div><input id="joincode" aria-label="Lobby code" placeholder="CODE" maxlength="6"><button id="join">Join</button></div></section>
+<section id="waiting" hidden><p id="code"></p><p id="roster"></p><button id="ready">Ready Up</button><button id="start">Start Game</button></section>
+<section id="search" hidden><p>Finding an opponent…</p><button id="cancel">Cancel</button></section>
+<section id="game" hidden><div id="board" aria-label="Tic-Tac-Toe board"></div><button id="rematch" hidden>Play Again (host)</button></section>
+<button id="leave" hidden>Leave Lobby</button><p id="notice" role="alert"></p>
+</main><script src="/playmore-mp.js"></script><script>
+(function(){
+  'use strict';
+  var me=null,lobby=null,active=false,searching=false,state=null,round=0;
+  var wins=[[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+  function el(id){return document.getElementById(id);}
+  function host(){return lobby && lobby.players.find(function(p){return p.host;});}
+  function isHost(){return host() && host().id===me;}
+  function players(){return lobby ? lobby.players.filter(function(p){return !p.spectator;}) : [];}
+  function result(board){
+    for(var w of wins){if(board[w[0]] && board[w[0]]===board[w[1]] && board[w[1]]===board[w[2]])return board[w[0]];}
+    return board.every(Boolean)?'draw':'';
+  }
+  function publish(){PlayMore.send({t:'state',state:state});render();}
+  function reset(){
+    var ps=players();if(!isHost() || ps.length!==2)return;
+    state={board:Array(9).fill(''),seats:ps.map(function(p){return p.id;}),turn:'X',round:++round,revision:0};publish();
+  }
+  function move(from,d){
+    if(!isHost() || !active || !state || players().length!==2 || result(state.board))return;
+    var mark=state.seats.indexOf(from)===0?'X':state.seats.indexOf(from)===1?'O':'';
+    if(mark!==state.turn || d.round!==state.round || d.revision!==state.revision)return;
+    if(!Number.isInteger(d.cell) || d.cell<0 || d.cell>8 || state.board[d.cell])return;
+    state.board[d.cell]=mark;state.turn=mark==='X'?'O':'X';state.revision++;publish();
+  }
+  function render(){
+    el('menu').hidden=!me || !!lobby || searching;
+    el('search').hidden=!searching;el('waiting').hidden=!lobby || active;
+    el('game').hidden=!active;el('leave').hidden=!lobby;
+    if(!lobby){el('status').textContent=me?'Play a friend or find an opponent.':'Connecting to PlayMore…';return;}
+    el('code').textContent=lobby.code;
+    el('roster').textContent=players().map(function(p){return p.username+(p.host?' (host)':p.ready?' (ready)':' (not ready)');}).join(' · ');
+    var mine=players().find(function(p){return p.id===me;});
+    el('ready').hidden=isHost();el('ready').textContent=mine&&mine.ready?'Not Ready':'Ready Up';
+    el('start').hidden=!isHost();el('start').disabled=players().length!==2 || players().some(function(p){return !p.host&&!p.ready;});
+    if(!active){el('status').textContent='Share the lobby code. Both players must be ready.';return;}
+    var mark=state&&state.seats.indexOf(me)===0?'X':state&&state.seats.indexOf(me)===1?'O':'';
+    var end=state?result(state.board):'';
+    el('status').textContent=players().length!==2?'Waiting for an opponent…':!state?'Syncing board…':
+      end==='draw'?'Draw!':end?end+' wins!': 'You are '+mark+' · '+(state.turn===mark?'Your turn':state.turn+"’s turn");
+    Array.from(el('board').children).forEach(function(b,i){
+      b.textContent=state?state.board[i]:'';
+      b.disabled=!state || players().length!==2 || !!end || state.turn!==mark || !!state.board[i];
+    });
+    el('rematch').hidden=!isHost() || !end || players().length!==2;
+  }
+  for(let i=0;i<9;i++){
+    var b=document.createElement('button');b.setAttribute('aria-label','Cell '+(i+1));
+    b.onclick=function(){if(!state)return;var d={t:'move',cell:i,round:state.round,revision:state.revision};
+      if(isHost())move(me,d);else if(host())PlayMore.send(d,host().id);};el('board').appendChild(b);
+  }
+  el('create').onclick=function(){PlayMore.createLobby({maxPlayers:2});};
+  el('join').onclick=function(){var code=el('joincode').value.trim().toUpperCase();if(code)PlayMore.joinLobby(code);};
+  el('quick').onclick=function(){searching=true;el('notice').textContent='';PlayMore.quickPlay(2);render();};
+  el('cancel').onclick=function(){searching=false;PlayMore.cancelMatchmake();render();};
+  el('ready').onclick=function(){var p=players().find(function(p){return p.id===me;});PlayMore.readyUp(!(p&&p.ready));};
+  el('start').onclick=function(){PlayMore.startGame();};
+  function closeMatch(){lobby=null;active=false;searching=false;state=null;render();}
+  el('leave').onclick=function(){PlayMore.leaveLobby();closeMatch();};
+  el('rematch').onclick=reset;
+  PlayMore.setTopology('star');
+  PlayMore.onReady(function(ctx){me=ctx.you.id;render();});
+  PlayMore.onLobbyState(function(l){
+    var oldHost=host()&&host().id,oldSeats=players().map(function(p){return p.id;}).join(',');
+    lobby=l;searching=false;
+    // A changed roster or host starts a fresh round; do not inherit an unfinished match.
+    if(active && (oldHost!==(host()&&host().id) || oldSeats!==players().map(function(p){return p.id;}).join(','))){state=null;if(isHost())reset();}
+    render();
+  });
+  PlayMore.onLaunch(function(l){lobby=l;active=true;searching=false;state=null;if(isHost())reset();render();});
+  PlayMore.onMessage(function(from,d){
+    if(!d || !active)return;
+    if(d.t==='move')move(from,d);
+    if(d.t==='sync' && isHost() && state)PlayMore.send({t:'state',state:state},from);
+    if(d.t==='state' && host() && from===host().id && !isHost()){
+      var s=d.state;
+      if(!s || !Array.isArray(s.board) || s.board.length!==9 || !s.board.every(function(v){return v===''||v==='X'||v==='O';}))return;
+      if(!Array.isArray(s.seats) || s.seats.length!==2 || s.seats.join(',')!==players().map(function(p){return p.id;}).join(','))return;
+      if(!Number.isInteger(s.round) || !Number.isInteger(s.revision) || (s.turn!=='X'&&s.turn!=='O'))return;
+      if(state && (s.round<state.round || s.round===state.round&&s.revision<state.revision))return;
+      state=s;render();
+    }
+  });
+  // Pull snapshots too: the guest's launch callback may follow the host's first broadcast.
+  setInterval(function(){if(active && !isHost() && host())PlayMore.send({t:'sync'},host().id);},1500);
+  PlayMore.onError(function(error){searching=false;el('notice').textContent=String(error);render();});
+  PlayMore.onClosed(function(){closeMatch();el('notice').textContent='Lobby closed. Create or join another match.';});
+  render();
+})();
+</script></body></html>`
 }

@@ -91,6 +91,42 @@ The seeded **Co-op Canvas** demo (`POST /api/seed` creates it) is the canonical 
 - **Stable per-player colors** — each player id is hashed to a hue, so a given player is the same color on every screen with no coordination.
 - **Drop players who left** — `onPlayers` reconciles the roster: anyone no longer in the list is removed from the local `peers` map and the cursor layer is redrawn.
 
+## Multiplayer Tic-Tac-Toe
+
+The seeded **Multiplayer Tic-Tac-Toe** demo is a complete two-player,
+turn-based reference alongside the local **XOX Challenge**. On a fresh instance,
+sign in as the first registered user (admin), then call `POST /api/v1/seed`.
+Seeding only populates an empty game catalog; existing catalogs are unchanged.
+The full copyable HTML is returned by `generateMultiplayerTicTacToeGame()` in
+`internal/handlers/seed.go`.
+
+Create a private lobby and share its code, or choose **Quick Play** in two
+signed-in player sessions. In a private lobby the guest readies up, then the
+host starts. The host plays X; the guest plays O. After a win or draw the host
+can start a rematch.
+
+The example demonstrates:
+
+- **Game-managed menus:** `createLobby({maxPlayers: 2})`, `joinLobby()`,
+  `readyUp()`, `startGame()`, and `quickPlay(2)`.
+- **Host authority:** the guest sends a move request to the host using
+  `send(request, hostId)`. Only the host changes the board after checking the
+  sender's seat, turn, cell bounds, and whether the cell is empty.
+- **Reliable star topology:** `setTopology('star')` runs before launch. Moves
+  and board snapshots use `send()`, because losing a turn is unacceptable.
+- **Replay protection:** move requests include the round and board revision;
+  the host ignores delayed requests from an older board or rematch. Guests
+  accept snapshots only from the current host and ignore older revisions.
+- **Snapshot recovery:** a periodic guest sync request recovers the board if
+  the initial snapshot arrives before the guest's launch callback.
+- **Roster changes:** play pauses when an opponent leaves. A changed roster
+  or host starts a fresh round once two players are present. This demo does
+  not persist an unfinished board across host migration or page reloads.
+
+Host authority here means the host's client is trusted; it is a teaching
+example, not server-enforced anti-cheat. Automated rules tests run with
+`node --test scripts/test-mp-tictactoe.cjs`.
+
 ## MP Test Arena
 
 The seeded **MP Test Arena** demo (`POST /api/seed`) is the end-to-end diagnostic game for the multiplayer stack — a dashboard you use to *verify* that P2P, fallback, keepalive, and relay are all behaving, not a game you ship to players.
