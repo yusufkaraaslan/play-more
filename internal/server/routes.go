@@ -144,6 +144,7 @@ func mountAPIRoutes(g *gin.RouterGroup, cfg apiConfig) {
 	// Admin routes — same group so AuthOptional + CSRFProtect apply.
 	admin := g.Group("/admin")
 	admin.Use(handlers.AdminRequired())
+	admin.POST("/demo-games", middleware.RateLimit(10, 3600), handlers.InstallDemoGames)
 	admin.GET("/stats", middleware.RateLimit(120, 3600), handlers.AdminStats)
 	admin.GET("/users", middleware.RateLimit(120, 3600), handlers.AdminListUsers)
 	admin.DELETE("/users/:id", middleware.RateLimit(10, 3600), handlers.AdminDeleteUser)

@@ -695,3 +695,11 @@ you're building a non-browser client:
 Joining or creating while already in a lobby auto-leaves the old
 one. If the host disconnects the lobby migrates to the next player;
 former members can rejoin a started lobby by code.
+
+### Install playable demos (administrator)
+
+In **Admin → Games**, select **Install missing demo games**, or call
+`POST /api/v1/admin/demo-games` with the administrator session cookie.
+This publishes missing playable examples under your account without overwriting
+existing games. API keys are rejected. See [SDK examples](sdk/examples.md#installing-demos-into-an-existing-catalog)
+for duplicate detection, retry behavior, and the real-time Bouncy Ball Arena.

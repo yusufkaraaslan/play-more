@@ -166,6 +166,7 @@ func mountDriftFixture(r *gin.Engine) {
 	r.DELETE("/api/v1/api-keys/:id", func(c *gin.Context) {})
 
 	// Admin
+	r.POST("/api/v1/admin/demo-games", func(c *gin.Context) {})
 	r.GET("/api/v1/admin/stats", func(c *gin.Context) {})
 	r.GET("/api/v1/admin/users", func(c *gin.Context) {})
 	r.DELETE("/api/v1/admin/users/:id", func(c *gin.Context) {})

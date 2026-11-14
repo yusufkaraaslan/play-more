@@ -81,6 +81,8 @@ func migrate() error {
 // temp SQLite.
 func migrationsAll() []string {
 	return []string{
+		`ALTER TABLE games ADD COLUMN demo_key TEXT`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_games_demo_key ON games(demo_key)`,
 		`ALTER TABLE developer_pages ADD COLUMN theme_preset TEXT DEFAULT 'steam-dark'`,
 		`ALTER TABLE developer_pages ADD COLUMN font_heading TEXT DEFAULT ''`,
 		`ALTER TABLE developer_pages ADD COLUMN font_body TEXT DEFAULT ''`,

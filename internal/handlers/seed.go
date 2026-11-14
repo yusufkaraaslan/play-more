@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 	"github.com/yusufkaraaslan/play-more/internal/middleware"
@@ -18,7 +19,11 @@ import (
 	"github.com/yusufkaraaslan/play-more/internal/storage"
 )
 
+var demoInstallMu sync.Mutex
+
 type seedGame struct {
+	Key         string
+	HTML        func() string
 	Title       string
 	Genre       string
 	Desc        string
@@ -37,6 +42,8 @@ type seedGame struct {
 }
 
 func SeedData(c *gin.Context) {
+	demoInstallMu.Lock()
+	defer demoInstallMu.Unlock()
 	// Seed is admin-only and session-only (API keys rejected, matching
 	// every other admin endpoint).
 	if middleware.IsAPIKeyAuth(c) {
@@ -75,78 +82,7 @@ func SeedData(c *gin.Context) {
 		"", "", "", []models.DeveloperLink{{Label: "GitHub", URL: "https://github.com/yusufkaraaslan/play-more"}}, []string{}, nil,
 	)
 
-	games := []seedGame{
-		{
-			Title: "Neon Overdrive", Genre: "racing", Price: 19.99, Discount: 20,
-			Tags: []string{"Racing", "Multiplayer", "Cyberpunk"}, IsWebGPU: false, Multiplayer: true,
-			Color1: [3]uint8{180, 50, 200}, Color2: [3]uint8{20, 10, 40},
-			Desc:        "Race through neon-lit cyberpunk cities at breakneck speeds. Weave between traffic, chain near-misses to charge your boost, and outrun the syndicate enforcers hunting you.",
-			CustomAbout: "Experience the thrill of high-speed racing through a stunning cyberpunk cityscape. Customize your vehicle with over 50 unique parts, compete against AI opponents or friends online, and become the ultimate street racer.",
-			Features:    []string{"High-speed racing gameplay", "Vehicle customization system", "Online multiplayer (up to 8 players)", "Dynamic weather and day/night cycle", "12 unique tracks across 4 city districts"},
-			SysReqMin:   "Browser: Chrome 90+, Firefox 88+\nWebGL: 2.0 required\nRAM: 4GB\nInternet: Broadband",
-			SysReqRec:   "Browser: Chrome 110+, Firefox 115+\nWebGPU: Supported\nRAM: 8GB\nDisplay: 1920x1080",
-			VideoURL:    "https://www.youtube.com/embed/dQw4w9WgXcQ",
-		},
-		{
-			Title: "Void Echoes", Genre: "rpg", Price: 29.99, Discount: 15,
-			Tags: []string{"RPG", "Space", "Story Rich"}, IsWebGPU: true,
-			Color1: [3]uint8{40, 80, 180}, Color2: [3]uint8{5, 10, 30},
-			Desc:        "An epic space RPG where your choices shape the galaxy. Recruit a crew, broker peace or start wars between rival systems, and live with endings that remember what you did.",
-			CustomAbout: "Explore distant worlds, forge alliances with alien civilizations, and uncover the ancient mysteries of the Void. Every decision matters in this narrative-driven adventure spanning 40+ hours of gameplay.",
-			Features:    []string{"Deep branching narrative", "Real-time tactical combat", "200+ unique items and weapons", "6 recruitable companions", "New Game+ with alternate storylines"},
-			SysReqMin:   "Browser: Chrome 100+\nWebGL: 2.0 required\nRAM: 4GB",
-			SysReqRec:   "Browser: Chrome 115+\nWebGPU: Recommended\nRAM: 8GB\nDisplay: 1920x1080",
-		},
-		{
-			Title: "Shadow Tactics", Genre: "strategy", Price: 24.99, Discount: 30,
-			Tags: []string{"Strategy", "Stealth", "Tactical"}, IsWebGPU: false,
-			Color1: [3]uint8{50, 50, 50}, Color2: [3]uint8{10, 15, 10},
-			Desc:        "Command an elite team in this tactical stealth game. Scout patrol routes, coordinate silent takedowns, and improvise when a plan falls apart mid-mission.",
-			CustomAbout: "Plan your approach, execute precise maneuvers, and complete missions without leaving a trace. Each specialist has unique abilities that combine for creative solutions to every challenge.",
-			Features:    []string{"5 playable specialists with unique skills", "30 hand-crafted missions", "Real-time tactics with pause", "Multiple completion paths per mission", "Challenge modes and leaderboards"},
-			SysReqMin:   "Browser: Chrome 90+\nWebGL: 2.0\nRAM: 2GB",
-			SysReqRec:   "Browser: Chrome 110+\nRAM: 4GB",
-		},
-		{
-			Title: "XOX Challenge", Genre: "puzzle", Price: 0, Discount: 0,
-			Tags: []string{"Puzzle", "Casual", "Classic"}, IsWebGPU: false,
-			Color1: [3]uint8{102, 192, 244}, Color2: [3]uint8{20, 30, 50},
-			Desc:        "The classic game of Tic-Tac-Toe, beautifully reimagined for the web. Play a friend across the table or test yourself against an opponent that never makes the same mistake twice.",
-			CustomAbout: "A modern take on the timeless game. Play against a friend locally with smooth animations and an elegant dark theme. Perfect for quick gaming sessions!",
-			Features:    []string{"Local 2-player gameplay", "Smooth animations", "Win detection with highlights", "Score tracking"},
-			SysReqMin:   "Any modern browser",
-			SysReqRec:   "Chrome, Firefox, or Safari",
-		},
-		{
-			Title: "Co-op Canvas", Genre: "experimental", Price: 0, Discount: 0,
-			Tags: []string{"Multiplayer", "Casual", "Creative"}, IsWebGPU: false, Multiplayer: true,
-			Color1: [3]uint8{80, 200, 160}, Color2: [3]uint8{15, 25, 30},
-			Desc:        "A shared drawing board — create a lobby, share the code, and doodle together in real time.",
-			CustomAbout: "A tiny working demo of PlayMore's multiplayer lobbies. Every player gets a live colored cursor; click to drop dots on a shared canvas that syncs to everyone in the lobby. Built with the embeddable playmore-mp.js client (~120 lines of game code) — the reference example for adding online multiplayer to your own games. See /docs for the protocol.",
-			Features:    []string{"Real-time shared canvas (up to 8 players)", "Live colored cursors for every player", "Create/join lobbies with a shareable code", "Reference implementation of playmore-mp.js"},
-			SysReqMin:   "Any modern browser",
-			SysReqRec:   "Chrome, Firefox, or Safari",
-		},
-		{
-			Title: "Multiplayer Tic-Tac-Toe", Genre: "puzzle", Multiplayer: true,
-			Tags:   []string{"Multiplayer", "Turn-Based", "Classic"},
-			Color1: [3]uint8{170, 130, 245}, Color2: [3]uint8{24, 18, 42},
-			Desc:        "Challenge a friend to online Tic-Tac-Toe. Create a private two-player lobby or find an opponent with Quick Play, then take turns placing X and O.",
-			CustomAbout: "A compact host-authoritative multiplayer reference. The host validates each move and broadcasts the board over reliable messages using star topology. Includes matchmaking, ready-up, win and draw detection, and rematches.",
-			Features:    []string{"Online two-player matches", "Quick Play or private lobby codes", "Host-validated turns", "Win and draw detection", "Rematches"},
-			SysReqMin:   "Any modern browser", SysReqRec: "Latest Chrome, Firefox, or Safari",
-		},
-		{
-			Title: "MP Test Arena", Genre: "experimental", Price: 0, Discount: 0,
-			Tags: []string{"Multiplayer", "Diagnostic", "WebRTC"}, IsWebGPU: false, Multiplayer: true,
-			Color1: [3]uint8{60, 140, 220}, Color2: [3]uint8{12, 18, 28},
-			Desc:        "A multiplayer diagnostic dashboard — tests every feature: WebRTC P2P, relay fallback, transport switching, bandwidth stats, keepalive, play sessions.",
-			CustomAbout: "The end-to-end test game for PlayMore's multiplayer stack. Shows live transport status (WebRTC vs relay) per peer, bandwidth stats, connection state changes, cursor sync, and message logging. Use this to verify that P2P data channels are working, keepalive is running, and relay fallback kicks in correctly.",
-			Features:    []string{"Per-peer transport indicator (WebRTC/relay)", "Live bandwidth stats (sent/received)", "Connection state change log", "Cursor sync + click-to-ping test", "Broadcast + unicast message test", "Play session status display"},
-			SysReqMin:   "Chrome 90+, Firefox 88+, Safari 15+",
-			SysReqRec:   "Latest Chrome or Firefox",
-		},
-	}
+	games := demoCatalog()
 
 	reviews := map[string][]struct {
 		Username string
@@ -175,68 +111,10 @@ func SeedData(c *gin.Context) {
 
 	created := 0
 	for _, sg := range games {
-		game, err := models.CreateGame(sg.Title, sg.Genre, sg.Desc, user.ID, sg.Price, sg.Tags, sg.IsWebGPU, sg.Multiplayer)
+		game, err := createDemoGame(sg, user.ID)
 		if err != nil {
-			continue
-		}
-
-		// Update extra fields
-		videosJSON := "[]"
-		if sg.VideoURL != "" {
-			videosJSON = `["` + sg.VideoURL + `"]`
-		}
-		storage.DB.Exec(`UPDATE games SET discount=?, video_url=?, videos=?, custom_about=?, features=?, sys_req_min=?, sys_req_rec=? WHERE id=?`,
-			sg.Discount, sg.VideoURL, videosJSON, sg.CustomAbout, mustJSON(sg.Features), sg.SysReqMin, sg.SysReqRec, game.ID)
-
-		// Generate cover image
-		coverPath := generateCoverImage(game.ID, sg.Title, sg.Color1, sg.Color2)
-		if coverPath != "" {
-			game.UpdateCover("/play/" + game.ID + "/" + filepath.Base(coverPath))
-		}
-
-		// Generate screenshot images
-		screenshots := []string{}
-		for i := 0; i < 3; i++ {
-			c1 := sg.Color1
-			c2 := sg.Color2
-			// Slightly vary colors for each screenshot
-			c1[0] = uint8(min255(int(c1[0]) + i*20))
-			c2[1] = uint8(min255(int(c2[1]) + i*15))
-			ssPath := generateScreenshot(game.ID, sg.Title, c1, c2, i)
-			if ssPath != "" {
-				screenshots = append(screenshots, "/play/"+game.ID+"/"+filepath.Base(ssPath))
-			}
-		}
-		if len(screenshots) > 0 {
-			storage.DB.Exec(`UPDATE games SET screenshots=? WHERE id=?`, mustJSON(screenshots), game.ID)
-		}
-
-		// CreateGame now yields a draft (store-page gate), but demo data whose
-		// entire purpose is to populate a browsable store would be pointless
-		// invisible. These rows are complete by construction — the generators
-		// above give every one of them a cover and three screenshots — so this
-		// publishes what would pass the gate anyway rather than bypassing it.
-		storage.DB.Exec(`UPDATE games SET published = 1 WHERE id = ?`, game.ID)
-
-		// Create XOX game file
-		if sg.Title == "XOX Challenge" {
-			xoxHTML := generateXOXGame()
-			storage.SaveGameFile(game.ID, "index.html", []byte(xoxHTML))
-			game.UpdateFiles(storage.GameDir(game.ID), "index.html")
-		} else if sg.Title == "Co-op Canvas" {
-			storage.SaveGameFile(game.ID, "index.html", []byte(generateCoopCanvasGame()))
-			game.UpdateFiles(storage.GameDir(game.ID), "index.html")
-		} else if sg.Title == "Multiplayer Tic-Tac-Toe" {
-			storage.SaveGameFile(game.ID, "index.html", []byte(generateMultiplayerTicTacToeGame()))
-			game.UpdateFiles(storage.GameDir(game.ID), "index.html")
-		} else if sg.Title == "MP Test Arena" {
-			storage.SaveGameFile(game.ID, "index.html", []byte(generateMPTestArenaGame()))
-			game.UpdateFiles(storage.GameDir(game.ID), "index.html")
-		} else {
-			// Create placeholder game file
-			placeholder := generatePlaceholderGame(sg.Title, sg.Color1)
-			storage.SaveGameFile(game.ID, "index.html", []byte(placeholder))
-			game.UpdateFiles(storage.GameDir(game.ID), "index.html")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create demo game", "games": created})
+			return
 		}
 
 		// Create reviewer accounts and reviews
@@ -284,7 +162,12 @@ func generateCoverImage(gameID, title string, c1, c2 [3]uint8) string {
 		return ""
 	}
 	defer f.Close()
-	png.Encode(f, img)
+	if err := png.Encode(f, img); err != nil {
+		return ""
+	}
+	if err := f.Close(); err != nil {
+		return ""
+	}
 	return path
 }
 
@@ -311,7 +194,12 @@ func generateScreenshot(gameID, title string, c1, c2 [3]uint8, idx int) string {
 		return ""
 	}
 	defer f.Close()
-	png.Encode(f, img)
+	if err := png.Encode(f, img); err != nil {
+		return ""
+	}
+	if err := f.Close(); err != nil {
+		return ""
+	}
 	return path
 }
 
@@ -1056,4 +944,93 @@ button{cursor:pointer}button:hover:enabled{background:#574071}button:disabled{op
   render();
 })();
 </script></body></html>`
+}
+
+func demoCatalog() []seedGame {
+	return []seedGame{
+		{
+			Title: "Neon Overdrive", Genre: "racing", Price: 19.99, Discount: 20,
+			Tags: []string{"Racing", "Multiplayer", "Cyberpunk"}, IsWebGPU: false, Multiplayer: true,
+			Color1: [3]uint8{180, 50, 200}, Color2: [3]uint8{20, 10, 40},
+			Desc:        "Race through neon-lit cyberpunk cities at breakneck speeds. Weave between traffic, chain near-misses to charge your boost, and outrun the syndicate enforcers hunting you.",
+			CustomAbout: "Experience the thrill of high-speed racing through a stunning cyberpunk cityscape. Customize your vehicle with over 50 unique parts, compete against AI opponents or friends online, and become the ultimate street racer.",
+			Features:    []string{"High-speed racing gameplay", "Vehicle customization system", "Online multiplayer (up to 8 players)", "Dynamic weather and day/night cycle", "12 unique tracks across 4 city districts"},
+			SysReqMin:   "Browser: Chrome 90+, Firefox 88+\nWebGL: 2.0 required\nRAM: 4GB\nInternet: Broadband",
+			SysReqRec:   "Browser: Chrome 110+, Firefox 115+\nWebGPU: Supported\nRAM: 8GB\nDisplay: 1920x1080",
+			VideoURL:    "https://www.youtube.com/embed/dQw4w9WgXcQ",
+		},
+		{
+			Title: "Void Echoes", Genre: "rpg", Price: 29.99, Discount: 15,
+			Tags: []string{"RPG", "Space", "Story Rich"}, IsWebGPU: true,
+			Color1: [3]uint8{40, 80, 180}, Color2: [3]uint8{5, 10, 30},
+			Desc:        "An epic space RPG where your choices shape the galaxy. Recruit a crew, broker peace or start wars between rival systems, and live with endings that remember what you did.",
+			CustomAbout: "Explore distant worlds, forge alliances with alien civilizations, and uncover the ancient mysteries of the Void. Every decision matters in this narrative-driven adventure spanning 40+ hours of gameplay.",
+			Features:    []string{"Deep branching narrative", "Real-time tactical combat", "200+ unique items and weapons", "6 recruitable companions", "New Game+ with alternate storylines"},
+			SysReqMin:   "Browser: Chrome 100+\nWebGL: 2.0 required\nRAM: 4GB",
+			SysReqRec:   "Browser: Chrome 115+\nWebGPU: Recommended\nRAM: 8GB\nDisplay: 1920x1080",
+		},
+		{
+			Title: "Shadow Tactics", Genre: "strategy", Price: 24.99, Discount: 30,
+			Tags: []string{"Strategy", "Stealth", "Tactical"}, IsWebGPU: false,
+			Color1: [3]uint8{50, 50, 50}, Color2: [3]uint8{10, 15, 10},
+			Desc:        "Command an elite team in this tactical stealth game. Scout patrol routes, coordinate silent takedowns, and improvise when a plan falls apart mid-mission.",
+			CustomAbout: "Plan your approach, execute precise maneuvers, and complete missions without leaving a trace. Each specialist has unique abilities that combine for creative solutions to every challenge.",
+			Features:    []string{"5 playable specialists with unique skills", "30 hand-crafted missions", "Real-time tactics with pause", "Multiple completion paths per mission", "Challenge modes and leaderboards"},
+			SysReqMin:   "Browser: Chrome 90+\nWebGL: 2.0\nRAM: 2GB",
+			SysReqRec:   "Browser: Chrome 110+\nRAM: 4GB",
+		},
+		{
+			Key: "xox-local", HTML: generateXOXGame,
+			Title: "XOX Challenge", Genre: "puzzle", Price: 0, Discount: 0,
+			Tags: []string{"Puzzle", "Casual", "Classic"}, IsWebGPU: false,
+			Color1: [3]uint8{102, 192, 244}, Color2: [3]uint8{20, 30, 50},
+			Desc:        "The classic game of Tic-Tac-Toe, beautifully reimagined for the web. Play a friend across the table or test yourself against an opponent that never makes the same mistake twice.",
+			CustomAbout: "A modern take on the timeless game. Play against a friend locally with smooth animations and an elegant dark theme. Perfect for quick gaming sessions!",
+			Features:    []string{"Local 2-player gameplay", "Smooth animations", "Win detection with highlights", "Score tracking"},
+			SysReqMin:   "Any modern browser",
+			SysReqRec:   "Chrome, Firefox, or Safari",
+		},
+		{
+			Key: "coop-canvas", HTML: generateCoopCanvasGame,
+			Title: "Co-op Canvas", Genre: "experimental", Price: 0, Discount: 0,
+			Tags: []string{"Multiplayer", "Casual", "Creative"}, IsWebGPU: false, Multiplayer: true,
+			Color1: [3]uint8{80, 200, 160}, Color2: [3]uint8{15, 25, 30},
+			Desc:        "A shared drawing board — create a lobby, share the code, and doodle together in real time.",
+			CustomAbout: "A tiny working demo of PlayMore's multiplayer lobbies. Every player gets a live colored cursor; click to drop dots on a shared canvas that syncs to everyone in the lobby. Built with the embeddable playmore-mp.js client (~120 lines of game code) — the reference example for adding online multiplayer to your own games. See /docs for the protocol.",
+			Features:    []string{"Real-time shared canvas (up to 8 players)", "Live colored cursors for every player", "Create/join lobbies with a shareable code", "Reference implementation of playmore-mp.js"},
+			SysReqMin:   "Any modern browser",
+			SysReqRec:   "Chrome, Firefox, or Safari",
+		},
+		{
+			Key: "tic-tac-toe", HTML: generateMultiplayerTicTacToeGame,
+			Title: "Multiplayer Tic-Tac-Toe", Genre: "puzzle", Multiplayer: true,
+			Tags:   []string{"Multiplayer", "Turn-Based", "Classic"},
+			Color1: [3]uint8{170, 130, 245}, Color2: [3]uint8{24, 18, 42},
+			Desc:        "Challenge a friend to online Tic-Tac-Toe. Create a private two-player lobby or find an opponent with Quick Play, then take turns placing X and O.",
+			CustomAbout: "A compact host-authoritative multiplayer reference. The host validates each move and broadcasts the board over reliable messages using star topology. Includes matchmaking, ready-up, win and draw detection, and rematches.",
+			Features:    []string{"Online two-player matches", "Quick Play or private lobby codes", "Host-validated turns", "Win and draw detection", "Rematches"},
+			SysReqMin:   "Any modern browser", SysReqRec: "Latest Chrome, Firefox, or Safari",
+		},
+		{
+			Key: "mp-test-arena", HTML: generateMPTestArenaGame,
+			Title: "MP Test Arena", Genre: "experimental", Price: 0, Discount: 0,
+			Tags: []string{"Multiplayer", "Diagnostic", "WebRTC"}, IsWebGPU: false, Multiplayer: true,
+			Color1: [3]uint8{60, 140, 220}, Color2: [3]uint8{12, 18, 28},
+			Desc:        "A multiplayer diagnostic dashboard — tests every feature: WebRTC P2P, relay fallback, transport switching, bandwidth stats, keepalive, play sessions.",
+			CustomAbout: "The end-to-end test game for PlayMore's multiplayer stack. Shows live transport status (WebRTC vs relay) per peer, bandwidth stats, connection state changes, cursor sync, and message logging. Use this to verify that P2P data channels are working, keepalive is running, and relay fallback kicks in correctly.",
+			Features:    []string{"Per-peer transport indicator (WebRTC/relay)", "Live bandwidth stats (sent/received)", "Connection state change log", "Cursor sync + click-to-ping test", "Broadcast + unicast message test", "Play session status display"},
+			SysReqMin:   "Chrome 90+, Firefox 88+, Safari 15+",
+			SysReqRec:   "Latest Chrome or Firefox",
+		},
+		{
+			Key: "bouncy-ball-arena", HTML: generateBouncyBallArenaGame,
+			Title: "Bouncy Ball Arena", Genre: "action", Multiplayer: true,
+			Tags:   []string{"Multiplayer", "Arcade", "Physics"},
+			Color1: [3]uint8{70, 175, 225}, Color2: [3]uint8{16, 28, 41},
+			Desc:        "Bounce around a shared arena with up to four players. Steer your ball with the keyboard or touch controls, collide with friends, and watch movement sync in real time.",
+			CustomAbout: "A real-time multiplayer SDK reference using normalized coordinates, throttled unreliable snapshots, sequence numbers, and short visual extrapolation. Each player owns their ball; casual collisions are resolved locally.",
+			Features:    []string{"Two to four players", "Private lobbies and Quick Play", "Keyboard and touch steering", "Unreliable movement snapshots", "Local wall and ball collisions"},
+			SysReqMin:   "Any modern browser", SysReqRec: "Latest Chrome, Firefox, or Safari",
+		},
+	}
 }

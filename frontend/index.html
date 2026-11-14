@@ -4473,6 +4473,9 @@
                     });
                 } else if (adminTab === 'games') {
                     const games = await api('/admin/games');
+                    html += '<p style="color:var(--text-secondary);margin-bottom:10px;">Install playable demos as published games owned by your account. Existing games and demos stay unchanged.</p>';
+                    html += '<button class="btn-secondary" id="install-demo-games" ' + act('adminInstallDemos') + ' style="margin-bottom:20px;">Install missing demo games</button>';
+
                     (games.games || []).forEach(g => {
                         html += '<div class="dashboard-card"><div></div><div>';
                         html += '<div class="game-card-title">' + escapeHtml(g.title) + '</div>';
@@ -4487,6 +4490,19 @@
                 container.innerHTML = html;
             } catch (e) {
                 container.innerHTML = '<div class="empty-state">Admin access required. Only the first registered user is admin.</div>';
+            }
+        }
+
+        async function adminInstallDemos() {
+            const button = document.getElementById('install-demo-games');
+            if (button) { button.disabled = true; button.textContent = 'Installing demos…'; }
+            try {
+                const result = await api('/admin/demo-games', { method: 'POST' });
+                toast(result.installed.length + ' demos installed; ' + result.skipped.length + ' already present.', 'success');
+                await loadAdmin();
+            } catch (e) {
+                toast(e.message, 'error');
+                if (button) { button.disabled = false; button.textContent = 'Install missing demo games'; }
             }
         }
 

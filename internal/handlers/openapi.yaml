@@ -2043,6 +2043,47 @@ paths:
                     items: { $ref: "#/components/schemas/WebhookDelivery" }
 
   # ===== Admin =====
+  /admin/demo-games:
+    post:
+      tags: [Admin]
+      summary: Install missing playable demos without modifying existing games
+      description: |
+        Admin session only. Adds published demos owned by the administrator.
+        Skips tracked demos (even when renamed) and existing matching titles.
+        Successful earlier installs remain if a later demo fails; retry safely.
+      security:
+        - session: []
+      responses:
+        "200":
+          description: Installed and skipped demo references
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [installed, skipped]
+                properties:
+                  installed:
+                    type: array
+                    items:
+                      type: object
+                      required: [key, id, title]
+                      properties:
+                        key: { type: string }
+                        id: { type: string }
+                        title: { type: string }
+                  skipped:
+                    type: array
+                    items:
+                      type: object
+                      required: [key, id, title]
+                      properties:
+                        key: { type: string }
+                        id: { type: string }
+                        title: { type: string }
+        "404": { description: Not an administrator session }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "500": { description: Installation failed; response includes installed and skipped so far }
+
   /admin/stats:
     get:
       tags: [Admin]
